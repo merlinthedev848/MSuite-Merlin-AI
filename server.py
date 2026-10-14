@@ -3,23 +3,25 @@ import json
 import urllib.parse
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 import threading
+import time
 
 from memory import (
     init_db,
     add_todo, get_todos, toggle_todo, delete_todo,
-    add_note, get_notes, delete_note,
-    get_all_knowledge, add_knowledge,
-    get_unresolved_gaps, add_gap,
-    get_system_telemetry
+    add_note, get_notes, update_note, delete_note,
+    get_all_knowledge, add_knowledge, delete_knowledge,
+    get_unresolved_gaps, add_gap, delete_gap,
+    get_system_telemetry, get_recent_audit_logs, log_event
 )
 from engine import InferenceEngine
-from sync_teacher import run_sync
+from sync_teacher import run_sync, sync_state
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "5000"))
 
 engine = None
+server_start_time = time.time()
 
 class AssistantRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -31,26 +33,32 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self):
-        self.send_response(200)
+        self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
-        # SSE Streaming Chat
+        # 1. SSE Real-Time Streaming Chat
         if path == "/api/chat/stream":
             query = urllib.parse.parse_qs(parsed.query)
             prompt = query.get("prompt", [""])[0]
             mode = query.get("mode", ["assistant"])[0]
             session_id = query.get("session_id", ["default"])[0]
+
+            if not prompt.strip():
+                self.send_json({"error": "Prompt cannot be empty"}, status=400)
+                return
 
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -66,37 +74,62 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
                     self.wfile.flush()
                 self.wfile.write(b"data: [DONE]\n\n")
                 self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                engine.stop_generation(session_id)
             except Exception as e:
-                pass
+                log_event("stream_error", f"Stream exception: {e}", "danger")
             return
 
-        # System Telemetry
+        # 2. Status & Model Health
+        elif path == "/api/status":
+            uptime_sec = int(time.time() - server_start_time)
+            status_data = {
+                "backend": engine.backend,
+                "model": engine.active_model_name,
+                "uptime_seconds": uptime_sec,
+                "knowledge_count": len(get_all_knowledge()),
+                "pending_gaps": len(get_unresolved_gaps())
+            }
+            self.send_json(status_data)
+            return
+
+        # 3. System Hardware Telemetry
         elif path == "/api/system":
             self.send_json(get_system_telemetry())
             return
 
-        # To-Dos
+        # 4. To-Dos
         elif path == "/api/todos":
             self.send_json(get_todos())
             return
 
-        # Notes
+        # 5. Notes
         elif path == "/api/notes":
             self.send_json(get_notes())
             return
 
-        # Knowledge Base
+        # 6. Knowledge Base
         elif path == "/api/knowledge":
             self.send_json(get_all_knowledge())
             return
 
-        # Knowledge Gaps
+        # 7. Knowledge Gaps
         elif path == "/api/gaps":
             self.send_json(get_unresolved_gaps())
             return
 
-        # Serve static web files
-        if path == "/" or path == "":
+        # 8. Teacher Sync Status
+        elif path == "/api/sync":
+            self.send_json(sync_state)
+            return
+
+        # 9. Audit Logs
+        elif path == "/api/audit":
+            self.send_json(get_recent_audit_logs())
+            return
+
+        # Static Web App
+        if path in ["", "/"]:
             self.path = "/index.html"
         return super().do_GET()
 
@@ -104,26 +137,41 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         length = int(self.headers.get("Content-Length", 0))
+
+        # Payload safety limit (max 1MB)
+        if length > 1024 * 1024:
+            self.send_json({"error": "Payload exceeds 1MB limit"}, status=413)
+            return
+
         body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
         try:
             data = json.loads(body)
         except Exception:
             data = {}
 
-        if path == "/api/todos":
+        # Abort streaming generation
+        if path == "/api/chat/stop":
+            session_id = data.get("session_id", "default")
+            stopped = engine.stop_generation(session_id)
+            self.send_json({"success": stopped})
+            return
+
+        # To-Dos CRUD
+        elif path == "/api/todos":
             task = data.get("task", "").strip()
+            priority = data.get("priority", "normal")
             if task:
-                tid = add_todo(task)
+                tid = add_todo(task, priority)
                 self.send_json({"success": True, "id": tid})
             else:
-                self.send_json({"error": "Task required"}, status=400)
+                self.send_json({"error": "Task text required"}, status=400)
             return
 
         elif path == "/api/todos/toggle":
             tid = data.get("id")
             if tid:
-                toggle_todo(tid)
-                self.send_json({"success": True})
+                success = toggle_todo(tid)
+                self.send_json({"success": success})
             else:
                 self.send_json({"error": "ID required"}, status=400)
             return
@@ -137,14 +185,28 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "ID required"}, status=400)
             return
 
+        # Notes CRUD
         elif path == "/api/notes":
             title = data.get("title", "").strip()
             content = data.get("content", "").strip()
-            if title or content:
-                nid = add_note(title or "Untitled Note", content)
+            tags = data.get("tags", "").strip()
+            if content:
+                nid = add_note(title or "Untitled Note", content, tags)
                 self.send_json({"success": True, "id": nid})
             else:
-                self.send_json({"error": "Content required"}, status=400)
+                self.send_json({"error": "Note content required"}, status=400)
+            return
+
+        elif path == "/api/notes/update":
+            nid = data.get("id")
+            title = data.get("title", "").strip()
+            content = data.get("content", "").strip()
+            tags = data.get("tags", "").strip()
+            if nid and content:
+                update_note(nid, title or "Untitled Note", content, tags)
+                self.send_json({"success": True})
+            else:
+                self.send_json({"error": "ID and content required"}, status=400)
             return
 
         elif path == "/api/notes/delete":
@@ -156,6 +218,17 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "ID required"}, status=400)
             return
 
+        # Knowledge CRUD
+        elif path == "/api/knowledge/delete":
+            kid = data.get("id")
+            if kid:
+                delete_knowledge(kid)
+                self.send_json({"success": True})
+            else:
+                self.send_json({"error": "ID required"}, status=400)
+            return
+
+        # Gaps CRUD
         elif path == "/api/gaps":
             question = data.get("question", "").strip()
             context = data.get("context", "").strip()
@@ -166,11 +239,25 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Question required"}, status=400)
             return
 
+        elif path == "/api/gaps/delete":
+            gid = data.get("id")
+            if gid:
+                delete_gap(gid)
+                self.send_json({"success": True})
+            else:
+                self.send_json({"error": "ID required"}, status=400)
+            return
+
+        # Trigger Teacher Sync
         elif path == "/api/sync":
-            api_key = data.get("api_key", "").strip()
+            api_key = data.get("api_key", "").strip() or os.getenv("TEACHER_API_KEY", "")
             topic = data.get("topic", "").strip()
             if not api_key:
-                self.send_json({"error": "API Key is required to sync with commercial AI"}, status=400)
+                self.send_json({"error": "API Key is required to communicate with the teacher AI"}, status=400)
+                return
+
+            if sync_state.get("is_syncing"):
+                self.send_json({"error": "Sync is already in progress"}, status=409)
                 return
 
             def bg_sync():
@@ -178,22 +265,22 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
 
             t = threading.Thread(target=bg_sync, daemon=True)
             t.start()
-            self.send_json({"success": True, "message": "Teacher synchronization started in background."})
+            self.send_json({"success": True, "message": "Teacher synchronization started."})
             return
 
-        self.send_json({"error": "Endpoint not found"}, status=404)
+        self.send_json({"error": f"Endpoint '{path}' not found"}, status=404)
 
 def run():
     global engine
     init_db()
     engine = InferenceEngine()
     server = ThreadingHTTPServer((HOST, PORT), AssistantRequestHandler)
-    print(f"\n==================================================================")
-    print(f"  AETHER OFFLINE AI ASSISTANT & CODER")
+    print("=" * 66)
+    print("  AETHER OFFLINE AI ASSISTANT & CODER (PRODUCTION READY)")
     print(f"  Local Access:      http://localhost:{PORT}")
     print(f"  Network Access:    http://0.0.0.0:{PORT} (Open from any LAN device)")
-    print(f"  Model Backend:     {engine.backend}")
-    print(f"==================================================================\n")
+    print(f"  Model Engine:      {engine.backend} ({engine.active_model_name})")
+    print("=" * 66)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

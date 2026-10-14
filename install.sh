@@ -21,7 +21,7 @@ echo "[3/4] Initializing memory database..."
 python3 "$DIR/memory.py"
 
 echo "[4/4] Making helper scripts executable..."
-chmod +x "$DIR/download_model.sh" "$DIR/start_llama_server.sh"
+chmod +x "$DIR/download_model.sh" "$DIR/start_llama_server.sh" "$DIR/cron_worker.py"
 
 echo ""
 echo "=========================================================="

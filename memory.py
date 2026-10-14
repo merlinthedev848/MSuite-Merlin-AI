@@ -2,243 +2,339 @@ import os
 import sqlite3
 import datetime
 import platform
+import shutil
+import time
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assistant_memory.db")
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    """
+    Creates a thread-safe connection to SQLite with WAL mode enabled
+    and a 30-second busy timeout to prevent 'database is locked' errors under concurrency.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 def init_db():
-    conn = get_db()
-    c = conn.cursor()
-    # Learned knowledge base (populated via teacher sync or manual lessons)
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS knowledge (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        topic TEXT NOT NULL,
-        lesson TEXT NOT NULL,
-        code_example TEXT,
-        tags TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    # Knowledge gaps / questions to ask the teacher
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS gaps (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        question TEXT NOT NULL,
-        context TEXT,
-        resolved INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    # Personal Assistant: To-Do items
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS todos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        task TEXT NOT NULL,
-        completed INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    # Personal Assistant: Notes
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS notes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    # Conversation History
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS chat_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    conn.commit()
-    conn.close()
+    """Initializes tables, indices, and audit logging."""
+    with get_db() as conn:
+        c = conn.cursor()
+        
+        # Knowledge Base
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS knowledge (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic TEXT NOT NULL,
+            lesson TEXT NOT NULL,
+            code_example TEXT,
+            tags TEXT DEFAULT '',
+            source TEXT DEFAULT 'distilled',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_topic ON knowledge(topic);")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_tags ON knowledge(tags);")
 
-# --- Knowledge & Self-Learning ---
+        # Knowledge Gaps (State Machine: pending -> processing -> resolved / failed)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS gaps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL,
+            context TEXT DEFAULT '',
+            status TEXT DEFAULT 'pending',
+            attempts INTEGER DEFAULT 0,
+            last_error TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP
+        );
+        """)
 
-def add_knowledge(topic, lesson, code_example="", tags=""):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO knowledge (topic, lesson, code_example, tags) VALUES (?, ?, ?, ?)",
-              (topic, lesson, code_example, tags))
-    conn.commit()
-    row_id = c.lastrowid
-    conn.close()
-    return row_id
+        # Schema migration check for existing databases
+        c.execute("PRAGMA table_info(gaps);")
+        gap_cols = [col[1] for col in c.fetchall()]
+        if "status" not in gap_cols:
+            c.execute("ALTER TABLE gaps ADD COLUMN status TEXT DEFAULT 'pending';")
+        if "attempts" not in gap_cols:
+            c.execute("ALTER TABLE gaps ADD COLUMN attempts INTEGER DEFAULT 0;")
+        if "last_error" not in gap_cols:
+            c.execute("ALTER TABLE gaps ADD COLUMN last_error TEXT DEFAULT '';")
+        if "resolved_at" not in gap_cols:
+            c.execute("ALTER TABLE gaps ADD COLUMN resolved_at TIMESTAMP;")
+
+        c.execute("CREATE INDEX IF NOT EXISTS idx_gaps_status ON gaps(status);")
+
+        # Personal Assistant: To-Dos
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS todos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task TEXT NOT NULL,
+            completed INTEGER DEFAULT 0,
+            priority TEXT DEFAULT 'normal', -- 'low', 'normal', 'high'
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP
+        );
+        """)
+
+        # Personal Assistant: Notes
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            tags TEXT DEFAULT '',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
+        # Chat History & Context Windows
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_history(session_id, id);")
+
+        # System & Cron Audit Log
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            details TEXT NOT NULL,
+            status TEXT DEFAULT 'info',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
+# --- Audit & Logging ---
+
+def log_event(event_type, details, status="info"):
+    with get_db() as conn:
+        conn.execute("INSERT INTO audit_log (event_type, details, status) VALUES (?, ?, ?)",
+                     (event_type, str(details), status))
+
+def get_recent_audit_logs(limit=20):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, event_type, details, status, created_at FROM audit_log ORDER BY id DESC LIMIT ?", (limit,))
+        return [dict(r) for r in c.fetchall()]
+
+# --- Knowledge & Memory Retrieval ---
+
+def add_knowledge(topic, lesson, code_example="", tags="", source="distilled"):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO knowledge (topic, lesson, code_example, tags, source)
+            VALUES (?, ?, ?, ?, ?)
+        """, (topic.strip(), lesson.strip(), code_example.strip() if code_example else "", tags.strip(), source))
+        log_event("knowledge_added", f"Assimilated topic: {topic}", "success")
+        return c.lastrowid
+
+def delete_knowledge(knowledge_id):
+    with get_db() as conn:
+        conn.execute("DELETE FROM knowledge WHERE id = ?", (knowledge_id,))
+        log_event("knowledge_deleted", f"Deleted knowledge ID: {knowledge_id}", "info")
+        return True
 
 def search_knowledge(query, limit=3):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT topic, lesson, code_example FROM knowledge ORDER BY id DESC")
-    rows = c.fetchall()
-    conn.close()
-
-    if not rows or not query:
+    """
+    Ranks knowledge by token overlap across topic, lesson, tags, and code.
+    Thread-safe and handles empty queries gracefully.
+    """
+    if not query or not query.strip():
         return []
 
-    words = set(query.lower().replace(",", " ").replace(".", " ").split())
+    tokens = [t.lower() for t in query.replace(",", " ").replace(".", " ").split() if len(t) > 2]
+    if not tokens:
+        return []
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, topic, lesson, code_example, tags FROM knowledge ORDER BY id DESC")
+        rows = c.fetchall()
+
     scored = []
     for r in rows:
-        text = f"{r['topic']} {r['lesson']} {r['code_example'] or ''}".lower()
-        score = sum(1 for w in words if len(w) > 2 and w in text)
+        haystack = f"{r['topic']} {r['lesson']} {r['tags']} {r['code_example'] or ''}".lower()
+        score = sum(haystack.count(tok) * (3 if tok in r['topic'].lower() else 1) for tok in tokens)
         if score > 0:
-            scored.append((score, r))
+            scored.append((score, dict(r)))
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [item[1] for item in scored[:limit]]
 
-def get_all_knowledge():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, topic, lesson, code_example, tags, created_at FROM knowledge ORDER BY id DESC")
-    rows = [dict(r) for r in c.fetchall()]
-    conn.close()
-    return rows
+def get_all_knowledge(limit=100):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, topic, lesson, code_example, tags, source, created_at
+            FROM knowledge ORDER BY id DESC LIMIT ?
+        """, (limit,))
+        return [dict(r) for r in c.fetchall()]
+
+# --- Gaps State Machine ---
 
 def add_gap(question, context=""):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO gaps (question, context, resolved) VALUES (?, ?, 0)", (question, context))
-    conn.commit()
-    row_id = c.lastrowid
-    conn.close()
-    return row_id
+    with get_db() as conn:
+        c = conn.cursor()
+        # Avoid exact duplicate pending gaps
+        c.execute("SELECT id FROM gaps WHERE question = ? AND status = 'pending'", (question.strip(),))
+        existing = c.fetchone()
+        if existing:
+            return existing["id"]
 
-def get_unresolved_gaps():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, question, context, created_at FROM gaps WHERE resolved = 0 ORDER BY id ASC")
-    rows = [dict(r) for r in c.fetchall()]
-    conn.close()
-    return rows
+        c.execute("INSERT INTO gaps (question, context, status) VALUES (?, ?, 'pending')",
+                  (question.strip(), context.strip()))
+        gid = c.lastrowid
+        log_event("gap_recorded", f"Recorded gap #{gid}: {question}", "warning")
+        return gid
 
-def resolve_gap(gap_id):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("UPDATE gaps SET resolved = 1 WHERE id = ?", (gap_id,))
-    conn.commit()
-    conn.close()
+def get_unresolved_gaps(limit=50):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, question, context, status, attempts, last_error, created_at
+            FROM gaps WHERE status IN ('pending', 'failed')
+            ORDER BY id ASC LIMIT ?
+        """, (limit,))
+        return [dict(r) for r in c.fetchall()]
 
-# --- Personal Assistant (Todos & Notes) ---
+def set_gap_status(gap_id, status, error_msg=""):
+    with get_db() as conn:
+        now = datetime.datetime.now().isoformat() if status == 'resolved' else None
+        conn.execute("""
+            UPDATE gaps 
+            SET status = ?, last_error = ?, attempts = attempts + 1, resolved_at = ?
+            WHERE id = ?
+        """, (status, error_msg, now, gap_id))
 
-def add_todo(task):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO todos (task, completed) VALUES (?, 0)", (task,))
-    conn.commit()
-    row_id = c.lastrowid
-    conn.close()
-    return row_id
+def delete_gap(gap_id):
+    with get_db() as conn:
+        conn.execute("DELETE FROM gaps WHERE id = ?", (gap_id,))
+        return True
+
+# --- Personal Assistant: Tasks & Notes ---
+
+def add_todo(task, priority="normal"):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("INSERT INTO todos (task, priority) VALUES (?, ?)", (task.strip(), priority))
+        return c.lastrowid
 
 def get_todos():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, task, completed, created_at FROM todos ORDER BY completed ASC, id DESC")
-    rows = [dict(r) for r in c.fetchall()]
-    conn.close()
-    return rows
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, task, completed, priority, created_at, completed_at FROM todos ORDER BY completed ASC, id DESC")
+        return [dict(r) for r in c.fetchall()]
 
 def toggle_todo(todo_id):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("UPDATE todos SET completed = 1 - completed WHERE id = ?", (todo_id,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT completed FROM todos WHERE id = ?", (todo_id,))
+        row = c.fetchone()
+        if not row:
+            return False
+        new_val = 0 if row["completed"] else 1
+        now = datetime.datetime.now().isoformat() if new_val == 1 else None
+        c.execute("UPDATE todos SET completed = ?, completed_at = ? WHERE id = ?", (new_val, now, todo_id))
+        return True
 
 def delete_todo(todo_id):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
+        return True
 
-def add_note(title, content):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO notes (title, content) VALUES (?, ?)", (title, content))
-    conn.commit()
-    row_id = c.lastrowid
-    conn.close()
-    return row_id
+def add_note(title, content, tags=""):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("INSERT INTO notes (title, content, tags) VALUES (?, ?, ?)",
+                  (title.strip(), content.strip(), tags.strip()))
+        return c.lastrowid
+
+def update_note(note_id, title, content, tags=""):
+    with get_db() as conn:
+        conn.execute("""
+            UPDATE notes 
+            SET title = ?, content = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (title.strip(), content.strip(), tags.strip(), note_id))
+        return True
 
 def get_notes():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, title, content, updated_at FROM notes ORDER BY id DESC")
-    rows = [dict(r) for r in c.fetchall()]
-    conn.close()
-    return rows
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, title, content, tags, updated_at FROM notes ORDER BY id DESC")
+        return [dict(r) for r in c.fetchall()]
 
 def delete_note(note_id):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("DELETE FROM notes WHERE id = ?", (note_id,))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+        return True
 
-# --- Chat History ---
+# --- Chat History & State ---
 
 def save_chat_message(session_id, role, content):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)",
-              (session_id, role, content))
-    conn.commit()
-    conn.close()
+    with get_db() as conn:
+        conn.execute("INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)",
+                     (session_id, role, content))
 
 def get_recent_chat(session_id, limit=8):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("""
-        SELECT role, content FROM (
-            SELECT id, role, content FROM chat_history 
-            WHERE session_id = ? 
-            ORDER BY id DESC LIMIT ?
-        ) ORDER BY id ASC
-    """, (session_id, limit))
-    rows = [dict(r) for r in c.fetchall()]
-    conn.close()
-    return rows
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT role, content FROM (
+                SELECT id, role, content FROM chat_history 
+                WHERE session_id = ? 
+                ORDER BY id DESC LIMIT ?
+            ) ORDER BY id ASC
+        """, (session_id, limit))
+        return [dict(r) for r in c.fetchall()]
 
-# --- System Diagnostics (Pi 5 & Linux) ---
+def clear_chat_history(session_id=None):
+    with get_db() as conn:
+        if session_id:
+            conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
+        else:
+            conn.execute("DELETE FROM chat_history")
+
+# --- Hardware Diagnostics & Telemetry ---
 
 def get_system_telemetry():
     stats = {
         "os": f"{platform.system()} {platform.release()}",
-        "machine": platform.machine(),
+        "arch": platform.machine(),
         "temperature": "N/A",
         "cpu_usage": "N/A",
         "memory": "N/A",
-        "disk": "N/A"
+        "disk": "N/A",
+        "uptime": "N/A"
     }
 
-    # Raspberry Pi / Linux CPU Temperature
-    temp_path = "/sys/class/thermal/thermal_zone0/temp"
-    if os.path.exists(temp_path):
-        try:
-            with open(temp_path, "r") as f:
-                temp_c = int(f.read().strip()) / 1000.0
-                stats["temperature"] = f"{temp_c:.1f}°C"
-        except Exception:
-            pass
+    # Pi 5 / Linux Temperature Sensor
+    for zone in ["/sys/class/thermal/thermal_zone0/temp", "/sys/devices/virtual/thermal/thermal_zone0/temp"]:
+        if os.path.exists(zone):
+            try:
+                with open(zone, "r") as f:
+                    temp_c = int(f.read().strip()) / 1000.0
+                    stats["temperature"] = f"{temp_c:.1f}°C"
+                    break
+            except Exception:
+                pass
 
     # Linux /proc/loadavg
     if os.path.exists("/proc/loadavg"):
         try:
             with open("/proc/loadavg", "r") as f:
-                loads = f.read().split()[:3]
-                stats["cpu_usage"] = f"Load: {', '.join(loads)}"
+                parts = f.read().split()[:3]
+                stats["cpu_usage"] = f"Load (1/5/15m): {', '.join(parts)}"
         except Exception:
             pass
 
@@ -250,21 +346,34 @@ def get_system_telemetry():
                 for line in f:
                     parts = line.split(":")
                     if len(parts) == 2:
-                        key = parts[0].strip()
-                        val = parts[1].strip().split()[0]
-                        mem[key] = int(val)
+                        mem[parts[0].strip()] = int(parts[1].strip().split()[0])
             total_mb = mem.get("MemTotal", 0) // 1024
             avail_mb = mem.get("MemAvailable", 0) // 1024
             used_mb = total_mb - avail_mb
-            stats["memory"] = f"{used_mb}MB / {total_mb}MB ({int((used_mb/max(total_mb,1))*100)}%)"
+            pct = int((used_mb / max(total_mb, 1)) * 100)
+            stats["memory"] = f"{used_mb}MB / {total_mb}MB ({pct}%)"
+        except Exception:
+            pass
+
+    # Linux /proc/uptime
+    if os.path.exists("/proc/uptime"):
+        try:
+            with open("/proc/uptime", "r") as f:
+                uptime_sec = float(f.read().split()[0])
+                days = int(uptime_sec // 86400)
+                hours = int((uptime_sec % 86400) // 3600)
+                mins = int((uptime_sec % 3600) // 60)
+                stats["uptime"] = f"{days}d {hours}h {mins}m"
         except Exception:
             pass
 
     # Disk usage
     try:
-        import shutil
         total, used, free = shutil.disk_usage("/")
-        stats["disk"] = f"{used // (2**30)}GB / {total // (2**30)}GB ({int(used/max(total,1)*100)}%)"
+        total_gb = total // (2**30)
+        used_gb = used // (2**30)
+        pct = int((used / max(total, 1)) * 100)
+        stats["disk"] = f"{used_gb}GB / {total_gb}GB ({pct}%)"
     except Exception:
         pass
 

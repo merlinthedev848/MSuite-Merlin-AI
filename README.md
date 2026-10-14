@@ -99,6 +99,17 @@ To run the assistant automatically on boot:
    ```
 The web dashboard will always be alive at `http://<YOUR_PI_IP>:5000`.
 
+### Autonomous Background Worker (`systemd timer`)
+
+To have the assistant periodically audit system health, prune stale history, and automatically resolve pending knowledge gaps whenever an internet connection is detected:
+
+```bash
+sudo cp offline-cron.service offline-cron.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now offline-cron.timer
+```
+*(Runs `cron_worker.py` every 15 minutes with atomic lock concurrency protection).*
+
 ---
 
 ## How the Self-Learning Loop Works

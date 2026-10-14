@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Aether Background Maintenance every 15 minutes
+Requires=offline-cron.service
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
