@@ -47,7 +47,17 @@ An air-gapped, ultra-lightweight AI Personal Assistant (PA) and coding assistant
 
 ---
 
-## Quick Start on Raspberry Pi 5 / Linux Server
+## 🚀 1-Line Automated Install (Debian 12, Ubuntu, Raspberry Pi OS)
+
+Run this single command on your server to install dependencies, clone the repo, download the coding model, and start the systemd daemon automatically:
+
+```bash
+sudo apt update && sudo apt install -y git curl build-essential cmake python3 python3-pip python3-venv && git clone https://github.com/merlinthedev848/merlin-ai.git && cd merlin-ai && chmod +x install.sh download_model.sh start_llama_server.sh cron_worker.py && ./install.sh && ./venv/bin/pip install llama-cpp-python requests && mkdir -p models && curl -L -C - -o models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf && sudo sed -i "s|User=pi|User=$USER|g; s|/home/pi/offline-ai-assistant|$PWD|g" offline-assistant.service && sudo cp offline-assistant.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now offline-assistant.service && echo -e "\n\n[SUCCESS] Merlin-AI is running! Access it at: http://$(hostname -I | awk '{print $1}'):5000\n"
+```
+
+---
+
+## Manual Step-by-Step Installation
 
 ### 1. Transfer or Clone to Pi / Server
 Copy this folder to your Pi or Linux machine:
