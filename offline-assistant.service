@@ -1,0 +1,16 @@
+[Unit]
+Description=Aether Offline AI Personal Assistant & Coder
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/offline-ai-assistant
+ExecStart=/home/pi/offline-ai-assistant/venv/bin/python server.py
+Restart=always
+RestartSec=5
+Environment=HOST=0.0.0.0
+Environment=PORT=5000
+
+[Install]
+WantedBy=multi-user.target

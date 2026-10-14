@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aether — Offline AI Assistant & Coder</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-border: #334155;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --code-bg: #0b1120;
+      --success: #34d399;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
+
+    /* Layout */
+    #sidebar {
+      width: 320px;
+      background: var(--surface);
+      border-right: 1px solid var(--surface-border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    #main-chat {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* Header */
+    .header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--surface-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(8px);
+    }
+    .header h1 { font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .badge {
+      font-size: 0.7rem;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      padding: 3px 8px;
+      border-radius: 9999px;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    /* Mode selector */
+    .mode-toggle {
+      display: flex;
+      background: var(--bg);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--surface-border);
+    }
+    .mode-btn {
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .mode-btn.active {
+      background: var(--surface);
+      color: var(--accent);
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    /* Sidebar Tabs & Sections */
+    .sidebar-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--surface-border);
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      font-weight: 600;
+    }
+    .sidebar-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Diagnostic Card */
+    .stat-card {
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 0.85rem;
+    }
+    .stat-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .stat-label { color: var(--text-muted); }
+    .stat-val { font-weight: 600; color: var(--accent); }
+
+    /* To-Do Items */
+    .todo-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-size: 0.85rem;
+    }
+    .todo-item.done span { text-decoration: line-through; color: var(--text-muted); }
+    .btn-icon {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 2px 6px;
+    }
+    .btn-icon:hover { color: var(--danger); }
+
+    /* Form Inputs */
+    .input-group { display: flex; gap: 8px; margin-bottom: 12px; }
+    input[type="text"], textarea {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    input[type="text"]:focus, textarea:focus { border-color: var(--accent); }
+    .btn-action {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-action:hover { background: var(--accent-hover); }
+
+    /* Chat Messages */
+    #messages-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .message {
+      max-width: 85%;
+      padding: 12px 16px;
+      border-radius: 10px;
+      line-height: 1.5;
+      font-size: 0.95rem;
+      word-break: break-word;
+    }
+    .message.user {
+      align-self: flex-end;
+      background: #0284c7;
+      color: #fff;
+      border-bottom-right-radius: 2px;
+    }
+    .message.assistant {
+      align-self: flex-start;
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-bottom-left-radius: 2px;
+    }
+
+    /* Code blocks inside chat */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--surface-border);
+      padding: 12px;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 8px 0;
+      position: relative;
+    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.85rem; }
+    .copy-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff;
+      font-size: 0.7rem;
+      padding: 3px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    /* Chat Input Area */
+    #input-area {
+      padding: 16px 24px;
+      background: var(--surface);
+      border-top: 1px solid var(--surface-border);
+      display: flex;
+      gap: 12px;
+    }
+    #chat-input {
+      flex: 1;
+      resize: none;
+      height: 48px;
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    /* Modal for Teacher Sync */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 12px;
+      padding: 24px;
+      width: 480px;
+      max-width: 90vw;
+    }
+
+    @media (max-width: 768px) {
+      body { flex-direction: column; }
+      #sidebar { width: 100%; height: 260px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- SIDEBAR: Personal Assistant, Diagnostics & Memory -->
+  <div id="sidebar">
+    <div class="header">
+      <h1>Aether PA <span class="badge">OFFLINE</span></h1>
+    </div>
+
+    <div class="sidebar-tabs">
+      <button class="tab-btn active" onclick="switchTab('tab-pa')">Tasks & Notes</button>
+      <button class="tab-btn" onclick="switchTab('tab-memory')">Learned Skills</button>
+      <button class="tab-btn" onclick="switchTab('tab-system')">System</button>
+    </div>
+
+    <div class="sidebar-content">
+      <!-- Tab 1: Tasks & Notes -->
+      <div id="tab-pa" class="tab-panel active">
+        <h3 style="font-size:0.85rem; margin-bottom:8px; color:var(--text-muted);">TASKS</h3>
+        <div class="input-group">
+          <input type="text" id="todo-input" placeholder="New to-do item..." onkeydown="if(event.key==='Enter') addTodo()">
+          <button class="btn-action" onclick="addTodo()">Add</button>
+        </div>
+        <div id="todo-list">Loading tasks...</div>
+
+        <h3 style="font-size:0.85rem; margin:16px 0 8px 0; color:var(--text-muted);">NOTES</h3>
+        <div class="input-group">
+          <input type="text" id="note-title" placeholder="Title...">
+        </div>
+        <textarea id="note-content" placeholder="Take a quick note or snippet..." style="width:100%; height:60px; margin-bottom:8px;"></textarea>
+        <button class="btn-action" style="width:100%; margin-bottom:12px;" onclick="addNote()">Save Note</button>
+        <div id="notes-list"></div>
+      </div>
+
+      <!-- Tab 2: Memory & Self-Learning Hub -->
+      <div id="tab-memory" class="tab-panel">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h3 style="font-size:0.85rem; color:var(--text-muted);">DISTILLED SKILLS</h3>
+          <button class="btn-action" style="font-size:0.75rem; padding:4px 8px;" onclick="openSyncModal()">⚡ Sync Teacher</button>
+        </div>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:12px;">
+          Knowledge assimilated from commercial AI interviews. Automatically retrieved during offline coding.
+        </p>
+        <div id="knowledge-list">Loading learned skills...</div>
+
+        <h3 style="font-size:0.85rem; margin:16px 0 8px 0; color:var(--text-muted);">RECORD A KNOWLEDGE GAP</h3>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:6px;">
+          Flag a topic for the assistant to question the commercial AI about next time:
+        </p>
+        <div class="input-group">
+          <input type="text" id="gap-question" placeholder="E.g. How to handle WebSockets in C?">
+          <button class="btn-action" onclick="recordGap()">Record</button>
+        </div>
+      </div>
+
+      <!-- Tab 3: System Telemetry -->
+      <div id="tab-system" class="tab-panel">
+        <h3 style="font-size:0.85rem; margin-bottom:8px; color:var(--text-muted);">DEVICE HEALTH</h3>
+        <div class="stat-card">
+          <div class="stat-row"><span class="stat-label">OS:</span><span class="stat-val" id="stat-os">-</span></div>
+          <div class="stat-row"><span class="stat-label">CPU Temp:</span><span class="stat-val" id="stat-temp">-</span></div>
+          <div class="stat-row"><span class="stat-label">CPU Load:</span><span class="stat-val" id="stat-cpu">-</span></div>
+          <div class="stat-row"><span class="stat-label">Memory:</span><span class="stat-val" id="stat-mem">-</span></div>
+          <div class="stat-row"><span class="stat-label">Disk:</span><span class="stat-val" id="stat-disk">-</span></div>
+        </div>
+        <button class="btn-action" style="width:100%;" onclick="loadTelemetry()">Refresh Telemetry</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN CHAT AREA -->
+  <div id="main-chat">
+    <div class="header">
+      <div class="mode-toggle">
+        <button id="btn-mode-assistant" class="mode-btn active" onclick="setMode('assistant')">🤖 PA Mode</button>
+        <button id="btn-mode-coder" class="mode-btn" onclick="setMode('coder')">💻 Coder Mode</button>
+      </div>
+      <div style="font-size:0.8rem; color:var(--text-muted);">Air-Gapped LAN Assistant</div>
+    </div>
+
+    <div id="messages-container">
+      <div class="message assistant">
+        👋 Welcome! I am your private, offline AI Assistant and Software Engineer. 
+        I run entirely on your local hardware with persistent memory. How can I assist you today?
+      </div>
+    </div>
+
+    <div id="input-area">
+      <textarea id="chat-input" placeholder="Ask a question, request code, or tell me a task..." onkeydown="handleKeyDown(event)"></textarea>
+      <button class="btn-action" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <!-- TEACHER SYNC MODAL -->
+  <div id="sync-modal" class="modal">
+    <div class="modal-content">
+      <h3 style="margin-bottom:8px;">Sync with Commercial AI (Teacher)</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">
+        Connect momentarily to interview a cloud model (OpenAI, Gemini, OpenRouter) to resolve knowledge gaps and distill new skills into local memory.
+      </p>
+      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">API Key:</label>
+      <input type="password" id="sync-api-key" placeholder="sk-..." style="width:100%; margin-bottom:12px;">
+      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Optional Topic to Learn:</label>
+      <input type="text" id="sync-topic" placeholder="E.g. High-performance asynchronous Rust" style="width:100%; margin-bottom:16px;">
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn-action" style="background:#475569; color:#fff;" onclick="closeSyncModal()">Cancel</button>
+        <button class="btn-action" onclick="triggerSync()">Start Distillation</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentMode = "assistant";
+    const sessionId = "session_" + Math.random().toString(36).substring(2, 9);
+
+    function setMode(mode) {
+      currentMode = mode;
+      document.getElementById("btn-mode-assistant").classList.toggle("active", mode === "assistant");
+      document.getElementById("btn-mode-coder").classList.toggle("active", mode === "coder");
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+      event.target.classList.add("active");
+      document.getElementById(tabId).classList.add("active");
+      if (tabId === 'tab-system') loadTelemetry();
+      if (tabId === 'tab-memory') loadKnowledge();
+    }
+
+    function handleKeyDown(e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    }
+
+    function appendMessage(role, text) {
+      const container = document.getElementById("messages-container");
+      const msg = document.createElement("div");
+      msg.className = "message " + role;
+      msg.innerHTML = formatContent(text);
+      container.appendChild(msg);
+      container.scrollTop = container.scrollHeight;
+      return msg;
+    }
+
+    function formatContent(text) {
+      // Basic markdown code blocks and inline code formatting
+      let escaped = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+      escaped = escaped.replace(/```([\s\S]*?)```/g, function(match, code) {
+        return `<pre><button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextSibling.innerText)">Copy</button><code>${code.trim()}</code></pre>`;
+      });
+
+      escaped = escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
+      return escaped.replace(/\n/g, "<br>");
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById("chat-input");
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+
+      appendMessage("user", text);
+      const assistantMsg = appendMessage("assistant", "Thinking...");
+
+      let fullText = "";
+      try {
+        const url = `/api/chat/stream?prompt=${encodeURIComponent(text)}&mode=${currentMode}&session_id=${sessionId}`;
+        const eventSource = new EventSource(url);
+        
+        eventSource.onmessage = function(event) {
+          if (event.data === "[DONE]") {
+            eventSource.close();
+            return;
+          }
+          try {
+            const data = JSON.parse(event.data);
+            fullText += data.chunk;
+            assistantMsg.innerHTML = formatContent(fullText);
+            document.getElementById("messages-container").scrollTop = document.getElementById("messages-container").scrollHeight;
+          } catch(e) {}
+        };
+
+        eventSource.onerror = function() {
+          eventSource.close();
+        };
+      } catch (err) {
+        assistantMsg.innerText = "Error communicating with local server.";
+      }
+    }
+
+    // --- Personal Assistant API Calls ---
+    async function loadTodos() {
+      const res = await fetch("/api/todos");
+      const todos = await res.json();
+      const list = document.getElementById("todo-list");
+      list.innerHTML = todos.length ? "" : "<p style='color:var(--text-muted); font-size:0.8rem;'>No tasks yet.</p>";
+      todos.forEach(t => {
+        const div = document.createElement("div");
+        div.className = "todo-item" + (t.completed ? " done" : "");
+        div.innerHTML = `
+          <span style="cursor:pointer;" onclick="toggleTodo(${t.id})">${t.task}</span>
+          <button class="btn-icon" onclick="deleteTodo(${t.id})">✕</button>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    async function addTodo() {
+      const input = document.getElementById("todo-input");
+      const task = input.value.trim();
+      if (!task) return;
+      await fetch("/api/todos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task })
+      });
+      input.value = "";
+      loadTodos();
+    }
+
+    async function toggleTodo(id) {
+      await fetch("/api/todos/toggle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+      loadTodos();
+    }
+
+    async function deleteTodo(id) {
+      await fetch("/api/todos/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+      loadTodos();
+    }
+
+    async function loadNotes() {
+      const res = await fetch("/api/notes");
+      const notes = await res.json();
+      const list = document.getElementById("notes-list");
+      list.innerHTML = notes.length ? "" : "<p style='color:var(--text-muted); font-size:0.8rem;'>No notes recorded.</p>";
+      notes.forEach(n => {
+        const div = document.createElement("div");
+        div.style.cssText = "background:var(--bg); border:1px solid var(--surface-border); border-radius:6px; padding:8px; margin-bottom:8px; font-size:0.8rem;";
+        div.innerHTML = `
+          <div style="display:flex; justify-content:space-between; font-weight:600; margin-bottom:4px;">
+            <span>${n.title}</span>
+            <button class="btn-icon" onclick="deleteNote(${n.id})">✕</button>
+          </div>
+          <div style="color:var(--text-muted);">${n.content}</div>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    async function addNote() {
+      const title = document.getElementById("note-title").value.trim();
+      const content = document.getElementById("note-content").value.trim();
+      if (!content) return;
+      await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, content })
+      });
+      document.getElementById("note-title").value = "";
+      document.getElementById("note-content").value = "";
+      loadNotes();
+    }
+
+    async function deleteNote(id) {
+      await fetch("/api/notes/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+      loadNotes();
+    }
+
+    // --- Knowledge Hub ---
+    async function loadKnowledge() {
+      const res = await fetch("/api/knowledge");
+      const items = await res.json();
+      const list = document.getElementById("knowledge-list");
+      list.innerHTML = items.length ? "" : "<p style='color:var(--text-muted); font-size:0.8rem;'>No distilled skills stored yet.</p>";
+      items.forEach(k => {
+        const div = document.createElement("div");
+        div.style.cssText = "background:var(--bg); border:1px solid var(--surface-border); border-radius:6px; padding:10px; margin-bottom:8px; font-size:0.8rem;";
+        div.innerHTML = `
+          <div style="font-weight:600; color:var(--accent); margin-bottom:4px;">${k.topic}</div>
+          <div style="margin-bottom:6px;">${k.lesson}</div>
+          ${k.code_example ? `<pre style="font-size:0.75rem;"><code>${k.code_example}</code></pre>` : ''}
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    async function recordGap() {
+      const input = document.getElementById("gap-question");
+      const question = input.value.trim();
+      if (!question) return;
+      await fetch("/api/gaps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question })
+      });
+      input.value = "";
+      alert("Gap recorded! It will be queried when you sync with the commercial AI.");
+    }
+
+    function openSyncModal() { document.getElementById("sync-modal").style.display = "flex"; }
+    function closeSyncModal() { document.getElementById("sync-modal").style.display = "none"; }
+
+    async function triggerSync() {
+      const apiKey = document.getElementById("sync-api-key").value.trim();
+      const topic = document.getElementById("sync-topic").value.trim();
+      if (!apiKey) return alert("Please enter an API Key.");
+      
+      closeSyncModal();
+      alert("Distillation initiated! The assistant is interviewing the teacher in the background. Check 'Learned Skills' in a minute.");
+
+      await fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: apiKey, topic })
+      });
+      setTimeout(loadKnowledge, 4000);
+    }
+
+    // --- System Telemetry ---
+    async function loadTelemetry() {
+      try {
+        const res = await fetch("/api/system");
+        const data = await res.json();
+        document.getElementById("stat-os").innerText = data.os;
+        document.getElementById("stat-temp").innerText = data.temperature;
+        document.getElementById("stat-cpu").innerText = data.cpu_usage;
+        document.getElementById("stat-mem").innerText = data.memory;
+        document.getElementById("stat-disk").innerText = data.disk;
+      } catch (e) {}
+    }
+
+    // Init
+    loadTodos();
+    loadNotes();
+    loadTelemetry();
+  </script>
+</body>
+</html>

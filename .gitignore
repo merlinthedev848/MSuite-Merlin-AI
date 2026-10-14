@@ -1,0 +1,25 @@
+# Models & Large weights
+models/
+*.gguf
+*.bin
+
+# Local Database & runtime state
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Python cache & environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Compiled C++ build artifacts
+llama.cpp/
+build/
+
+# Local credentials
+.env
