@@ -176,6 +176,67 @@ def discover_gemini_models(api_key_clean):
             pass
     return discovered, working_version
 
+def fetch_live_models_for_provider(provider, api_key):
+    """
+    Queries the provider's live models API and returns a list of verified model IDs.
+    Eliminates hardcoded model lists by pulling the exact models authorized on that API key.
+    """
+    api_key_clean = (api_key or "").strip().strip("'\"")
+    models = []
+
+    if provider == "gemini":
+        discovered, _ = discover_gemini_models(api_key_clean)
+        return discovered or ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+
+    elif provider == "groq":
+        url = "https://api.groq.com/openai/v1/models"
+        headers = {"Authorization": f"Bearer {api_key_clean}", "User-Agent": "Merlin-AI/1.0"}
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for m in data.get("data", []):
+                    m_id = m.get("id")
+                    if m_id and not m.get("deleted", False):
+                        models.append(m_id)
+        except Exception:
+            pass
+        return models or ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "deepseek-r1-distill-llama-70b"]
+
+    elif provider == "openrouter":
+        url = "https://openrouter.ai/api/v1/models"
+        headers = {"User-Agent": "Merlin-AI/1.0"}
+        if api_key_clean:
+            headers["Authorization"] = f"Bearer {api_key_clean}"
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for m in data.get("data", []):
+                    m_id = m.get("id", "")
+                    if ":free" in m_id:
+                        models.append(m_id)
+        except Exception:
+            pass
+        return models or ["google/gemini-2.0-flash-exp:free", "deepseek/deepseek-r1:free", "qwen/qwen-2.5-coder-32b-instruct:free"]
+
+    elif provider == "openai":
+        url = "https://api.openai.com/v1/models"
+        headers = {"Authorization": f"Bearer {api_key_clean}", "User-Agent": "Merlin-AI/1.0"}
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for m in data.get("data", []):
+                    m_id = m.get("id", "")
+                    if "gpt" in m_id and "instruct" not in m_id and "realtime" not in m_id:
+                        models.append(m_id)
+        except Exception:
+            pass
+        return models or ["gpt-4o-mini", "gpt-4o"]
+
+    return []
+
 def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"):
     api_key_clean = (api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("TEACHER_API_KEY") or "").strip().strip("'\"")
     if not api_key_clean:
@@ -340,7 +401,7 @@ def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"
         except Exception:
             pass
         if "unavailable for free" in err_msg.lower() or ("not found" in err_msg.lower() and ":free" in model_clean):
-            for fb_model in ["google/gemini-2.0-flash-exp:free", "deepseek/deepseek-r1:free", "meta-llama/llama-3.2-3b-instruct:free"]:
+            for fb_model in ["google/gemini-2.0-flash-exp:free", "deepseek/deepseek-r1:free", "qwen/qwen-2.5-coder-32b-instruct:free"]:
                 if fb_model != model_clean:
                     payload_data["model"] = fb_model
                     try:

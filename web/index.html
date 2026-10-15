@@ -605,12 +605,16 @@
       </select>
 
       <div id="model-select-wrapper" style="margin-bottom:10px;">
-        <label style="font-size:0.78rem; display:block; margin-bottom:4px; color:var(--text-muted);">Teacher Model:</label>
-        <select id="sync-model-select" style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
-          <option value="gemini-1.5-flash" selected>gemini-1.5-flash (Recommended: Free, Universal & Fast)</option>
-          <option value="gemini-2.0-flash">gemini-2.0-flash (Latest / Experimental)</option>
-          <option value="gemini-1.5-pro">gemini-1.5-pro (Free, Deep Reasoning & Complex Code)</option>
-        </select>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <label style="font-size:0.78rem; color:var(--text-muted);">Teacher Model (Type any model or pick suggestion):</label>
+          <button type="button" class="btn-action" style="padding:2px 8px; font-size:0.7rem; background:rgba(56,189,248,0.15); border:1px solid var(--accent); color:var(--accent);" onclick="detectModelsForProvider()">🔍 Detect My Models</button>
+        </div>
+        <input type="text" id="sync-model-input" list="sync-model-datalist" value="gemini-1.5-flash" placeholder="Select or type custom model..." style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
+        <datalist id="sync-model-datalist">
+          <option value="gemini-1.5-flash">
+          <option value="gemini-2.0-flash">
+          <option value="gemini-1.5-pro">
+        </datalist>
       </div>
 
       <div id="custom-provider-fields" style="display:none; margin-bottom:8px;">
@@ -621,7 +625,7 @@
       </div>
 
       <label style="font-size:0.8rem; display:block; margin-bottom:4px;">API Key:</label>
-      <input type="password" id="sync-api-key" placeholder="AIza... (or leave empty if GEMINI_API_KEY environment variable is set)" style="width:100%; margin-bottom:12px;">
+      <input type="password" id="sync-api-key" placeholder="AIza... (or leave empty if GEMINI_API_KEY environment variable is set)" onchange="if(this.value.trim().length > 10) detectModelsForProvider()" style="width:100%; margin-bottom:12px;">
 
       <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Optional Topic to Learn & Assimilate:</label>
       <input type="text" id="sync-topic" placeholder="E.g. Building an async WebSocket protocol in Python" style="width:100%; margin-bottom:16px;">
@@ -1344,47 +1348,63 @@
     function openSyncModal() { document.getElementById("sync-modal").style.display = "flex"; }
     function closeSyncModal() { document.getElementById("sync-modal").style.display = "none"; }
 
-    const TEACHER_MODELS = {
-      gemini: [
-        { id: "gemini-1.5-flash", name: "gemini-1.5-flash (Recommended: Free, Universal & Fast)" },
-        { id: "gemini-2.0-flash", name: "gemini-2.0-flash (Latest / Experimental)" },
-        { id: "gemini-1.5-pro", name: "gemini-1.5-pro (Free, Deep Reasoning & Architecture)" }
-      ],
-      groq: [
-        { id: "llama-3.3-70b-versatile", name: "llama-3.3-70b-versatile (Free & Fast)" },
-        { id: "mixtral-8x7b-32768", name: "mixtral-8x7b-32768 (Free 32k Context)" },
-        { id: "deepseek-r1-distill-llama-70b", name: "deepseek-r1-distill-llama-70b (Free Reasoning)" }
-      ],
-      openrouter: [
-        { id: "google/gemini-2.0-flash-exp:free", name: "google/gemini-2.0-flash-exp:free (Recommended: Free & Fast)" },
-        { id: "deepseek/deepseek-r1:free", name: "deepseek/deepseek-r1:free (Free Deep Reasoning)" },
-        { id: "qwen/qwen-2.5-coder-32b-instruct:free", name: "qwen/qwen-2.5-coder-32b-instruct:free (Free Coding Specialist)" },
-        { id: "meta-llama/llama-3.3-70b-instruct", name: "meta-llama/llama-3.3-70b-instruct (Standard Paid)" }
-      ],
-      openai: [
-        { id: "gpt-4o-mini", name: "gpt-4o-mini (Cost-Efficient)" },
-        { id: "gpt-4o", name: "gpt-4o (Flagship)" }
-      ]
+    const TEACHER_DEFAULT_MODELS = {
+      gemini: ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-flash"],
+      groq: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "deepseek-r1-distill-llama-70b"],
+      openrouter: ["google/gemini-2.0-flash-exp:free", "deepseek/deepseek-r1:free", "qwen/qwen-2.5-coder-32b-instruct:free"],
+      openai: ["gpt-4o-mini", "gpt-4o"]
     };
+
+    async function detectModelsForProvider() {
+      const provider = document.getElementById("sync-provider").value;
+      const apiKey = document.getElementById("sync-api-key").value.trim();
+      const datalist = document.getElementById("sync-model-datalist");
+      const modelInput = document.getElementById("sync-model-input");
+
+      const prevVal = modelInput.value;
+      modelInput.placeholder = "Querying live provider API for models...";
+
+      try {
+        const res = await fetch(`/api/teacher/models?provider=${encodeURIComponent(provider)}&api_key=${encodeURIComponent(apiKey)}`);
+        const data = await res.json();
+        if (data.models && data.models.length > 0) {
+          datalist.innerHTML = "";
+          data.models.forEach(m => {
+            const opt = document.createElement("option");
+            opt.value = m;
+            datalist.appendChild(opt);
+          });
+          if (!prevVal || !data.models.includes(prevVal)) {
+            modelInput.value = data.models[0];
+          }
+          modelInput.placeholder = "Select or type any custom model...";
+        } else {
+          modelInput.placeholder = "No models found from key. Type custom model name.";
+        }
+      } catch(e) {
+        modelInput.placeholder = "Error contacting provider. Type model name manually.";
+      }
+    }
 
     function onSyncProviderChange() {
       const provider = document.getElementById("sync-provider").value;
       const customBox = document.getElementById("custom-provider-fields");
       const modelWrapper = document.getElementById("model-select-wrapper");
-      const modelSelect = document.getElementById("sync-model-select");
+      const modelInput = document.getElementById("sync-model-input");
+      const datalist = document.getElementById("sync-model-datalist");
       const keyInput = document.getElementById("sync-api-key");
 
       customBox.style.display = (provider === "custom") ? "block" : "none";
       modelWrapper.style.display = (provider === "custom" || provider === "auto") ? "none" : "block";
 
-      if (TEACHER_MODELS[provider]) {
-        modelSelect.innerHTML = "";
-        TEACHER_MODELS[provider].forEach(m => {
+      if (TEACHER_DEFAULT_MODELS[provider]) {
+        datalist.innerHTML = "";
+        TEACHER_DEFAULT_MODELS[provider].forEach(m => {
           const opt = document.createElement("option");
-          opt.value = m.id;
-          opt.innerText = m.name;
-          modelSelect.appendChild(opt);
+          opt.value = m;
+          datalist.appendChild(opt);
         });
+        modelInput.value = TEACHER_DEFAULT_MODELS[provider][0];
       }
 
       if (provider === "gemini") {
@@ -1398,13 +1418,18 @@
       } else {
         keyInput.placeholder = "Enter your API key (AIza..., gsk_..., sk-or-..., sk-...)";
       }
+
+      if (keyInput.value.trim().length > 10) {
+        detectModelsForProvider();
+      }
     }
 
     async function triggerSync() {
       const apiKey = document.getElementById("sync-api-key").value.trim();
       let topic = document.getElementById("sync-topic").value.trim();
       const provider = document.getElementById("sync-provider").value;
-      const modelSelect = document.getElementById("sync-model-select");
+      const modelInput = document.getElementById("sync-model-input");
+      const chosenModel = modelInput ? modelInput.value.trim() : "";
 
       if (!apiKey && provider === "gemini") {
         alert("Please enter your Gemini API key (starts with AIzaSy...).\n\nYou can get a free key in 10 seconds at: https://aistudio.google.com/apikey");
@@ -1424,17 +1449,17 @@
       let model = null;
 
       if (provider === "gemini") {
-        model = (modelSelect && modelSelect.value) ? modelSelect.value : "gemini-2.0-flash";
+        model = chosenModel || "gemini-1.5-flash";
         endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       } else if (provider === "groq") {
         endpoint = "https://api.groq.com/openai/v1/chat/completions";
-        model = (modelSelect && modelSelect.value) ? modelSelect.value : "llama-3.3-70b-versatile";
+        model = chosenModel || "llama-3.3-70b-versatile";
       } else if (provider === "openrouter") {
         endpoint = "https://openrouter.ai/api/v1/chat/completions";
-        model = (modelSelect && modelSelect.value) ? modelSelect.value : "google/gemini-2.0-flash-exp:free";
+        model = chosenModel || "google/gemini-2.0-flash-exp:free";
       } else if (provider === "openai") {
         endpoint = "https://api.openai.com/v1/chat/completions";
-        model = (modelSelect && modelSelect.value) ? modelSelect.value : "gpt-4o-mini";
+        model = chosenModel || "gpt-4o-mini";
       } else if (provider === "custom") {
         endpoint = document.getElementById("sync-custom-endpoint").value.trim() || null;
         model = document.getElementById("sync-custom-model").value.trim() || null;

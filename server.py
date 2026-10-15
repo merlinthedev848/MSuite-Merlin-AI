@@ -17,7 +17,7 @@ from memory import (
     get_system_telemetry, get_recent_audit_logs, log_event
 )
 from engine import InferenceEngine
-from sync_teacher import run_sync, sync_state, query_gemini_multimodal
+from sync_teacher import run_sync, sync_state, query_gemini_multimodal, fetch_live_models_for_provider
 from import_dataset import import_hf_dataset, import_state, POPULAR_DATASETS
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
@@ -145,6 +145,15 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
         # 8. Teacher Sync Status
         elif path == "/api/sync":
             self.send_json(sync_state)
+            return
+
+        # 8b. Dynamic Teacher Models Discovery
+        elif path == "/api/teacher/models":
+            query = urllib.parse.parse_qs(parsed.query)
+            provider = query.get("provider", ["gemini"])[0]
+            api_key = query.get("api_key", [""])[0]
+            models = fetch_live_models_for_provider(provider, api_key)
+            self.send_json({"provider": provider, "models": models})
             return
 
         # 9. Audit Logs
