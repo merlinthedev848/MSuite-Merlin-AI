@@ -23,7 +23,8 @@ sync_state = {
     "progress": 0,
     "total": 0,
     "current_task": "",
-    "last_result": "idle"
+    "last_result": "idle",
+    "last_error": None
 }
 
 DEFAULT_SYSTEM_PROMPT = """You are a senior systems architect and AI compiler specialist mentoring Merlin AI, an offline assistant.
@@ -137,27 +138,22 @@ def resolve_teacher_provider(api_key, endpoint=None, model=None):
         return ep or os.getenv("TEACHER_ENDPOINT", "https://api.openai.com/v1/chat/completions"), mdl or os.getenv("TEACHER_MODEL", "gpt-4o-mini")
 
 def query_commercial_ai(prompt, api_key, endpoint="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", model="gemini-2.0-flash"):
-    api_key_clean = (api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("TEACHER_API_KEY") or "").strip()
+    api_key_clean = (api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("TEACHER_API_KEY") or "").strip().strip("'\"")
     if not api_key_clean:
-        raise ValueError("Gemini / Teacher API key is required.")
+        raise ValueError("Gemini / Teacher API key is required. Enter your key in the Sync dialog or set GEMINI_API_KEY.")
 
-    is_gemini_native = ":generateContent" in endpoint or "/models/" in endpoint
-    headers = {
-        "Content-Type": "application/json",
-        "User-Agent": "Merlin-AI-Self-Learner/1.0",
-        "Authorization": f"Bearer {api_key_clean}"
-    }
+    model_clean = (model or "gemini-2.0-flash").strip()
+    is_gemini = (
+        api_key_clean.startswith("AIza")
+        or "gemini" in model_clean.lower()
+        or (endpoint and "googleapis.com" in endpoint)
+    )
 
-    if "openrouter.ai" in endpoint:
-        headers["HTTP-Referer"] = "http://localhost:5000"
-        headers["X-Title"] = "Merlin AI Offline Assistant"
-
-    target_url = endpoint
-    if is_gemini_native:
-        if "?key=" not in target_url and "&key=" not in target_url:
-            separator = "&" if "?" in target_url else "?"
-            target_url = f"{target_url}{separator}key={api_key_clean}"
-        payload_data = {
+    # Strategy 1: For Gemini, prioritize official Google native API endpoint
+    if is_gemini:
+        clean_model = model_clean.replace("models/", "")
+        native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key_clean}"
+        native_payload = {
             "system_instruction": {
                 "parts": [{"text": DEFAULT_SYSTEM_PROMPT}]
             },
@@ -169,31 +165,64 @@ def query_commercial_ai(prompt, api_key, endpoint="https://generativelanguage.go
                 "temperature": 0.2
             }
         }
-    else:
-        payload_data = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.2
-        }
+        try:
+            req = urllib.request.Request(
+                native_url,
+                data=json.dumps(native_payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "Merlin-AI-Teacher/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                res_json = json.loads(resp.read().decode("utf-8"))
+                candidate = res_json.get("candidates", [{}])[0]
+                content_obj = candidate.get("content", {})
+                parts = content_obj.get("parts", [])
+                raw_content = parts[0].get("text", "") if parts else ""
+                result = extract_json_from_response(raw_content)
+                if "code_example" in result:
+                    result["code_example"] = clean_code_snippet(result["code_example"])
+                return result
+        except urllib.error.HTTPError as he:
+            err_msg = ""
+            try:
+                err_data = json.loads(he.read().decode("utf-8", errors="replace"))
+                if "error" in err_data:
+                    err_msg = err_data["error"].get("message") or str(err_data["error"])
+            except Exception:
+                pass
+            # If native rejected the request, don't silently fail; try OpenAI endpoint fallback
+            last_gemini_error = err_msg or f"HTTP {he.code}: {he.reason}"
+        except Exception as e:
+            last_gemini_error = str(e)
 
-    payload = json.dumps(payload_data).encode("utf-8")
-    req = urllib.request.Request(target_url, data=payload, headers=headers)
+    # Strategy 2: Standard OpenAI-compatible completion endpoint (Groq, OpenRouter, OpenAI, and Gemini OpenAI proxy)
+    target_url = endpoint or ("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" if is_gemini else "https://api.openai.com/v1/chat/completions")
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Merlin-AI-Teacher/1.0",
+        "Authorization": f"Bearer {api_key_clean}"
+    }
+
+    if "openrouter.ai" in target_url:
+        headers["HTTP-Referer"] = "http://localhost:5000"
+        headers["X-Title"] = "Merlin AI Offline Assistant"
+
+    payload_data = {
+        "model": model_clean,
+        "messages": [
+            {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2
+    }
+
+    req = urllib.request.Request(target_url, data=json.dumps(payload_data).encode("utf-8"), headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=90) as resp:
             res_json = json.loads(resp.read().decode("utf-8"))
             if "choices" in res_json and res_json["choices"]:
                 raw_content = res_json["choices"][0]["message"]["content"]
-            elif "candidates" in res_json and res_json["candidates"]:
-                candidate = res_json["candidates"][0]
-                content_obj = candidate.get("content", {})
-                parts = content_obj.get("parts", [])
-                raw_content = parts[0].get("text", "") if parts else ""
             else:
                 raw_content = str(res_json)
-
             result = extract_json_from_response(raw_content)
             if "code_example" in result:
                 result["code_example"] = clean_code_snippet(result["code_example"])
@@ -208,9 +237,11 @@ def query_commercial_ai(prompt, api_key, endpoint="https://generativelanguage.go
             pass
         if not err_msg:
             err_msg = f"HTTP {he.code}: {he.reason}"
-        raise RuntimeError(f"Teacher API Error ({model}): {err_msg}")
+        raise RuntimeError(f"Teacher API Error ({model_clean}): {err_msg}")
     except Exception as e:
-        raise RuntimeError(f"Teacher Connection Error ({model}): {e}")
+        if is_gemini and 'last_gemini_error' in locals() and last_gemini_error:
+            raise RuntimeError(f"Gemini API Error ({model_clean}): {last_gemini_error}")
+        raise RuntimeError(f"Teacher Connection Error ({model_clean}): {e}")
 
 def run_sync(api_key, endpoint=None, model=None, topic_to_explore=None):
     """
@@ -227,7 +258,10 @@ def run_sync(api_key, endpoint=None, model=None, topic_to_explore=None):
     try:
         sync_state["is_syncing"] = True
         sync_state["last_result"] = "running"
+        sync_state["last_error"] = None
         log_event("sync_started", f"Starting teacher sync with model: {model} at {endpoint}", "info")
+
+        had_error = False
 
         # 1. Custom Topic Discovery
         if topic_to_explore and topic_to_explore.strip():
@@ -243,8 +277,12 @@ def run_sync(api_key, endpoint=None, model=None, topic_to_explore=None):
                         f.write(json.dumps({"prompt": topic_to_explore, "response": code}) + "\n")
                     log_event("sync_topic_success", f"Learned topic: {result['topic']}", "success")
                 else:
+                    had_error = True
+                    sync_state["last_error"] = f"Validation failed: {msg}"
                     log_event("sync_code_invalid", f"Rejected topic '{topic_to_explore}': {msg}", "danger")
             except Exception as e:
+                had_error = True
+                sync_state["last_error"] = str(e)
                 log_event("sync_topic_failed", f"Failed exploring '{topic_to_explore}': {e}", "danger")
 
         # 2. Process Unresolved Gaps
@@ -281,12 +319,18 @@ def run_sync(api_key, endpoint=None, model=None, topic_to_explore=None):
                     log_event("gap_failed_validation", f"Gap #{gap['id']} code validation failed: {msg}", "warning")
 
             except Exception as e:
+                had_error = True
+                sync_state["last_error"] = str(e)
                 set_gap_status(gap["id"], "failed", error_msg=str(e))
                 log_event("gap_error", f"Error querying teacher for gap #{gap['id']}: {e}", "danger")
 
-        sync_state["last_result"] = "completed"
-        log_event("sync_finished", "Teacher synchronization completed successfully", "success")
-        return {"status": "success", "message": "Teacher synchronization completed."}
+        if had_error:
+            sync_state["last_result"] = "error"
+            return {"status": "error", "message": sync_state.get("last_error", "Sync encountered an error.")}
+        else:
+            sync_state["last_result"] = "completed"
+            log_event("sync_finished", "Teacher synchronization completed successfully", "success")
+            return {"status": "success", "message": "Teacher synchronization completed."}
 
     finally:
         sync_state["is_syncing"] = False

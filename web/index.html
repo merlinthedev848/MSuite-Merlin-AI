@@ -931,16 +931,25 @@
 
     async function triggerSync() {
       const apiKey = document.getElementById("sync-api-key").value.trim();
-      const topic = document.getElementById("sync-topic").value.trim();
+      let topic = document.getElementById("sync-topic").value.trim();
       const provider = document.getElementById("sync-provider").value;
       const modelSelect = document.getElementById("sync-model-select");
+
+      if (!apiKey && provider === "gemini") {
+        alert("Please enter your Gemini API key (starts with AIzaSy...).\n\nYou can get a free key in 10 seconds at: https://aistudio.google.com/apikey");
+        return;
+      }
+
+      if (!topic) {
+        topic = "Building resilient offline architecture, socket networking, and data processing in Python";
+      }
 
       let endpoint = null;
       let model = null;
 
       if (provider === "gemini") {
-        endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
         model = (modelSelect && modelSelect.value) ? modelSelect.value : "gemini-2.0-flash";
+        endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       } else if (provider === "groq") {
         endpoint = "https://api.groq.com/openai/v1/chat/completions";
         model = (modelSelect && modelSelect.value) ? modelSelect.value : "llama-3.3-70b-versatile";
@@ -956,17 +965,28 @@
       }
 
       closeSyncModal();
-      const res = await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: apiKey, topic, endpoint, model })
-      });
-      const data = await res.json();
-      if (data.error) {
-        alert("Sync error: " + data.error);
-        return;
+      const banner = document.getElementById("sync-banner");
+      const text = document.getElementById("sync-status-text");
+      banner.style.display = "block";
+      text.innerText = `Connecting to ${model || 'Teacher AI'}...`;
+
+      try {
+        const res = await fetch("/api/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key: apiKey, topic, endpoint, model })
+        });
+        const data = await res.json();
+        if (data.error) {
+          banner.style.display = "none";
+          alert("Sync error: " + data.error);
+          return;
+        }
+        startSyncPolling();
+      } catch (err) {
+        banner.style.display = "none";
+        alert("Failed to reach server: " + err);
       }
-      startSyncPolling();
     }
 
     function startSyncPolling() {
@@ -984,6 +1004,11 @@
           } else {
             clearInterval(syncPollInterval);
             banner.style.display = "none";
+            if (state.last_result === "error") {
+              alert("Teacher Sync Error:\n" + (state.last_error || "Could not connect to Gemini. Please check your API key."));
+            } else if (state.last_result === "completed") {
+              alert("✅ Distillation Complete! Gemini's lesson and verified code have been permanently added to Merlin's offline SQLite memory.");
+            }
             loadKnowledge();
             loadGaps();
           }
