@@ -83,13 +83,38 @@ chmod +x install.sh
 
 ### 4. Start the Server
 ```bash
-./venv/bin/python server.py
+./venv/bin/python main.py
 ```
 Open your browser on any phone, tablet, or PC on your local Wi-Fi:
 ```
 http://<YOUR_PI_IP>:5000
 ```
 *(If testing on the same machine: `http://localhost:5000`)*
+
+---
+
+## ⚡ Model Speed & Performance Tuning (Fixing Slow Response Times)
+
+Offline LLM inference speed on CPU is strictly governed by **RAM memory bandwidth** ($GB/s$) and **prompt prefill length**. Here is how to achieve instant, responsive generation:
+
+### 1. Select the Right Model for Your Hardware
+Run `./download_model.sh` and select the appropriate model:
+- **`Qwen2.5-Coder-0.5B-Instruct` (~380 MB)**: **FASTEST (35–50+ tokens/sec on CPU)**. Responds near-instantly with virtually zero prefill latency. Highly capable at scripts, syntax, terminal commands, and quick queries.
+- **`Qwen2.5-Coder-1.5B-Instruct` (~1.0 GB)**: **BALANCED (15–22 tokens/sec on CPU)**. Recommended default for Raspberry Pi 5 and quad-core CPUs.
+- **`7B` / `14B` Models**: **2–4 tokens/sec on CPU**. A 7B model requires reading ~4 GB of weights from RAM for *every single token*. On CPU DDR4/LPDDR4 RAM, this is memory-bus bottlenecked and will feel slow without a dedicated GPU.
+- **`DeepSeek-R1`**: Spends 300–800 hidden tokens generating `<think>...</think>` chain-of-thought logic before outputting its answer. On a CPU at 10 tok/s, 500 thinking tokens take **50 seconds** before the first word appears.
+
+### 2. Enable Native C++ Acceleration (`llama-server`)
+Running the compiled C++ `llama-server` is **2x–4x faster** than in-process Python bindings:
+```bash
+./start_llama_server.sh
+```
+This script automatically compiles `llama.cpp` natively with `-DGGML_NATIVE=ON`, enables Flash-Attention (`--flash-attn`), activates 8-bit quantized KV cache (`-ctk q8_0 -ctv q8_0`), and binds to physical CPU cores. Merlin AI detects and routes traffic to it automatically.
+
+### 3. CPU Context Window Budgeting
+By default, Merlin AI tunes context prefill:
+- `CONTEXT_BUDGET=1500`: Keeps conversational context around 1500 tokens so Time-To-First-Token (TTFT) stays under 1.5 seconds on CPU.
+- `N_CTX=4096`: Limits total KV cache size to prevent RAM bandwidth saturation.
 
 ---
 

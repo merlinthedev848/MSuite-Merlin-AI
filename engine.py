@@ -4,6 +4,8 @@ import re
 import urllib.request
 import urllib.error
 import threading
+import time
+import shutil
 from memory import search_knowledge, get_recent_chat, save_chat_message, log_event, get_context_window
 
 try:
@@ -26,7 +28,32 @@ def get_optimal_threads():
     # use all cores so llama.cpp runs at full hardware capacity.
     if cpu_cores <= 4:
         return max(1, cpu_cores)
-    return min(8, max(2, cpu_cores - 1))
+    # For hyperthreaded or multi-core CPUs (>4), running on physical cores prevents L1/L2/L3 cache line thrashing.
+    physical_cores = max(2, cpu_cores // 2)
+    return min(6, physical_cores)
+
+def load_llama_cpp_instance(model_path, threads, n_ctx, n_gpu):
+    """Instantiates Llama with Flash-Attention and 8-bit quantized KV cache for low RAM bandwidth."""
+    from llama_cpp import Llama
+    kwargs = {
+        "model_path": model_path,
+        "n_ctx": n_ctx,
+        "n_threads": threads,
+        "n_threads_batch": threads,
+        "n_batch": 512,
+        "n_gpu_layers": n_gpu,
+        "verbose": False
+    }
+    try:
+        kwargs["flash_attn"] = True
+        kwargs["type_k"] = 2  # LLAMA_FTYPE_MOSTLY_Q8_0
+        kwargs["type_v"] = 2  # LLAMA_FTYPE_MOSTLY_Q8_0
+        return Llama(**kwargs)
+    except Exception:
+        kwargs.pop("flash_attn", None)
+        kwargs.pop("type_k", None)
+        kwargs.pop("type_v", None)
+        return Llama(**kwargs)
 
 def fit_prompt_to_context(prompt, max_chars=16000):
     """
@@ -67,9 +94,70 @@ class InferenceEngine:
         self._active_abort_events = {} # session_id -> threading.Event()
         self.refresh_backend()
 
+    def _try_autostart_llama_server(self):
+        """Attempts to auto-launch C++ llama-server if binary exists."""
+        if not os.path.exists(MODELS_DIR):
+            return False
+        models = [f for f in os.listdir(MODELS_DIR) if f.endswith(".gguf")]
+        if not models:
+            return False
+        model_path = os.path.join(MODELS_DIR, models[0])
+
+        server_bin = None
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates = [
+            os.path.join(base_dir, "llama.cpp", "build", "bin", "llama-server"),
+            os.path.join(base_dir, "llama.cpp", "build", "bin", "llama-server.exe"),
+            shutil.which("llama-server"),
+            shutil.which("llama-server.exe")
+        ]
+        for c in candidates:
+            if c and os.path.exists(c) and os.path.isfile(c):
+                server_bin = c
+                break
+
+        if not server_bin:
+            return False
+
+        threads = get_optimal_threads()
+        n_ctx = int(os.getenv("N_CTX", "4096"))
+        n_gpu = int(os.getenv("N_GPU_LAYERS", "0"))
+        cmd = [
+            server_bin,
+            "-m", model_path,
+            "--host", "127.0.0.1",
+            "--port", "8080",
+            "-c", str(n_ctx),
+            "-t", str(threads),
+            "-b", "512",
+            "-ub", "256",
+            "--flash-attn",
+            "-ctk", "q8_0",
+            "-ctv", "q8_0",
+            "--cont-batching"
+        ]
+        if n_gpu > 0:
+            cmd.extend(["-ngl", str(n_gpu)])
+
+        try:
+            import subprocess
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for _ in range(8):
+                time.sleep(0.5)
+                try:
+                    req = urllib.request.Request(f"{DEFAULT_LLAMA_SERVER_URL}/health", headers={"User-Agent": "Merlin-AI/1.0"})
+                    with urllib.request.urlopen(req, timeout=0.5) as res:
+                        if res.status == 200:
+                            return True
+                except Exception:
+                    pass
+        except Exception as e:
+            log_event("autostart_error", f"Could not auto-start llama-server: {e}", "warning")
+        return False
+
     def refresh_backend(self):
         """Checks for llama-server or local GGUF models."""
-        # 1. Probe C++ llama-server
+        # 1. Probe C++ llama-server (fastest, unbuffered native binary)
         try:
             req = urllib.request.Request(f"{DEFAULT_LLAMA_SERVER_URL}/health", headers={"User-Agent": "Merlin-AI/1.0"})
             with urllib.request.urlopen(req, timeout=1.0) as res:
@@ -81,28 +169,26 @@ class InferenceEngine:
         except Exception:
             pass
 
-        # 2. Check for local GGUF and llama_cpp
+        # 2. If llama-server binary exists on disk, attempt auto-launch
+        if self._try_autostart_llama_server():
+            self.backend = "llama-server"
+            self.active_model_name = "Qwen2.5-Coder via llama-server (autostarted)"
+            log_event("engine_init", "Autostarted native C++ llama-server on port 8080", "success")
+            return
+
+        # 3. Fallback: Local GGUF via llama-cpp-python
         if os.path.exists(MODELS_DIR):
             models = [f for f in os.listdir(MODELS_DIR) if f.endswith(".gguf")]
             if models:
                 self.active_model_name = models[0]
                 try:
-                    from llama_cpp import Llama
                     model_path = os.path.join(MODELS_DIR, models[0])
                     threads = get_optimal_threads()
-                    n_ctx = int(os.getenv("N_CTX", "8192"))
+                    n_ctx = int(os.getenv("N_CTX", "4096"))
                     n_gpu = int(os.getenv("N_GPU_LAYERS", "0"))
-                    self.llama_cpp_model = Llama(
-                        model_path=model_path,
-                        n_ctx=n_ctx,
-                        n_threads=threads,
-                        n_threads_batch=threads,
-                        n_batch=512,
-                        n_gpu_layers=n_gpu,
-                        verbose=False
-                    )
+                    self.llama_cpp_model = load_llama_cpp_instance(model_path, threads, n_ctx, n_gpu)
                     self.backend = "llama-cpp-python"
-                    log_event("engine_init", f"Loaded local model {models[0]} with {threads} threads, ctx {n_ctx}", "success")
+                    log_event("engine_init", f"Loaded local model {models[0]} with {threads} threads, ctx {n_ctx} (Flash-Attn enabled)", "success")
                     return
                 except ImportError:
                     pass
@@ -136,20 +222,11 @@ class InferenceEngine:
                 return False, f"Model file '{model_filename}' not found."
             
             try:
-                from llama_cpp import Llama
                 threads = get_optimal_threads()
-                n_ctx = int(os.getenv("N_CTX", "8192"))
+                n_ctx = int(os.getenv("N_CTX", "4096"))
                 n_gpu = int(os.getenv("N_GPU_LAYERS", "0"))
                 self.llama_cpp_model = None
-                self.llama_cpp_model = Llama(
-                    model_path=model_path,
-                    n_ctx=n_ctx,
-                    n_threads=threads,
-                    n_threads_batch=threads,
-                    n_batch=512,
-                    n_gpu_layers=n_gpu,
-                    verbose=False
-                )
+                self.llama_cpp_model = load_llama_cpp_instance(model_path, threads, n_ctx, n_gpu)
                 self.active_model_name = model_filename
                 self.backend = "llama-cpp-python"
                 log_event("model_switch", f"Switched active model to {model_filename}", "success")
@@ -300,7 +377,9 @@ class InferenceEngine:
                     memory_prompt += f"  Reference Code:\n{k['code_example']}\n"
 
         # Assemble conversation context via intelligent sliding-window context manager
-        context_history = get_context_window(session_id, max_tokens=4200)
+        # Capping context budget on CPU keeps prefill latency snappy (< 1-2s) instead of stalling for minutes
+        context_budget = int(os.getenv("CONTEXT_BUDGET", "1500"))
+        context_history = get_context_window(session_id, max_tokens=context_budget)
         messages = [{"role": "system", "content": self.build_system_prompt(mode) + memory_prompt}]
         for h in context_history[:-1]:
             content = h["content"]
@@ -312,7 +391,7 @@ class InferenceEngine:
         messages.append({"role": "user", "content": safe_prompt})
 
         full_response = ""
-        max_tokens = 90 if is_greeting else int(os.getenv("MAX_TOKENS", "2048"))
+        max_tokens = 90 if is_greeting else int(os.getenv("MAX_TOKENS", "1024"))
         stop_tokens = ["<|im_end|>", "<|endoftext|>", "</s>"]
 
         # Acquire lock to ensure only one thread generates on the CPU at a time

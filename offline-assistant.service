@@ -6,13 +6,15 @@ After=network.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/offline-ai-assistant
-ExecStart=/home/pi/offline-ai-assistant/venv/bin/python server.py
+ExecStart=/home/pi/offline-ai-assistant/venv/bin/python main.py
 Restart=always
 RestartSec=5
 Environment=HOST=0.0.0.0
 Environment=PORT=5000
 Environment=PYTHONUNBUFFERED=1
-Environment=N_CTX=8192
+Environment=N_CTX=4096
+Environment=CONTEXT_BUDGET=1500
+Environment=MAX_TOKENS=1024
 
 [Install]
 WantedBy=multi-user.target

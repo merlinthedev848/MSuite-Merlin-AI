@@ -40,7 +40,7 @@ if [ -z "$THREADS" ]; then
         THREADS=$NPROC
     fi
 fi
-CTX_SIZE=${CTX_SIZE:-8192}
+CTX_SIZE=${CTX_SIZE:-4096}
 N_GPU_LAYERS=${N_GPU_LAYERS:-0}
 
 if [ "$N_GPU_LAYERS" == "0" ] && command -v nvidia-smi &> /dev/null; then
@@ -56,15 +56,15 @@ if [ -z "$SERVER_BIN" ]; then
         echo "    Cloning latest stable llama.cpp..."
         git clone https://github.com/ggerganov/llama.cpp.git "$DIR/llama.cpp"
     fi
-    echo "    Building llama.cpp from source (fast native compilation)..."
+    echo "    Building llama.cpp from source (native CPU acceleration)..."
     cd "$DIR/llama.cpp"
-    cmake -B build
+    cmake -B build -DGGML_NATIVE=ON
     cmake --build build --config Release -j"$NPROC"
     SERVER_BIN="$DIR/llama.cpp/build/bin/llama-server"
     cd "$DIR"
 fi
 
-echo "[*] Launching C++ llama-server on port 8080 ($THREADS threads, ctx $CTX_SIZE, GPU layers: $N_GPU_LAYERS)..."
+echo "[*] Launching C++ llama-server on port 8080 ($THREADS threads, ctx $CTX_SIZE, GPU layers: $N_GPU_LAYERS, Flash-Attn & Q8_0 KV Cache)..."
 exec "$SERVER_BIN" \
     -m "$MODEL" \
     --host 127.0.0.1 \
@@ -73,5 +73,8 @@ exec "$SERVER_BIN" \
     -t "$THREADS" \
     -b 512 \
     -ub 256 \
+    --flash-attn \
+    -ctk q8_0 \
+    -ctv q8_0 \
     -ngl "$N_GPU_LAYERS" \
     --cont-batching

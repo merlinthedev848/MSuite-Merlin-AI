@@ -86,6 +86,16 @@ function renderMarkdown(rawText) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
+  // DeepSeek-R1 <think>...</think> reasoning blocks
+  if (txt.includes("&lt;think&gt;")) {
+    txt = txt.replace(/&lt;think&gt;([\s\S]*?)&lt;\/think&gt;/g, (m, thought) => {
+      return `<details class="think-block" style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:10px;padding:8px 12px;margin:8px 0;font-size:0.85rem;color:var(--text-muted);"><summary style="cursor:pointer;font-weight:500;">💭 Reasoning Process</summary><div style="margin-top:6px;line-height:1.4;">${thought.trim().replace(/\n/g, "<br>")}</div></details>`;
+    });
+    txt = txt.replace(/&lt;think&gt;([\s\S]*)/g, (m, thought) => {
+      return `<div class="think-block-streaming" style="background:var(--bg-surface);border-left:3px solid var(--border-focus);padding:6px 10px;margin:8px 0;font-size:0.85rem;color:var(--text-muted);font-style:italic;">💭 Thinking: ${thought.trim().replace(/\n/g, "<br>")}</div>`;
+    });
+  }
+
   // Code blocks: ```lang\ncode\n```
   txt = txt.replace(/```([a-zA-Z0-9_\-\+]*)\n([\s\S]*?)```/g, (match, lang, code) => {
     const langLabel = lang.trim() || "code";
@@ -315,6 +325,7 @@ async function submitMessage() {
 
   // Prepare Assistant UI
   const assistantBubble = appendMessageElement("assistant", "");
+  assistantBubble.innerHTML = '<span class="status-thinking" style="color:var(--text-muted);font-size:0.88rem;display:inline-flex;align-items:center;gap:6px;">⚡ Generating response...</span>';
   assistantBubble.classList.add("streaming-cursor");
   toggleStreamingUI(true);
 
