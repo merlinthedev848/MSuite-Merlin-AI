@@ -1,1686 +1,1478 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Merlin AI — Offline Assistant & Coder</title>
+  <title>Merlin AI</title>
   <style>
-    :root {
-      --bg: #0b1120;
-      --surface: #1e293b;
-      --surface-border: #334155;
-      --accent: #38bdf8;
-      --accent-hover: #0284c7;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --code-bg: #030712;
-      --success: #34d399;
-      --danger: #f87171;
-      --warning: #fbbf24;
+    /* ==========================================================================
+       GEMINI-STYLE THEME ENGINE (DARK & LIGHT)
+       ========================================================================== */
+    :root[data-theme="dark"] {
+      --bg-app: #131314;
+      --bg-sidebar: #1e1f20;
+      --bg-surface: #282a2c;
+      --bg-surface-hover: #37393b;
+      --bg-input: #1e1f20;
+      --border-subtle: #333537;
+      --border-focus: #a8c7fa;
+      --text-main: #e3e3e3;
+      --text-muted: #8e918f;
+      --text-inverse: #131314;
+      --accent-gradient: linear-gradient(135deg, #7cacf8 0%, #a8c7fa 50%, #c58af9 100%);
+      --accent-primary: #a8c7fa;
+      --accent-hover: #8ab4f8;
+      --user-bubble: #282a2c;
+      --code-bg: #0e0e10;
+      --code-header: #1b1c1e;
+      --danger: #f28b82;
+      --success: #81c995;
+      --warning: #fdd663;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-    body { background-color: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
 
+    :root[data-theme="light"] {
+      --bg-app: #ffffff;
+      --bg-sidebar: #f0f4f9;
+      --bg-surface: #ffffff;
+      --bg-surface-hover: #e9eef6;
+      --bg-input: #f0f4f9;
+      --border-subtle: #e1e3e1;
+      --border-focus: #1a73e8;
+      --text-main: #1f1f1f;
+      --text-muted: #5e5e5e;
+      --text-inverse: #ffffff;
+      --accent-gradient: linear-gradient(135deg, #1a73e8 0%, #4285f4 50%, #9c27b0 100%);
+      --accent-primary: #1a73e8;
+      --accent-hover: #1557b0;
+      --user-bubble: #e9eef6;
+      --code-bg: #f8f9fa;
+      --code-header: #eef0f2;
+      --danger: #d93025;
+      --success: #188038;
+      --warning: #f29900;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Google Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg-app); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; transition: background-color 0.2s ease, color 0.2s ease; }
+
+    /* ==========================================================================
+       SIDEBAR LAYOUT (COLLAPSIBLE)
+       ========================================================================== */
     #sidebar {
-      width: 340px;
-      background: var(--surface);
-      border-right: 1px solid var(--surface-border);
+      width: 280px;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-subtle);
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
+      transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 50;
+      position: relative;
     }
-    #main-chat {
+    #sidebar.collapsed {
+      width: 0px;
+      transform: translateX(-100%);
+      border-right: none;
+    }
+
+    .sidebar-header {
+      padding: 16px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn-new-chat {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-surface);
+      color: var(--text-main);
+      border: 1px solid var(--border-subtle);
+      border-radius: 28px;
+      padding: 10px 18px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: var(--shadow-sm);
+    }
+    .btn-new-chat:hover {
+      background: var(--bg-surface-hover);
+      border-color: var(--border-focus);
+    }
+    .btn-new-chat svg { width: 18px; height: 18px; fill: var(--accent-primary); }
+
+    .sidebar-section-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      padding: 14px 18px 6px 18px;
+    }
+
+    .conversations-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 8px;
+    }
+
+    .conv-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 14px;
+      margin-bottom: 2px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: background 0.15s;
+      position: relative;
+    }
+    .conv-item:hover { background: var(--bg-surface-hover); }
+    .conv-item.active { background: var(--bg-surface-hover); font-weight: 600; }
+    .conv-item.pinned { border-left: 3px solid var(--accent-primary); border-radius: 4px 20px 20px 4px; }
+    .conv-title {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-right: 6px;
+    }
+    .conv-actions {
+      display: none;
+      gap: 4px;
+    }
+    .conv-item:hover .conv-actions { display: flex; }
+    .conv-action-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      padding: 2px 4px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 0.75rem;
+    }
+    .conv-action-btn:hover { color: var(--text-main); background: rgba(128,128,128,0.2); }
+
+    .sidebar-footer {
+      padding: 12px 14px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sidebar-nav-btn {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-radius: 20px;
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      font-size: 0.84rem;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.15s;
+    }
+    .sidebar-nav-btn:hover { background: var(--bg-surface-hover); }
+    .sidebar-nav-btn svg { width: 17px; height: 17px; fill: var(--text-muted); }
+
+    /* ==========================================================================
+       MAIN APP CANVAS
+       ========================================================================== */
+    #main-canvas {
       flex: 1;
       display: flex;
       flex-direction: column;
       position: relative;
+      background: var(--bg-app);
+      overflow: hidden;
     }
 
-    .header {
-      padding: 14px 20px;
-      border-bottom: 1px solid var(--surface-border);
+    .top-navbar {
+      height: 56px;
+      padding: 0 20px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      background: rgba(30, 41, 59, 0.85);
-      backdrop-filter: blur(8px);
+      justify-content: space-between;
+      border-bottom: 1px solid transparent;
+      z-index: 10;
     }
-    .header h1 { font-size: 1.05rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-    .badge {
+
+    .navbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .icon-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .icon-btn:hover { background: var(--bg-surface-hover); }
+    .icon-btn svg { width: 20px; height: 20px; fill: currentColor; }
+
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .offline-tag {
       font-size: 0.65rem;
-      background: rgba(56, 189, 248, 0.15);
-      color: var(--accent);
-      padding: 3px 8px;
-      border-radius: 9999px;
-      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 2px 7px;
+      border-radius: 99px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      -webkit-text-fill-color: var(--text-muted);
       font-weight: 600;
     }
 
-    .mode-toggle {
+    .navbar-center {
       display: flex;
-      background: var(--bg);
-      padding: 3px;
-      border-radius: 8px;
-      border: 1px solid var(--surface-border);
+      align-items: center;
+      gap: 6px;
     }
-    .mode-btn {
+
+    .mode-pill {
       padding: 5px 12px;
-      font-size: 0.8rem;
-      border: none;
-      background: transparent;
+      font-size: 0.78rem;
+      border-radius: 16px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
       color: var(--text-muted);
       cursor: pointer;
-      border-radius: 6px;
       transition: all 0.2s;
     }
-    .mode-btn.active {
-      background: var(--surface);
-      color: var(--accent);
+    .mode-pill.active {
+      background: var(--accent-primary);
+      color: var(--text-inverse);
+      border-color: var(--accent-primary);
       font-weight: 600;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
 
-    .sidebar-tabs {
+    .navbar-right {
       display: flex;
-      border-bottom: 1px solid var(--surface-border);
+      align-items: center;
+      gap: 8px;
     }
-    .tab-btn {
+
+    /* ==========================================================================
+       CONVERSATION STREAMING CANVAS
+       ========================================================================== */
+    #messages-viewport {
       flex: 1;
-      padding: 10px 4px;
+      overflow-y: auto;
+      padding: 20px 24px 140px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .conversation-container {
+      width: 100%;
+      max-width: 820px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Hero / Empty Greeting */
+    #hero-view {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      min-height: 48vh;
+      width: 100%;
+      max-width: 820px;
+      margin: 0 auto;
+    }
+    .hero-greeting {
+      font-size: 2.8rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .hero-subtitle {
+      font-size: 1.6rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 36px;
+    }
+    .hero-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      width: 100%;
+    }
+    .hero-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      padding: 16px;
+      border-radius: 16px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 120px;
+    }
+    .hero-card:hover {
+      background: var(--bg-surface-hover);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-sm);
+    }
+    .hero-card p {
+      font-size: 0.85rem;
+      line-height: 1.4;
+      color: var(--text-main);
+    }
+    .hero-card svg {
+      align-self: flex-end;
+      width: 20px;
+      height: 20px;
+      fill: var(--accent-primary);
+    }
+
+    /* Message Bubbles */
+    .message-block {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+      animation: fadeIn 0.2s ease-in-out;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    .message-block.user {
+      align-items: flex-end;
+    }
+    .message-block.user .bubble-content {
+      background: var(--user-bubble);
+      color: var(--text-main);
+      padding: 12px 18px;
+      border-radius: 22px 22px 4px 22px;
+      max-width: 85%;
+      font-size: 0.95rem;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+
+    .message-block.assistant {
+      align-items: flex-start;
+    }
+    .assistant-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent-primary);
+      margin-bottom: 2px;
+    }
+    .sparkle-icon {
+      width: 16px;
+      height: 16px;
+      background: var(--accent-gradient);
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z'/%3E%3C/svg%3E") no-repeat center / contain;
+      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z'/%3E%3C/svg%3E") no-repeat center / contain;
+      display: inline-block;
+    }
+
+    .message-block.assistant .bubble-content {
+      color: var(--text-main);
+      width: 100%;
+      font-size: 0.96rem;
+      line-height: 1.65;
+      word-break: break-word;
+    }
+
+    /* Markdown Rendering Styling */
+    .bubble-content p { margin-bottom: 12px; }
+    .bubble-content p:last-child { margin-bottom: 0; }
+    .bubble-content ul, .bubble-content ol { margin: 8px 0 14px 24px; }
+    .bubble-content li { margin-bottom: 4px; }
+    .bubble-content blockquote {
+      border-left: 3px solid var(--accent-primary);
+      padding-left: 12px;
+      margin: 10px 0;
+      color: var(--text-muted);
+    }
+    .bubble-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 0.88rem;
+    }
+    .bubble-content th, .bubble-content td {
+      border: 1px solid var(--border-subtle);
+      padding: 8px 12px;
+      text-align: left;
+    }
+    .bubble-content th { background: var(--bg-surface); }
+
+    /* Code Blocks (Gemini Clean Dark Theme) */
+    .code-container {
+      background: var(--code-bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      margin: 14px 0;
+      overflow: hidden;
+    }
+    .code-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 14px;
+      background: var(--code-header);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .copy-btn {
       background: transparent;
       border: none;
       color: var(--text-muted);
-      font-size: 0.78rem;
       cursor: pointer;
-      border-bottom: 2px solid transparent;
-      text-align: center;
-    }
-    .tab-btn.active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-      font-weight: 600;
-    }
-    .sidebar-content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-    }
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-
-    .stat-card {
-      background: var(--bg);
-      border: 1px solid var(--surface-border);
-      border-radius: 8px;
-      padding: 12px 14px;
-      margin-bottom: 12px;
-      font-size: 0.82rem;
-    }
-    .stat-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
-    .stat-label { color: var(--text-muted); }
-    .stat-val { font-weight: 600; color: var(--accent); }
-
-    .todo-item {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 8px 10px;
-      background: var(--bg);
-      border: 1px solid var(--surface-border);
-      border-radius: 6px;
-      margin-bottom: 8px;
-      font-size: 0.85rem;
+      gap: 5px;
+      font-size: 0.74rem;
     }
-    .todo-item.done span { text-decoration: line-through; color: var(--text-muted); }
-    .btn-icon {
+    .copy-btn:hover { color: var(--text-main); }
+    pre {
+      padding: 14px 16px;
+      overflow-x: auto;
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    code { font-family: inherit; font-size: inherit; }
+    :not(pre) > code {
+      background: var(--bg-surface-hover);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.88em;
+    }
+
+    /* LaTeX / Math styling */
+    .math-inline {
+      font-family: "KaTeX_Math", "Times New Roman", serif;
+      font-style: italic;
+      padding: 0 3px;
+    }
+    .math-display {
+      display: block;
+      text-align: center;
+      margin: 12px 0;
+      font-family: "KaTeX_Math", "Times New Roman", serif;
+      font-size: 1.08rem;
+    }
+
+    /* Cursor animation during streaming */
+    .streaming-cursor::after {
+      content: "▋";
+      display: inline-block;
+      vertical-align: baseline;
+      animation: blink 0.9s infinite;
+      color: var(--accent-primary);
+      margin-left: 2px;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* ==========================================================================
+       BOTTOM FLOATING INPUT BAR
+       ========================================================================== */
+    #input-dock {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 0 20px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: linear-gradient(to top, var(--bg-app) 75%, transparent);
+      pointer-events: none;
+    }
+
+    .input-dock-container {
+      width: 100%;
+      max-width: 820px;
+      pointer-events: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* File Attachment Badge */
+    #attachment-tray {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      width: fit-content;
+      max-width: 100%;
+      font-size: 0.8rem;
+    }
+    .attachment-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-main);
+    }
+    .attachment-remove-btn {
       background: none;
       border: none;
       color: var(--text-muted);
       cursor: pointer;
       font-size: 0.85rem;
-      padding: 2px 6px;
     }
-    .btn-icon:hover { color: var(--danger); }
+    .attachment-remove-btn:hover { color: var(--danger); }
 
-    .input-group { display: flex; gap: 8px; margin-bottom: 12px; }
-    input[type="text"], input[type="password"], textarea {
-      flex: 1;
-      background: var(--bg);
-      border: 1px solid var(--surface-border);
-      color: var(--text);
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      outline: none;
-    }
-    input:focus, textarea:focus { border-color: var(--accent); }
-    .btn-action {
-      background: var(--accent);
-      color: #000;
-      border: none;
-      padding: 8px 14px;
-      border-radius: 6px;
-      font-weight: 600;
-      font-size: 0.82rem;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .btn-action:hover { background: var(--accent-hover); }
-    .btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-danger { background: var(--danger); color: #fff; }
-
-    #messages-container {
-      flex: 1;
-      overflow-y: auto;
-      padding: 24px;
+    .input-pill-box {
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: 26px;
+      padding: 10px 16px;
       display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .message {
-      max-width: 85%;
-      padding: 12px 16px;
-      border-radius: 10px;
-      line-height: 1.5;
-      font-size: 0.92rem;
-      word-break: break-word;
-    }
-    .message.user {
-      align-self: flex-end;
-      background: #0284c7;
-      color: #fff;
-      border-bottom-right-radius: 2px;
-    }
-    .message.assistant {
-      align-self: flex-start;
-      background: var(--surface);
-      border: 1px solid var(--surface-border);
-      border-bottom-left-radius: 2px;
-    }
-    .thinking-box {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      color: var(--accent);
-      font-size: 0.88rem;
-    }
-    .thinking-dots {
-      display: inline-flex;
-      gap: 4px;
-    }
-    .thinking-dots span {
-      width: 6px;
-      height: 6px;
-      background: var(--accent);
-      border-radius: 50%;
-      animation: thinkingPulse 1.4s infinite ease-in-out both;
-    }
-    .thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
-    .thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
-    @keyframes thinkingPulse {
-      0%, 80%, 100% { transform: scale(0.3); opacity: 0.3; }
-      40% { transform: scale(1.0); opacity: 1; }
-    }
-
-    .thought-box {
-      background: rgba(148, 163, 184, 0.08);
-      border-left: 3px solid var(--accent);
-      padding: 10px 14px;
-      border-radius: 6px;
-      margin-bottom: 10px;
-      font-size: 0.82rem;
-      color: var(--text-muted);
-      line-height: 1.45;
-    }
-    .thought-box summary {
-      cursor: pointer;
-      font-weight: 600;
-      color: var(--accent);
-      margin-bottom: 6px;
-      user-select: none;
-    }
-
-    pre {
-      background: var(--code-bg);
-      border: 1px solid var(--surface-border);
-      padding: 12px;
-      border-radius: 6px;
-      overflow-x: auto;
-      margin: 8px 0;
-      position: relative;
-    }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.83rem; }
-    .copy-btn {
-      position: absolute;
-      top: 6px;
-      right: 6px;
-      background: rgba(255,255,255,0.15);
-      border: 1px solid rgba(255,255,255,0.25);
-      color: #fff;
-      font-size: 0.7rem;
-      padding: 3px 7px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    #input-container {
-      padding: 12px 24px 16px 24px;
-      background: var(--surface);
-      border-top: 1px solid var(--surface-border);
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      transition: border-color 0.2s;
-    }
-
-    #attachment-tray {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding: 4px 0;
-      max-height: 120px;
-      overflow-y: auto;
-    }
-
-    .attachment-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: var(--bg);
-      border: 1px solid var(--surface-border);
-      padding: 4px 10px;
-      border-radius: 16px;
-      font-size: 0.76rem;
-      color: var(--text);
-    }
-    .attachment-pill img {
-      width: 20px;
-      height: 20px;
-      border-radius: 4px;
-      object-fit: cover;
-    }
-    .attachment-pill .remove-btn {
-      cursor: pointer;
-      color: var(--text-muted);
-      font-weight: bold;
-      margin-left: 4px;
-      transition: color 0.15s;
-    }
-    .attachment-pill .remove-btn:hover {
-      color: var(--danger);
-    }
-
-    #voice-status-banner {
-      display: none;
-      align-items: center;
-      justify-content: space-between;
-      background: rgba(239, 68, 68, 0.12);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 0.78rem;
-      color: #ef4444;
-    }
-
-    #input-area {
-      display: flex;
+      align-items: flex-end;
       gap: 10px;
-      align-items: center;
+      box-shadow: var(--shadow-lg);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
-    #chat-input {
-      flex: 1;
-      resize: none;
-      height: 48px;
-      padding: 12px;
-      border-radius: 8px;
+    .input-pill-box:focus-within {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 1px var(--border-focus);
     }
 
-    .btn-icon-circle {
-      background: var(--bg);
-      border: 1px solid var(--surface-border);
-      color: var(--text);
-      width: 42px;
-      height: 42px;
+    #chat-textarea {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-main);
+      font-size: 0.96rem;
+      line-height: 1.5;
+      resize: none;
+      max-height: 180px;
+      padding: 4px 0;
+      min-height: 26px;
+    }
+    #chat-textarea::placeholder { color: var(--text-muted); }
+
+    .input-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding-bottom: 2px;
+    }
+
+    .dock-icon-btn {
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      cursor: pointer;
-      font-size: 1.15rem;
-      transition: all 0.2s ease;
-      flex-shrink: 0;
-      outline: none;
+      transition: background 0.15s, color 0.15s;
     }
-    .btn-icon-circle:hover {
-      background: var(--surface-border);
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-    .btn-icon-circle.recording {
-      background: rgba(239, 68, 68, 0.2);
-      border-color: #ef4444;
-      color: #ef4444;
-      animation: micPulse 1.2s infinite ease-in-out;
-    }
-    @keyframes micPulse {
-      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-      50% { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-    }
+    .dock-icon-btn:hover { background: var(--bg-surface-hover); color: var(--text-main); }
+    .dock-icon-btn svg { width: 19px; height: 19px; fill: currentColor; }
 
-    /* Attached Media in Chat */
-    .chat-attachments-block {
-      margin-bottom: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+    .btn-send {
+      background: var(--accent-primary) !important;
+      color: var(--text-inverse) !important;
     }
-    .chat-attached-img {
-      max-width: 280px;
-      max-height: 220px;
-      border-radius: 8px;
-      border: 1px solid var(--surface-border);
-      display: block;
-      cursor: pointer;
-      transition: transform 0.2s;
+    .btn-send:hover { opacity: 0.9; }
+    .btn-send:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .btn-stop {
+      background: var(--danger) !important;
+      color: #fff !important;
+      display: none;
+      animation: pulse 1.2s infinite;
     }
-    .chat-attached-img:hover {
-      transform: scale(1.02);
-    }
-    .chat-attached-file {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid var(--surface-border);
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      color: var(--accent);
-      text-decoration: none;
-      width: fit-content;
-    }
-    .chat-attached-audio {
-      width: 100%;
-      max-width: 320px;
-      height: 36px;
-      margin-top: 4px;
-    }
-    .multimodal-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      background: rgba(56, 189, 248, 0.15);
-      border: 1px solid var(--accent);
-      color: var(--accent);
-      padding: 3px 8px;
-      border-radius: 4px;
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+    .dock-disclaimer {
       font-size: 0.72rem;
-      cursor: pointer;
-      width: fit-content;
+      color: var(--text-muted);
+      text-align: center;
       margin-top: 4px;
-      transition: background 0.15s;
-    }
-    .multimodal-btn:hover {
-      background: rgba(56, 189, 248, 0.25);
     }
 
-    .modal {
+    /* ==========================================================================
+       MODALS & DRAWERS (SETTINGS, HF DATASETS, SYNC)
+       ========================================================================== */
+    .modal-backdrop {
       display: none;
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.75);
+      background: rgba(0,0,0,0.65);
+      z-index: 100;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      backdrop-filter: blur(4px);
     }
-    .modal-content {
-      background: var(--surface);
-      border: 1px solid var(--surface-border);
-      border-radius: 12px;
+    .modal-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 18px;
+      width: 540px;
+      max-width: 92vw;
+      max-height: 85vh;
+      overflow-y: auto;
       padding: 24px;
-      width: 480px;
-      max-width: 90vw;
+      box-shadow: var(--shadow-lg);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .modal-header h2 { font-size: 1.15rem; font-weight: 600; }
+
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 0.82rem; margin-bottom: 6px; color: var(--text-muted); }
+    .form-input, .form-select {
+      width: 100%;
+      background: var(--bg-app);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 9px 12px;
+      color: var(--text-main);
+      font-size: 0.88rem;
+      outline: none;
+    }
+    .form-input:focus, .form-select:focus { border-color: var(--border-focus); }
+
+    .btn-primary {
+      background: var(--accent-primary);
+      color: var(--text-inverse);
+      border: none;
+      border-radius: 8px;
+      padding: 9px 18px;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+    }
+    .btn-secondary {
+      background: var(--bg-surface-hover);
+      color: var(--text-main);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 9px 16px;
+      font-size: 0.88rem;
+      cursor: pointer;
     }
 
-    /* Live Sync Banner */
-    #sync-banner {
-      display: none;
-      background: rgba(56, 189, 248, 0.15);
-      border: 1px solid var(--accent);
-      padding: 8px 12px;
-      border-radius: 6px;
-      margin-bottom: 12px;
-      font-size: 0.8rem;
-      color: var(--accent);
+    /* Telemetry grid */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
     }
+    .stat-tile {
+      background: var(--bg-app);
+      border: 1px solid var(--border-subtle);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 0.82rem;
+    }
+    .stat-tile span { display: block; color: var(--text-muted); margin-bottom: 2px; }
+    .stat-tile b { color: var(--accent-primary); font-size: 0.95rem; }
 
     @media (max-width: 768px) {
-      body { flex-direction: column; }
-      #sidebar { width: 100%; height: 280px; }
+      #sidebar { position: absolute; height: 100%; box-shadow: var(--shadow-lg); }
+      .navbar-center { display: none; }
+      .hero-greeting { font-size: 2rem; }
+      .hero-subtitle { font-size: 1.2rem; }
     }
   </style>
 </head>
 <body>
 
-  <!-- SIDEBAR -->
-  <div id="sidebar">
-    <div class="header">
-      <h1>Merlin AI <span class="badge" id="backend-badge">OFFLINE</span></h1>
+  <!-- ========================================================================
+       SIDEBAR: CONVERSATION SESSIONS, PINNED CHATS & SETTINGS
+       ======================================================================== -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <button class="btn-new-chat" onclick="createNewChat()">
+        <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        New chat
+      </button>
+      <button class="icon-btn" onclick="toggleSidebar()" title="Collapse sidebar">
+        <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+      </button>
     </div>
 
-    <div class="sidebar-tabs">
-      <button class="tab-btn active" onclick="switchTab(this, 'tab-pa')">Tasks & Notes</button>
-      <button class="tab-btn" onclick="switchTab(this, 'tab-memory')">Learned Skills</button>
-      <button class="tab-btn" onclick="switchTab(this, 'tab-system')">System</button>
+    <div class="sidebar-section-title">Conversations</div>
+    <div class="conversations-scroll" id="conversations-list">
+      <!-- Injected via JavaScript -->
     </div>
 
-    <div class="sidebar-content">
-      <!-- Tab 1: Tasks & Notes -->
-      <div id="tab-pa" class="tab-panel active">
-        <h3 style="font-size:0.8rem; margin-bottom:8px; color:var(--text-muted);">TASKS</h3>
-        <div class="input-group">
-          <input type="text" id="todo-input" placeholder="New to-do item..." onkeydown="if(event.key==='Enter') addTodo()">
-          <button class="btn-action" onclick="addTodo()">Add</button>
-        </div>
-        <div id="todo-list">Loading tasks...</div>
+    <div class="sidebar-footer">
+      <button class="sidebar-nav-btn" onclick="openModal('settings-modal')">
+        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        Settings & Hardware
+      </button>
+      <button class="sidebar-nav-btn" onclick="openModal('sync-modal')">
+        <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+        Teacher Distillation
+      </button>
+      <button class="sidebar-nav-btn" onclick="openModal('dataset-modal')">
+        <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+        Hugging Face Datasets
+      </button>
+    </div>
+  </aside>
 
-        <h3 style="font-size:0.8rem; margin:16px 0 8px 0; color:var(--text-muted);">NOTES</h3>
-        <div class="input-group">
-          <input type="text" id="note-title" placeholder="Title...">
+  <!-- ========================================================================
+       MAIN CANVAS: HEADER, CHAT MESSAGES & FLOATING INPUT DOCK
+       ======================================================================== -->
+  <main id="main-canvas">
+    <!-- Top Navigation Bar -->
+    <header class="top-navbar">
+      <div class="navbar-left">
+        <button class="icon-btn" onclick="toggleSidebar()" title="Toggle sidebar">
+          <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+        </button>
+        <div class="brand-title">
+          <span class="sparkle-icon"></span>
+          Merlin
+          <span class="offline-tag">OFFLINE</span>
         </div>
-        <textarea id="note-content" placeholder="Technical note or snippet..." style="width:100%; height:60px; margin-bottom:8px;"></textarea>
-        <button class="btn-action" style="width:100%; margin-bottom:12px;" onclick="addNote()">Save Note</button>
-        <div id="notes-list"></div>
       </div>
 
-      <!-- Tab 2: Memory & Self-Learning Hub -->
-      <div id="tab-memory" class="tab-panel">
-        <div id="sync-banner">
-          <span id="sync-status-text">Synchronizing...</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px;">
-          <h3 style="font-size:0.8rem; color:var(--text-muted);">ASSIMILATED KNOWLEDGE</h3>
-          <div style="display:flex; gap:6px;">
-            <button class="btn-action" style="font-size:0.75rem; padding:4px 8px; background:#4f46e5; color:#fff;" onclick="openDatasetModal()">🤗 Import Dataset</button>
-            <button class="btn-action" style="font-size:0.75rem; padding:4px 8px;" onclick="openSyncModal()">⚡ Sync Teacher</button>
+      <div class="navbar-center">
+        <button class="mode-pill active" id="pill-assistant" onclick="setMode('assistant')">🤖 Assistant</button>
+        <button class="mode-pill" id="pill-coder" onclick="setMode('coder')">💻 Coder</button>
+        <button class="mode-pill" id="pill-agent" onclick="setMode('agent')">🚀 Antigravity</button>
+      </div>
+
+      <div class="navbar-right">
+        <button class="icon-btn" onclick="toggleTheme()" id="theme-btn" title="Toggle dark/light mode">
+          <svg viewBox="0 0 24 24" id="theme-icon"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
+        </button>
+        <button class="icon-btn" onclick="openModal('settings-modal')" title="Settings">
+          <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Message Viewport -->
+    <div id="messages-viewport">
+      <!-- Hero View (shown when conversation has 0 messages) -->
+      <div id="hero-view">
+        <h1 class="hero-greeting">Hello, Developer</h1>
+        <h2 class="hero-subtitle">How can I assist you with code or automation today?</h2>
+        <div class="hero-cards-grid">
+          <div class="hero-card" onclick="promptHero('Write a complete, high-performance async Python socket server')">
+            <p>Write an async socket server in Python with connection pooling</p>
+            <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+          </div>
+          <div class="hero-card" onclick="promptHero('Explain the architecture of Transformer self-attention with mathematical formulas')">
+            <p>Explain Transformer multi-head attention with math formulas</p>
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+          </div>
+          <div class="hero-card" onclick="promptHero('Audit this system health, check CPU temperature and memory load')">
+            <p>Audit current system health, CPU temperature and RAM telemetry</p>
+            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+          </div>
+          <div class="hero-card" onclick="promptHero('How do I build and deploy a systemd daemon on a Raspberry Pi / Debian server?')">
+            <p>Deploy and auto-restart a background systemd daemon on Debian/Pi</p>
+            <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
           </div>
         </div>
-        <div id="knowledge-list">Loading learned skills...</div>
-
-        <h3 style="font-size:0.8rem; margin:16px 0 8px 0; color:var(--text-muted);">RECORD KNOWLEDGE GAP</h3>
-        <div class="input-group">
-          <input type="text" id="gap-question" placeholder="E.g. High-throughput socket server in C">
-          <button class="btn-action" onclick="recordGap()">Record</button>
-        </div>
-        <div id="gaps-list" style="margin-top:8px;"></div>
       </div>
 
-      <!-- Tab 3: System Telemetry -->
-      <div id="tab-system" class="tab-panel">
-        <h3 style="font-size:0.8rem; margin-bottom:8px; color:var(--text-muted);">HARDWARE TELEMETRY</h3>
-        <div class="stat-card">
-          <div class="stat-row"><span class="stat-label">Model Engine:</span><span class="stat-val" id="stat-model">-</span></div>
-          <div class="stat-row"><span class="stat-label">OS:</span><span class="stat-val" id="stat-os">-</span></div>
-          <div class="stat-row"><span class="stat-label">CPU Temp:</span><span class="stat-val" id="stat-temp">-</span></div>
-          <div class="stat-row"><span class="stat-label">CPU Load:</span><span class="stat-val" id="stat-cpu">-</span></div>
-          <div class="stat-row"><span class="stat-label">Memory:</span><span class="stat-val" id="stat-mem">-</span></div>
-          <div class="stat-row"><span class="stat-label">Disk:</span><span class="stat-val" id="stat-disk">-</span></div>
-          <div class="stat-row"><span class="stat-label">Uptime:</span><span class="stat-val" id="stat-uptime">-</span></div>
-        </div>
-        <button class="btn-action" style="width:100%; margin-bottom:12px;" onclick="loadTelemetry()">Refresh Telemetry</button>
+      <!-- Messages Stream List -->
+      <div class="conversation-container" id="messages-list" style="display:none;"></div>
+    </div>
 
-        <h3 style="font-size:0.8rem; margin-bottom:8px; color:var(--text-muted);">SYSTEM AUDIT LOG</h3>
-        <div id="audit-list" style="font-size:0.75rem; color:var(--text-muted); max-height:180px; overflow-y:auto;"></div>
+    <!-- Floating Gemini-Style Input Dock -->
+    <div id="input-dock">
+      <div class="input-dock-container">
+        <!-- Attachment Tray -->
+        <div id="attachment-tray">
+          <div class="attachment-chip">
+            <svg style="width:14px;height:14px;fill:currentColor;" viewBox="0 0 24 24"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
+            <span id="attached-file-name">filename.txt</span>
+          </div>
+          <button class="attachment-remove-btn" onclick="clearAttachment()">✕</button>
+        </div>
+
+        <div class="input-pill-box">
+          <input type="file" id="file-uploader" style="display:none;" onchange="handleFileUpload(event)">
+          <button class="dock-icon-btn" onclick="document.getElementById('file-uploader').click()" title="Attach file or code snippet">
+            <svg viewBox="0 0 24 24"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
+          </button>
+          
+          <button class="dock-icon-btn" id="btn-mic" onclick="toggleDictation()" title="Voice dictation">
+            <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+          </button>
+
+          <textarea id="chat-textarea" placeholder="Ask Merlin anything..." rows="1" oninput="autoResizeTextarea(this)" onkeydown="handleKeyDown(event)"></textarea>
+
+          <div class="input-controls">
+            <button class="dock-icon-btn btn-stop" id="btn-stop" onclick="stopGeneration()" title="Stop response generation">
+              <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+            </button>
+            <button class="dock-icon-btn btn-send" id="btn-send" onclick="submitMessage()" title="Send prompt">
+              <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="dock-disclaimer">Merlin AI operates 100% locally on your hardware. Completely air-gapped, zero telemetry.</div>
       </div>
     </div>
-  </div>
+  </main>
 
-  <!-- MAIN CHAT -->
-  <div id="main-chat">
-    <div class="header">
-      <div style="display:flex; align-items:center; gap:10px;">
-        <div class="mode-toggle">
-          <button id="btn-mode-assistant" class="mode-btn active" onclick="setMode('assistant')">🤖 PA Mode</button>
-          <button id="btn-mode-coder" class="mode-btn" onclick="setMode('coder')">💻 Coder Mode</button>
-          <button id="btn-mode-agent" class="mode-btn" onclick="setMode('agent')">⚡ Agent Mode</button>
-        </div>
-        <select id="model-selector" onchange="switchModel(this.value)" style="background:var(--bg); color:var(--accent); border:1px solid var(--surface-border); padding:5px 10px; border-radius:6px; font-size:0.75rem; font-weight:600; outline:none; cursor:pointer;" title="Switch Active Offline Model">
-          <option value="">⚡ Model: Auto</option>
+  <!-- ========================================================================
+       MODALS: SETTINGS & HARDWARE TELEMETRY
+       ======================================================================== -->
+  <div class="modal-backdrop" id="settings-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>Settings & Diagnostics</h2>
+        <button class="icon-btn" onclick="closeModal('settings-modal')">✕</button>
+      </div>
+
+      <div class="form-group">
+        <label>Active Local AI Model</label>
+        <select class="form-select" id="model-select" onchange="switchModel(this.value)">
+          <option value="">Loading models...</option>
         </select>
       </div>
-      <div style="font-size:0.8rem; color:var(--text-muted);" id="status-tag">Connected (Offline Mode)</div>
-    </div>
 
-    <div id="messages-container">
-      <div class="message assistant">
-        👋 Welcome! I am Merlin, your private offline AI Assistant and Software Engineer (Merlin AI). 
-        All answers and code generation run locally on your server.
+      <div class="sidebar-section-title" style="padding-left:0;">Hardware Telemetry</div>
+      <div class="stat-grid">
+        <div class="stat-tile"><span>CPU Temp</span><b id="diag-temp">-</b></div>
+        <div class="stat-tile"><span>CPU Load</span><b id="diag-cpu">-</b></div>
+        <div class="stat-tile"><span>Memory</span><b id="diag-mem">-</b></div>
+        <div class="stat-tile"><span>Disk Space</span><b id="diag-disk">-</b></div>
       </div>
-    </div>
 
-    <div id="input-container">
-      <div id="attachment-tray" style="display:none;"></div>
-      <div id="voice-status-banner">
-        <span>🔴 <b>Listening...</b> Speak clearly into your microphone</span>
-        <button class="btn-action btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="stopVoiceInput()">Stop</button>
-      </div>
-      <div id="input-area">
-        <input type="file" id="file-input" multiple style="display:none;" onchange="handleFileInputChange(event)">
-        <button id="btn-attach" class="btn-icon-circle" title="Upload Audio, Image, Code or Document (or drag & drop / Ctrl+V)" onclick="document.getElementById('file-input').click()">
-          📎
-        </button>
-        <textarea id="chat-input" placeholder="Ask a question, request code, attach files, or speak..." onkeydown="handleKeyDown(event)"></textarea>
-        <button id="btn-mic" class="btn-icon-circle" title="Voice Input / Microphone (Click to speak)" onclick="toggleVoiceInput()">
-          🎙️
-        </button>
-        <button id="btn-send" class="btn-action" onclick="sendMessage()">Send</button>
-        <button id="btn-stop" class="btn-action btn-danger" style="display:none;" onclick="stopMessage()">Stop</button>
+      <div class="sidebar-section-title" style="padding-left:0;">OpenAI-Compatible REST API</div>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:10px;">
+        Use Merlin as a local drop-in replacement for any tool (Continue.dev, Cursor, Neovim, curl):
+      </p>
+      <pre style="font-size:0.75rem; border-radius:8px; margin-bottom:16px;"><code>POST http://&lt;IP&gt;:5000/v1/chat/completions
+Header: Content-Type: application/json
+Body: { "model": "merlin-ai", "messages": [{"role":"user","content":"Hello"}] }</code></pre>
+
+      <div style="display:flex; justify-content:space-between;">
+        <button class="btn-secondary" onclick="clearCurrentChat()">Clear History</button>
+        <button class="btn-primary" onclick="closeModal('settings-modal')">Close</button>
       </div>
     </div>
   </div>
 
   <!-- TEACHER SYNC MODAL -->
-  <div id="sync-modal" class="modal">
-    <div class="modal-content">
-      <h3 style="margin-bottom:8px;">Sync with AI Teacher</h3>
-      <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:12px;">
-        Connect to interview an external teacher model to resolve knowledge gaps and permanently distill new code patterns into local SQLite memory.
+  <div class="modal-backdrop" id="sync-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>Teacher Distillation Engine</h2>
+        <button class="icon-btn" onclick="closeModal('sync-modal')">✕</button>
+      </div>
+      <p style="font-size:0.84rem; color:var(--text-muted); margin-bottom:14px;">
+        Interview an external AI (Google Gemini, OpenRouter, Groq, OpenAI) to resolve knowledge gaps and permanently index new skills into local SQLite memory.
       </p>
-
-      <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:14px; background:rgba(56,189,248,0.1); padding:8px 10px; border-radius:6px; border:1px solid rgba(56,189,248,0.25); line-height:1.4;">
-        💡 <b>Free AI Teacher Keys:</b><br>
-        • <b>Google Gemini (Recommended / Free Tier)</b>: <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent); text-decoration:underline;">aistudio.google.com/apikey</a><br>
-        • <b>Groq (Free & Ultra-Fast)</b>: <a href="https://console.groq.com/keys" target="_blank" style="color:var(--accent); text-decoration:underline;">console.groq.com/keys</a><br>
-        • <b>OpenRouter (Free Models)</b>: <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--accent); text-decoration:underline;">openrouter.ai/keys</a>
+      
+      <div class="form-group">
+        <label>Commercial Provider API Key</label>
+        <input type="password" class="form-input" id="teacher-api-key" placeholder="AIzaSy... / sk-...">
       </div>
 
-      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Teacher Provider:</label>
-      <select id="sync-provider" onchange="onSyncProviderChange()" style="width:100%; margin-bottom:10px; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
-        <option value="gemini" selected>Google Gemini (FREE - Gemini 2.0 Flash / Pro)</option>
-        <option value="groq">Groq (FREE - Llama 3.3 70B Versatile)</option>
-        <option value="openrouter">OpenRouter (FREE - Llama 3.3 70B Free)</option>
-        <option value="openai">OpenAI (GPT-4o Mini / GPT-4o)</option>
-        <option value="auto">Auto-detect from Key Prefix</option>
-        <option value="custom">Custom Endpoint & Model</option>
-      </select>
-
-      <div id="model-select-wrapper" style="margin-bottom:10px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-          <label style="font-size:0.78rem; color:var(--text-muted);">Teacher Model (Type any model or pick suggestion):</label>
-          <button type="button" class="btn-action" style="padding:2px 8px; font-size:0.7rem; background:rgba(56,189,248,0.15); border:1px solid var(--accent); color:var(--accent);" onclick="detectModelsForProvider()">🔍 Detect My Models</button>
-        </div>
-        <input type="text" id="sync-model-input" list="sync-model-datalist" value="gemini-1.5-flash" placeholder="Select or type custom model..." style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
-        <datalist id="sync-model-datalist">
-          <option value="gemini-1.5-flash">
-          <option value="gemini-2.0-flash">
-          <option value="gemini-1.5-pro">
-        </datalist>
+      <div class="form-group">
+        <label>Optional Topic to Learn</label>
+        <input type="text" class="form-input" id="teacher-topic" placeholder="E.g. Lock-free ring buffer in C">
       </div>
-
-      <div id="custom-provider-fields" style="display:none; margin-bottom:8px;">
-        <label style="font-size:0.78rem; display:block; margin-bottom:4px; color:var(--text-muted);">Custom Endpoint URL:</label>
-        <input type="text" id="sync-custom-endpoint" placeholder="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" style="width:100%; margin-bottom:8px;">
-        <label style="font-size:0.78rem; display:block; margin-bottom:4px; color:var(--text-muted);">Custom Model Name:</label>
-        <input type="text" id="sync-custom-model" placeholder="gemini-2.0-flash" style="width:100%; margin-bottom:12px;">
-      </div>
-
-      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">API Key:</label>
-      <input type="password" id="sync-api-key" placeholder="AIza... (or leave empty if GEMINI_API_KEY environment variable is set)" onchange="if(this.value.trim().length > 10) detectModelsForProvider()" style="width:100%; margin-bottom:12px;">
-
-      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Optional Topic to Learn & Assimilate:</label>
-      <input type="text" id="sync-topic" placeholder="E.g. Building an async WebSocket protocol in Python" style="width:100%; margin-bottom:16px;">
 
       <div style="display:flex; justify-content:flex-end; gap:8px;">
-        <button class="btn-action" style="background:#475569; color:#fff;" onclick="closeSyncModal()">Cancel</button>
-        <button class="btn-action" onclick="triggerSync()">Start Distillation</button>
+        <button class="btn-secondary" onclick="closeModal('sync-modal')">Cancel</button>
+        <button class="btn-primary" onclick="startTeacherSync()">Start Distillation</button>
       </div>
     </div>
   </div>
 
-  <!-- HUGGING FACE DATASET IMPORT MODAL -->
-  <div id="dataset-modal" class="modal">
-    <div class="modal-content">
-      <h3 style="margin-bottom:8px;">Import from Hugging Face Datasets</h3>
-      <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:12px;">
-        Automatically pull and assimilate curated coding & instruction datasets from <a href="https://huggingface.co/datasets" target="_blank" style="color:var(--accent); text-decoration:underline;">huggingface.co/datasets</a> into Merlin's offline memory.
+  <!-- HF DATASETS MODAL -->
+  <div class="modal-backdrop" id="dataset-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>Hugging Face Dataset Ingestion</h2>
+        <button class="icon-btn" onclick="closeModal('dataset-modal')">✕</button>
+      </div>
+      <p style="font-size:0.84rem; color:var(--text-muted); margin-bottom:14px;">
+        Pre-populate your offline assistant's SQLite database with curated coding recipes and PA instructions.
       </p>
 
-      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Select Dataset:</label>
-      <select id="hf-curated-select" onchange="onCuratedDatasetChange()" style="width:100%; margin-bottom:10px; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
-        <optgroup label="💻 Coding & Software Engineering">
-          <option value="openbmb/UltraData-Stack-v3-L2" selected>openbmb/UltraData-Stack-v3-L2 (Curated High-Yield Code Stack)</option>
-          <option value="openbmb/UltraData-SFT-Agent-2609:Code-Agent">openbmb/UltraData-SFT-Agent-2609 [Code-Agent] (Agentic Coding & Tool Use)</option>
-          <option value="sahil2801/CodeAlpaca-20k">sahil2801/CodeAlpaca-20k (20k Coding Tasks & Solutions)</option>
-          <option value="iamtarun/python_code_instructions_18k_alpaca">iamtarun/python_code_instructions_18k_alpaca (18k Python Problems)</option>
-        </optgroup>
-        <optgroup label="🤖 Personal Assistant (PA) & Tasks">
-          <option value="databricks/databricks-dolly-15k">databricks/databricks-dolly-15k (Human PA: Scheduling, QA, Brainstorming)</option>
-          <option value="teknium/OpenHermes-2.5">teknium/OpenHermes-2.5 (Gold-Standard General Assistant & Reasoning)</option>
-          <option value="openbmb/UltraData-SFT-Agent-2609:General-Agent">openbmb/UltraData-SFT-Agent-2609 [General-Agent] (Multi-Step Task Planning)</option>
-        </optgroup>
-        <optgroup label="📄 Documents, Summarization & Knowledge">
-          <option value="knkarthick/dialogsum">knkarthick/dialogsum (Document, Meeting & Dialogue Summarization)</option>
-          <option value="samsum">samsum (Notes, Action Items & Message Summarization)</option>
-          <option value="openbmb/UltraData-SFT-Agent-2609:Search-Agent">openbmb/UltraData-SFT-Agent-2609 [Search-Agent] (Document Search & Fact Retrieval)</option>
-        </optgroup>
-        <optgroup label="💬 Natural Conversation & Alignment">
-          <option value="HuggingFaceH4/ultrachat_200k">HuggingFaceH4/ultrachat_200k (High-Quality Multi-Turn Conversation)</option>
-          <option value="Anthropic/hh-rlhf">Anthropic/hh-rlhf (Helpful & Harmless Dialogue Alignment)</option>
-        </optgroup>
-        <optgroup label="🌐 Custom">
-          <option value="custom">Custom Hugging Face Repository...</option>
-        </optgroup>
-      </select>
-
-      <div id="hf-custom-repo-box" style="display:none; margin-bottom:10px;">
-        <label style="font-size:0.78rem; display:block; margin-bottom:4px; color:var(--text-muted);">Repository ID (with optional :subset):</label>
-        <input type="text" id="hf-custom-repo" placeholder="e.g. openbmb/UltraData-SFT-Agent-2609:Code-Agent" style="width:100%;">
+      <div class="form-group">
+        <label>Select Curated Dataset</label>
+        <select class="form-select" id="hf-dataset-select">
+          <option value="openbmb/UltraData-Stack-v3-L2">UltraData Stack v3 (High Quality Code)</option>
+          <option value="iamtarun/python_code_instructions_18k_alpaca">Python Code Instructions (18k)</option>
+          <option value="sahil2801/CodeAlpaca-20k">CodeAlpaca (20k Multi-language)</option>
+        </select>
       </div>
 
-      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Number of Samples to Assimilate:</label>
-      <select id="hf-limit-select" style="width:100%; margin-bottom:10px; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
-        <option value="25">25 samples (Quick Assimilation)</option>
-        <option value="50" selected>50 samples (Recommended)</option>
-        <option value="100">100 samples</option>
-        <option value="250">250 samples (Comprehensive)</option>
-      </select>
-
-      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Optional Hugging Face Access Token:</label>
-      <input type="password" id="hf-token-input" placeholder="hf_... (Required only for gated datasets if not logged in)" style="width:100%; margin-bottom:12px;">
-
-      <div style="margin-bottom:16px;">
-        <label style="font-size:0.78rem; display:flex; align-items:center; gap:6px; color:var(--text); cursor:pointer;">
-          <input type="checkbox" id="hf-save-local" checked>
-          <span>Save permanently to local disk cache (<code>data/datasets</code>) for offline access</span>
-        </label>
+      <div class="form-group">
+        <label>Sample Limit (Number of examples to index)</label>
+        <input type="number" class="form-input" id="hf-limit" value="50" min="10" max="5000">
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:8px;">
-        <button class="btn-action" style="background:#475569; color:#fff;" onclick="closeDatasetModal()">Cancel</button>
-        <button class="btn-action" style="background:#4f46e5; color:#fff;" onclick="triggerDatasetImport()">Import & Assimilate</button>
+        <button class="btn-secondary" onclick="closeModal('dataset-modal')">Cancel</button>
+        <button class="btn-primary" onclick="startDatasetImport()">Start Ingestion</button>
       </div>
     </div>
   </div>
 
+  <!-- ========================================================================
+       CLIENT APPLICATION LOGIC
+       ======================================================================== -->
   <script>
+    let activeConversationId = null;
     let currentMode = "assistant";
-    const sessionId = "session_" + Math.random().toString(36).substring(2, 9);
     let activeEventSource = null;
-    let syncPollInterval = null;
-    let currentAssistantMsg = null;
-    let currentFullText = "";
-    let streamWatchdog = null;
+    let attachedFile = null;
+    let recognition = null;
+    let isDictating = false;
 
-    function setMode(mode) {
-      currentMode = mode;
-      document.getElementById("btn-mode-assistant").classList.toggle("active", mode === "assistant");
-      document.getElementById("btn-mode-coder").classList.toggle("active", mode === "coder");
-      document.getElementById("btn-mode-agent").classList.toggle("active", mode === "agent");
+    // Theme Management
+    function initTheme() {
+      const saved = localStorage.getItem("merlin-theme") || "dark";
+      setTheme(saved);
+    }
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute("data-theme");
+      const next = current === "dark" ? "light" : "dark";
+      setTheme(next);
+    }
+    function setTheme(theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      localStorage.setItem("merlin-theme", theme);
     }
 
-    function switchTab(btnElement, tabId) {
-      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-      document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-      btnElement.classList.add("active");
-      document.getElementById(tabId).classList.add("active");
-      if (tabId === 'tab-system') { loadTelemetry(); loadAuditLogs(); }
-      if (tabId === 'tab-memory') { loadKnowledge(); loadGaps(); }
-      if (tabId === 'tab-pa') { loadTodos(); loadNotes(); }
+    // Sidebar Toggle
+    function toggleSidebar() {
+      const sb = document.getElementById("sidebar");
+      sb.classList.toggle("collapsed");
+    }
+
+    // Mode Selector
+    function setMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll(".mode-pill").forEach(p => p.classList.remove("active"));
+      const target = document.getElementById(`pill-${mode}`);
+      if (target) target.classList.add("active");
+    }
+
+    // Auto-Resize Textarea
+    function autoResizeTextarea(textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = Math.min(textarea.scrollHeight, 180) + "px";
+      const btn = document.getElementById("btn-send");
+      btn.disabled = !textarea.value.trim() && !attachedFile;
     }
 
     function handleKeyDown(e) {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        if (activeEventSource) {
-          // If already generating, preserve text so user can continue typing without interrupting
-          return;
-        }
-        sendMessage();
+        submitMessage();
       }
     }
 
-    function appendMessage(role, text, isRawHtml = false) {
-      const container = document.getElementById("messages-container");
-      const msg = document.createElement("div");
-      msg.className = "message " + role;
-      msg.innerHTML = isRawHtml ? text : formatContent(text);
-      container.appendChild(msg);
-      container.scrollTop = container.scrollHeight;
-      return msg;
+    // Modal Helper
+    function openModal(id) {
+      document.getElementById(id).style.display = "flex";
+      if (id === "settings-modal") {
+        loadTelemetry();
+        loadModels();
+      }
+    }
+    function closeModal(id) {
+      document.getElementById(id).style.display = "none";
     }
 
-    function formatContent(text) {
-      let escaped = text
+    // Markdown & Math Formatter (Self-Contained & Fast)
+    function renderMarkdown(rawText) {
+      if (!rawText) return "";
+      let txt = rawText
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
 
-      escaped = escaped.replace(/```([\s\S]*?)```/g, function(match, code) {
-        return `<pre><button class="copy-btn" onclick="navigator.clipboard.writeText((this.nextElementSibling||this.nextSibling).innerText); this.innerText='Copied!'; setTimeout(()=>this.innerText='Copy', 1500)">Copy</button><code>${code.trim()}</code></pre>`;
-      });
-
-      escaped = escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-      // 1. Format closed DeepSeek-R1 / thinking models <think> tags
-      escaped = escaped.replace(/&lt;think&gt;([\s\S]*?)&lt;\/think&gt;/gi, function(match, thought) {
-        return `<details class="thought-box"><summary>💭 Thought Process (Reasoning)</summary><div>${thought.trim()}</div></details>`;
-      });
-
-      // 2. Format in-progress / live streaming thinking block (no closing </think> yet)
-      escaped = escaped.replace(/&lt;think&gt;([\s\S]*)$/gi, function(match, thought) {
-        return `<details class="thought-box" open><summary>💭 Thinking in progress... <span class="thinking-dots"><span></span><span></span><span></span></span></summary><div>${thought.trim()}</div></details>`;
-      });
-
-      return escaped.replace(/\n/g, "<br>");
-    }
-
-    let activeAttachments = [];
-    let speechRecognition = null;
-    let isRecordingSpeech = false;
-    let mediaRecorder = null;
-    let audioChunks = [];
-
-    function escapeHtml(str) {
-      if (!str) return "";
-      return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    }
-
-    function renderAttachmentTray() {
-      const tray = document.getElementById("attachment-tray");
-      if (!activeAttachments.length) {
-        tray.style.display = "none";
-        tray.innerHTML = "";
-        return;
-      }
-      tray.style.display = "flex";
-      tray.innerHTML = "";
-      activeAttachments.forEach((att, idx) => {
-        const pill = document.createElement("div");
-        pill.className = "attachment-pill";
-        let icon = "📄";
-        if (att.category === "image") icon = "🖼️";
-        else if (att.category === "audio") icon = "🎵";
-        else if (att.category === "text") icon = "💻";
-        else if (att.category === "document") icon = "📑";
-
-        pill.innerHTML = `
-          ${att.category === "image" ? `<img src="${att.url}">` : `<span>${icon}</span>`}
-          <span><b>${escapeHtml(att.name)}</b> (${att.size_str})</span>
-          <span class="remove-btn" title="Remove" onclick="removeAttachment(${idx})">✕</span>
+      // Code blocks ```lang\ncode\n```
+      txt = txt.replace(/```([a-zA-Z0-9_\-\+]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+        const langLabel = lang.trim() || "code";
+        return `
+          <div class="code-container">
+            <div class="code-header-bar">
+              <span>${langLabel}</span>
+              <button class="copy-btn" onclick="copyCode(this)">
+                <svg style="width:13px;height:13px;fill:currentColor;" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                Copy
+              </button>
+            </div>
+            <pre><code>${code.trim()}</code></pre>
+          </div>
         `;
-        tray.appendChild(pill);
+      });
+
+      // Display math $$...$$
+      txt = txt.replace(/\$\$([\s\S]*?)\$\$/g, '<div class="math-display">$1</div>');
+
+      // Inline math $...$
+      txt = txt.replace(/\$([^\$\n]+)\$/g, '<span class="math-inline">$1</span>');
+
+      // Inline code `...`
+      txt = txt.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+      // Bold & Italic
+      txt = txt.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+      txt = txt.replace(/\*([^*]+)\*/g, '<i>$1</i>');
+
+      // Headings
+      txt = txt.replace(/^### (.*$)/gim, '<h3 style="margin:14px 0 6px 0;font-size:1.05rem;">$1</h3>');
+      txt = txt.replace(/^## (.*$)/gim, '<h2 style="margin:16px 0 8px 0;font-size:1.2rem;">$1</h2>');
+      txt = txt.replace(/^# (.*$)/gim, '<h1 style="margin:20px 0 10px 0;font-size:1.35rem;">$1</h1>');
+
+      // Blockquotes
+      txt = txt.replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>');
+
+      // Newlines to breaks when not inside pre
+      const parts = txt.split(/(<div class="code-container">[\s\S]*?<\/div>)/g);
+      return parts.map(p => {
+        if (p.startsWith('<div class="code-container">')) return p;
+        return p.replace(/\n/g, "<br>");
+      }).join("");
+    }
+
+    function copyCode(btn) {
+      const pre = btn.closest(".code-container").querySelector("pre code");
+      navigator.clipboard.writeText(pre.innerText).then(() => {
+        btn.innerHTML = "✓ Copied";
+        setTimeout(() => {
+          btn.innerHTML = `<svg style="width:13px;height:13px;fill:currentColor;" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy`;
+        }, 2000);
       });
     }
 
-    function removeAttachment(index) {
-      activeAttachments.splice(index, 1);
-      renderAttachmentTray();
-    }
-
-    async function uploadSingleFile(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = async function() {
-          try {
-            const res = await fetch("/api/upload", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                data: reader.result
-              })
-            });
-            const data = await res.json();
-            if (data.success && data.file) {
-              resolve(data.file);
-            } else {
-              reject(data.error || "Upload failed");
-            }
-          } catch(e) {
-            reject(e.message || "Network error");
-          }
-        };
-        reader.onerror = () => reject("File read error");
-        reader.readAsDataURL(file);
-      });
-    }
-
-    async function handleFiles(files) {
-      if (!files || !files.length) return;
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        try {
-          const uploaded = await uploadSingleFile(file);
-          activeAttachments.push(uploaded);
-          renderAttachmentTray();
-        } catch(err) {
-          alert(`Failed uploading ${file.name}: ${err}`);
-        }
-      }
-    }
-
-    function handleFileInputChange(e) {
-      handleFiles(e.target.files);
-      e.target.value = "";
-    }
-
-    // Drag & Drop & Paste Listeners
-    window.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      const container = document.getElementById("input-container");
-      if (container) container.style.borderColor = "var(--accent)";
-    });
-    window.addEventListener("dragleave", (e) => {
-      const container = document.getElementById("input-container");
-      if (container && e.target === document.body) container.style.borderColor = "var(--surface-border)";
-    });
-    window.addEventListener("drop", (e) => {
-      e.preventDefault();
-      const container = document.getElementById("input-container");
-      if (container) container.style.borderColor = "var(--surface-border)";
-      if (e.dataTransfer && e.dataTransfer.files) {
-        handleFiles(e.dataTransfer.files);
-      }
-    });
-    window.addEventListener("paste", (e) => {
-      if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length) {
-        handleFiles(e.clipboardData.files);
-      }
-    });
-
-    // --- Voice Input (Microphone) ---
-    function toggleVoiceInput() {
-      if (isRecordingSpeech) {
-        stopVoiceInput();
-      } else {
-        startVoiceInput();
-      }
-    }
-
-    function startVoiceInput() {
-      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const banner = document.getElementById("voice-status-banner");
-      const micBtn = document.getElementById("btn-mic");
-
-      if (SpeechRec) {
-        try {
-          speechRecognition = new SpeechRec();
-          speechRecognition.continuous = true;
-          speechRecognition.interimResults = true;
-          speechRecognition.lang = "en-US";
-
-          const chatInput = document.getElementById("chat-input");
-          let initialText = chatInput.value ? chatInput.value + " " : "";
-
-          speechRecognition.onresult = (event) => {
-            let interimTranscript = "";
-            let finalTranscript = "";
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-              if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript;
-              } else {
-                interimTranscript += event.results[i][0].transcript;
-              }
-            }
-            chatInput.value = initialText + finalTranscript + (interimTranscript ? " (" + interimTranscript + ")" : "");
-            chatInput.scrollTop = chatInput.scrollHeight;
-          };
-
-          speechRecognition.onerror = (event) => {
-            if (event.error !== "no-speech") {
-              console.warn("Speech error:", event.error);
-              stopVoiceInput();
-            }
-          };
-
-          speechRecognition.onend = () => {
-            if (isRecordingSpeech) {
-              try { speechRecognition.start(); } catch(e) { stopVoiceInput(); }
-            }
-          };
-
-          speechRecognition.start();
-          isRecordingSpeech = true;
-          micBtn.classList.add("recording");
-          banner.style.display = "flex";
-          return;
-        } catch(e) {
-          console.warn("Speech recognition init error:", e);
-        }
-      }
-
-      // Audio recorder fallback
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-          mediaRecorder = new MediaRecorder(stream);
-          audioChunks = [];
-          mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-          mediaRecorder.onstop = async () => {
-            const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-            const audioFile = new File([audioBlob], `voice_memo_${Date.now()}.webm`, { type: "audio/webm" });
-            stream.getTracks().forEach(t => t.stop());
-            await handleFiles([audioFile]);
-          };
-          mediaRecorder.start();
-          isRecordingSpeech = true;
-          micBtn.classList.add("recording");
-          banner.style.display = "flex";
-        }).catch(err => {
-          alert("Microphone permission was denied or not supported on this connection.\n\nTip: Connect over localhost or HTTPS, or grant microphone permissions in browser settings.");
-        });
-      } else {
-        alert("Speech Recognition and Microphone not supported in this browser.");
-      }
-    }
-
-    function stopVoiceInput() {
-      isRecordingSpeech = false;
-      const banner = document.getElementById("voice-status-banner");
-      const micBtn = document.getElementById("btn-mic");
-      if (micBtn) micBtn.classList.remove("recording");
-      if (banner) banner.style.display = "none";
-
-      if (speechRecognition) {
-        try { speechRecognition.stop(); } catch(e) {}
-        speechRecognition = null;
-      }
-      if (mediaRecorder && mediaRecorder.state !== "inactive") {
-        try { mediaRecorder.stop(); } catch(e) {}
-        mediaRecorder = null;
-      }
-      const chatInput = document.getElementById("chat-input");
-      if (chatInput) {
-        chatInput.value = chatInput.value.replace(/\s*\([^)]*\)\s*$/, "").trim();
-      }
-    }
-
-    async function analyzeAttachmentWithTeacher(fileId, promptText) {
-      const targetPrompt = promptText || prompt("What would you like the Teacher AI to analyze or extract from this file?", "Analyze this file thoroughly and describe all details, text, and insights.");
-      if (!targetPrompt) return;
-
-      appendMessage("assistant", `
-        <div class="thinking-box">
-          <span>Teacher AI is analyzing file<span class="thinking-seconds">...</span></span>
-          <div class="thinking-dots"><span></span><span></span><span></span></div>
-        </div>
-      `, true);
-
+    // Conversations State Machine
+    async function loadConversations() {
       try {
-        const res = await fetch("/api/analyze/multimodal", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ file_id: fileId, prompt: targetPrompt })
-        });
-        const data = await res.json();
-        const container = document.getElementById("messages-container");
-        const lastMsg = container.lastElementChild;
-        if (data.success && data.analysis) {
-          lastMsg.innerHTML = `
-            <div style="font-size:0.75rem; color:var(--accent); font-weight:600; margin-bottom:6px;">⚡ Teacher Multimodal Analysis:</div>
-            ${formatContent(data.analysis)}
-          `;
-        } else {
-          lastMsg.innerHTML = `<span style="color:var(--danger);">⚠️ Analysis failed: ${data.error || 'Unknown error. Verify Gemini key.'}</span>`;
+        const res = await fetch("/api/conversations");
+        const convs = await res.json();
+        const list = document.getElementById("conversations-list");
+        list.innerHTML = "";
+
+        if (!convs.length) {
+          list.innerHTML = '<div style="padding:12px;font-size:0.75rem;color:var(--text-muted);">No saved chats yet.</div>';
+          return;
         }
-      } catch(err) {
-        const container = document.getElementById("messages-container");
-        container.lastElementChild.innerHTML = `<span style="color:var(--danger);">⚠️ Network error: ${err.message}</span>`;
-      }
-    }
 
-    let thinkingTimer = null;
-
-    async function sendMessage() {
-      if (activeEventSource) return;
-      if (isRecordingSpeech) stopVoiceInput();
-
-      const input = document.getElementById("chat-input");
-      const sendBtn = document.getElementById("btn-send");
-      const stopBtn = document.getElementById("btn-stop");
-      const text = input.value.trim();
-
-      if (!text && activeAttachments.length === 0) return;
-
-      const sentAttachments = [...activeAttachments];
-      activeAttachments = [];
-      renderAttachmentTray();
-
-      input.value = "";
-      input.disabled = false;
-      sendBtn.style.display = "none";
-      stopBtn.style.display = "block";
-
-      // Build User Message HTML
-      let userHtml = "";
-      if (sentAttachments.length > 0) {
-        userHtml += '<div class="chat-attachments-block">';
-        sentAttachments.forEach(att => {
-          if (att.category === "image") {
-            userHtml += `
-              <div>
-                <a href="${att.url}" target="_blank"><img class="chat-attached-img" src="${att.url}" alt="${escapeHtml(att.name)}"></a>
-                <button class="multimodal-btn" onclick="analyzeAttachmentWithTeacher('${att.id}', 'Analyze this image and explain everything it shows')">⚡ Teacher Vision Analysis</button>
-              </div>`;
-          } else if (att.category === "audio") {
-            userHtml += `
-              <div>
-                <audio class="chat-attached-audio" controls src="${att.url}"></audio>
-                <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">🎵 ${escapeHtml(att.name)} (${att.size_str})</div>
-                <button class="multimodal-btn" onclick="analyzeAttachmentWithTeacher('${att.id}', 'Transcribe and analyze this audio clip')">⚡ Teacher Audio Analysis</button>
-              </div>`;
-          } else {
-            userHtml += `
-              <div>
-                <a class="chat-attached-file" href="${att.url}" target="_blank" download="${escapeHtml(att.name)}">
-                  📎 ${escapeHtml(att.name)} <small style="opacity:0.7">(${att.size_str})</small>
-                </a>
-              </div>`;
-          }
-        });
-        userHtml += '</div>';
-      }
-      if (text) {
-        userHtml += formatContent(text);
-      }
-      appendMessage("user", userHtml, true);
-
-      // Build Prompt With File Context for Offline Inference Engine
-      let promptWithContext = text || "Please inspect and summarize the attached file.";
-      if (sentAttachments.length > 0) {
-        let attachmentContext = "";
-        sentAttachments.forEach(att => {
-          if (att.category === "text" || att.category === "document") {
-            attachmentContext += `\n\n--- [ATTACHED FILE: ${att.name} (${att.lines} lines, ${att.size_str})] ---\n${att.extracted_text}\n--- [END OF ${att.name}] ---\n`;
-          } else if (att.category === "image") {
-            attachmentContext += `\n\n[Attached Image: ${att.name} (${att.dimensions || 'image'}, ${att.size_str}). Image displayed in chat.]\n`;
-          } else if (att.category === "audio") {
-            attachmentContext += `\n\n[Attached Audio File: ${att.name} (${att.size_str}). Audio player active in chat.]\n`;
-          }
-        });
-        promptWithContext = `${attachmentContext}\nUser Request: ${text || "Please analyze the attached content."}`;
-      }
-
-      currentFullText = "";
-      currentAssistantMsg = appendMessage("assistant", `
-        <div class="thinking-box">
-          <span>Merlin is thinking<span class="thinking-seconds"> (0s)</span></span>
-          <div class="thinking-dots"><span></span><span></span><span></span></div>
-        </div>
-      `, true);
-
-      const startTime = Date.now();
-      clearInterval(thinkingTimer);
-      thinkingTimer = setInterval(() => {
-        const sec = Math.floor((Date.now() - startTime) / 1000);
-        const secSpan = currentAssistantMsg ? currentAssistantMsg.querySelector(".thinking-seconds") : null;
-        if (secSpan) {
-          secSpan.textContent = ` (${sec}s)`;
-        }
-      }, 1000);
-
-      const url = `/api/chat/stream?prompt=${encodeURIComponent(promptWithContext)}&mode=${currentMode}&session_id=${sessionId}`;
-      activeEventSource = new EventSource(url);
-
-      // Watchdog: If no token arrives within 35s, give helpful status feedback without freezing
-      clearTimeout(streamWatchdog);
-      streamWatchdog = setTimeout(() => {
-        if (!currentFullText && activeEventSource && currentAssistantMsg) {
-          currentAssistantMsg.innerHTML = `
-            <div style="color:var(--warning); font-size:0.85rem;">
-              ⏳ Evaluating prompt on CPU...<br>
-              <small style="color:var(--text-muted);">Inference is running. First tokens will stream momentarily.</small>
+        convs.forEach(c => {
+          const item = document.createElement("div");
+          item.className = `conv-item ${c.id === activeConversationId ? 'active' : ''} ${c.pinned ? 'pinned' : ''}`;
+          item.onclick = (e) => {
+            if (e.target.closest(".conv-action-btn")) return;
+            switchConversation(c.id);
+          };
+          item.innerHTML = `
+            <div class="conv-title">${c.title || "New Chat"}</div>
+            <div class="conv-actions">
+              <button class="conv-action-btn" title="Pin / Unpin" onclick="togglePin('${c.id}', ${c.pinned ? 0 : 1})">${c.pinned ? '★' : '☆'}</button>
+              <button class="conv-action-btn" title="Delete" onclick="deleteConv('${c.id}')">✕</button>
             </div>
           `;
-        }
-      }, 35000);
+          list.appendChild(item);
+        });
+      } catch (e) {
+        console.error("Failed loading conversations:", e);
+      }
+    }
+
+    async function createNewChat() {
+      const res = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "New Chat", mode: currentMode })
+      });
+      const conv = await res.json();
+      activeConversationId = conv.id;
+      loadConversations();
+      showConversationMessages(conv.id, []);
+    }
+
+    async function switchConversation(convId) {
+      activeConversationId = convId;
+      loadConversations();
+      const res = await fetch(`/api/conversations/${convId}`);
+      const data = await res.json();
+      if (data.conversation) {
+        setMode(data.conversation.mode || "assistant");
+        showConversationMessages(convId, data.messages || []);
+      }
+    }
+
+    async function togglePin(convId, newPinned) {
+      await fetch(`/api/conversations/${convId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned: newPinned })
+      });
+      loadConversations();
+    }
+
+    async function deleteConv(convId) {
+      await fetch(`/api/conversations/${convId}/delete`, { method: "POST" });
+      if (activeConversationId === convId) {
+        activeConversationId = null;
+        document.getElementById("hero-view").style.display = "flex";
+        document.getElementById("messages-list").style.display = "none";
+      }
+      loadConversations();
+    }
+
+    async function clearCurrentChat() {
+      if (activeConversationId) {
+        await fetch(`/api/conversations/${activeConversationId}/clear`, { method: "POST" });
+        showConversationMessages(activeConversationId, []);
+      }
+      closeModal("settings-modal");
+    }
+
+    function showConversationMessages(convId, messages) {
+      const hero = document.getElementById("hero-view");
+      const list = document.getElementById("messages-list");
+      list.innerHTML = "";
+
+      if (!messages.length) {
+        hero.style.display = "flex";
+        list.style.display = "none";
+        return;
+      }
+
+      hero.style.display = "none";
+      list.style.display = "flex";
+
+      messages.forEach(m => {
+        appendMessageElement(m.role, m.content);
+      });
+      scrollViewportToBottom();
+    }
+
+    function appendMessageElement(role, content) {
+      const list = document.getElementById("messages-list");
+      document.getElementById("hero-view").style.display = "none";
+      list.style.display = "flex";
+
+      const block = document.createElement("div");
+      block.className = `message-block ${role}`;
+
+      if (role === "assistant") {
+        block.innerHTML = `
+          <div class="assistant-header">
+            <span class="sparkle-icon"></span>
+            Merlin
+          </div>
+          <div class="bubble-content">${renderMarkdown(content)}</div>
+        `;
+      } else {
+        block.innerHTML = `<div class="bubble-content">${renderMarkdown(content)}</div>`;
+      }
+
+      list.appendChild(block);
+      scrollViewportToBottom();
+      return block.querySelector(".bubble-content");
+    }
+
+    function scrollViewportToBottom() {
+      const vp = document.getElementById("messages-viewport");
+      vp.scrollTop = vp.scrollHeight;
+    }
+
+    function promptHero(text) {
+      const ta = document.getElementById("chat-textarea");
+      ta.value = text;
+      autoResizeTextarea(ta);
+      submitMessage();
+    }
+
+    // Submit & Stream Message
+    async function submitMessage() {
+      const ta = document.getElementById("chat-textarea");
+      const promptText = ta.value.trim();
+      if (!promptText && !attachedFile) return;
+
+      if (!activeConversationId) {
+        await createNewChat();
+      }
+
+      let payloadText = promptText;
+      if (attachedFile && attachedFile.extracted_text) {
+        payloadText = `--- [ATTACHED FILE: ${attachedFile.name}] ---\n${attachedFile.extracted_text}\n--- [END OF FILE] ---\n\n${promptText}`;
+      }
+
+      ta.value = "";
+      autoResizeTextarea(ta);
+      clearAttachment();
+
+      // Append User message to UI
+      appendMessageElement("user", promptText);
+
+      // Save User message to persistent database
+      fetch(`/api/conversations/${activeConversationId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "user", content: payloadText })
+      });
+
+      // Prepare UI for Assistant Streaming
+      const assistantBubble = appendMessageElement("assistant", "");
+      assistantBubble.classList.add("streaming-cursor");
+      toggleStreamingUI(true);
+
+      let fullResponse = "";
+      const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=${currentMode}&session_id=${activeConversationId}`;
+      activeEventSource = new EventSource(streamUrl);
 
       activeEventSource.onmessage = function(event) {
         if (event.data === "[DONE]") {
-          finishStream();
+          finishStreaming(assistantBubble, fullResponse);
           return;
         }
         try {
           const data = JSON.parse(event.data);
           if (data.chunk) {
-            clearInterval(thinkingTimer);
-            clearTimeout(streamWatchdog);
-            currentFullText += data.chunk;
-            currentAssistantMsg.innerHTML = formatContent(currentFullText);
-            const container = document.getElementById("messages-container");
-            container.scrollTop = container.scrollHeight;
+            fullResponse += data.chunk;
+            assistantBubble.innerHTML = renderMarkdown(fullResponse);
+            scrollViewportToBottom();
           }
-        } catch(e) {}
+        } catch (e) {}
       };
 
       activeEventSource.onerror = function() {
-        clearInterval(thinkingTimer);
-        clearTimeout(streamWatchdog);
-        if (!currentFullText && currentAssistantMsg) {
-          currentAssistantMsg.innerHTML = `
-            <div style="color:var(--danger); font-size:0.85rem;">
-              ⚠️ AI engine is unreachable or busy.<br>
-              <small style="color:var(--text-muted);">Verify that <code>./start_llama_server.sh</code> is running or inspect the System tab.</small>
-            </div>
-          `;
-        }
-        finishStream();
+        finishStreaming(assistantBubble, fullResponse);
       };
     }
 
-    async function stopMessage() {
-      clearInterval(thinkingTimer);
-      clearTimeout(streamWatchdog);
+    function toggleStreamingUI(isStreaming) {
+      document.getElementById("btn-send").style.display = isStreaming ? "none" : "flex";
+      document.getElementById("btn-stop").style.display = isStreaming ? "flex" : "none";
+    }
+
+    function stopGeneration() {
       if (activeEventSource) {
         activeEventSource.close();
         activeEventSource = null;
       }
-      try {
-        await fetch("/api/chat/stop", {
+      if (activeConversationId) {
+        fetch("/api/chat/stop", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: sessionId })
+          body: JSON.stringify({ session_id: activeConversationId })
         });
-      } catch(e) {}
-
-      if (currentAssistantMsg) {
-        if (!currentFullText) {
-          currentAssistantMsg.innerHTML = '<span style="color:var(--text-muted); font-style:italic;">[Generation stopped by user]</span>';
-        } else {
-          currentAssistantMsg.innerHTML = formatContent(currentFullText) + '<br><span style="color:var(--text-muted); font-size:0.75rem; font-style:italic;">[Stopped]</span>';
-        }
       }
-      finishStream();
+      const cursors = document.querySelectorAll(".streaming-cursor");
+      cursors.forEach(c => c.classList.remove("streaming-cursor"));
+      toggleStreamingUI(false);
     }
 
-    function finishStream() {
-      clearInterval(thinkingTimer);
-      clearTimeout(streamWatchdog);
+    function finishStreaming(bubbleEl, fullResponse) {
       if (activeEventSource) {
         activeEventSource.close();
         activeEventSource = null;
       }
-      const input = document.getElementById("chat-input");
-      input.disabled = false;
-      document.getElementById("btn-send").style.display = "block";
-      document.getElementById("btn-stop").style.display = "none";
-    }
+      bubbleEl.classList.remove("streaming-cursor");
+      bubbleEl.innerHTML = renderMarkdown(fullResponse);
+      toggleStreamingUI(false);
 
-    // --- Personal Assistant API ---
-    async function loadTodos() {
-      const res = await fetch("/api/todos");
-      const todos = await res.json();
-      const list = document.getElementById("todo-list");
-      list.innerHTML = todos.length ? "" : "<p style='color:var(--text-muted); font-size:0.75rem;'>No tasks active.</p>";
-      todos.forEach(t => {
-        const div = document.createElement("div");
-        div.className = "todo-item" + (t.completed ? " done" : "");
-        div.innerHTML = `
-          <span style="cursor:pointer;" onclick="toggleTodo(${t.id})">${t.task}</span>
-          <button class="btn-icon" onclick="deleteTodo(${t.id})">✕</button>
-        `;
-        list.appendChild(div);
-      });
-    }
-
-    async function addTodo() {
-      const input = document.getElementById("todo-input");
-      const task = input.value.trim();
-      if (!task) return;
-      await fetch("/api/todos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task })
-      });
-      input.value = "";
-      loadTodos();
-    }
-
-    async function toggleTodo(id) {
-      await fetch("/api/todos/toggle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-      loadTodos();
-    }
-
-    async function deleteTodo(id) {
-      await fetch("/api/todos/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-      loadTodos();
-    }
-
-    async function loadNotes() {
-      const res = await fetch("/api/notes");
-      const notes = await res.json();
-      const list = document.getElementById("notes-list");
-      list.innerHTML = notes.length ? "" : "<p style='color:var(--text-muted); font-size:0.75rem;'>No notes recorded.</p>";
-      notes.forEach(n => {
-        const div = document.createElement("div");
-        div.style.cssText = "background:var(--bg); border:1px solid var(--surface-border); border-radius:6px; padding:8px; margin-bottom:8px; font-size:0.8rem;";
-        div.innerHTML = `
-          <div style="display:flex; justify-content:space-between; font-weight:600; margin-bottom:4px;">
-            <span>${n.title}</span>
-            <button class="btn-icon" onclick="deleteNote(${n.id})">✕</button>
-          </div>
-          <div style="color:var(--text-muted);">${n.content}</div>
-        `;
-        list.appendChild(div);
-      });
-    }
-
-    async function addNote() {
-      const title = document.getElementById("note-title").value.trim();
-      const content = document.getElementById("note-content").value.trim();
-      if (!content) return;
-      await fetch("/api/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content })
-      });
-      document.getElementById("note-title").value = "";
-      document.getElementById("note-content").value = "";
-      loadNotes();
-    }
-
-    async function deleteNote(id) {
-      await fetch("/api/notes/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-      loadNotes();
-    }
-
-    // --- Knowledge Hub ---
-    async function loadKnowledge() {
-      const res = await fetch("/api/knowledge");
-      const items = await res.json();
-      const list = document.getElementById("knowledge-list");
-      list.innerHTML = items.length ? "" : "<p style='color:var(--text-muted); font-size:0.75rem;'>No distilled skills stored yet.</p>";
-      items.forEach(k => {
-        const div = document.createElement("div");
-        div.style.cssText = "background:var(--bg); border:1px solid var(--surface-border); border-radius:6px; padding:10px; margin-bottom:8px; font-size:0.8rem;";
-        div.innerHTML = `
-          <div style="display:flex; justify-content:space-between; font-weight:600; color:var(--accent); margin-bottom:4px;">
-            <span>${k.topic}</span>
-            <button class="btn-icon" onclick="deleteKnowledge(${k.id})">✕</button>
-          </div>
-          <div style="margin-bottom:6px;">${k.lesson}</div>
-          ${k.code_example ? `<pre style="font-size:0.75rem;"><code>${k.code_example}</code></pre>` : ''}
-        `;
-        list.appendChild(div);
-      });
-    }
-
-    async function deleteKnowledge(id) {
-      await fetch("/api/knowledge/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-      loadKnowledge();
-    }
-
-    async function loadGaps() {
-      const res = await fetch("/api/gaps");
-      const gaps = await res.json();
-      const list = document.getElementById("gaps-list");
-      list.innerHTML = gaps.length ? "<div style='font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;'>PENDING GAPS:</div>" : "";
-      gaps.forEach(g => {
-        const div = document.createElement("div");
-        div.style.cssText = "background:var(--bg); border:1px solid var(--surface-border); border-radius:6px; padding:6px 8px; margin-bottom:6px; font-size:0.75rem; display:flex; justify-content:space-between; align-items:center;";
-        div.innerHTML = `
-          <span>${g.question} (${g.status})</span>
-          <button class="btn-icon" onclick="deleteGap(${g.id})">✕</button>
-        `;
-        list.appendChild(div);
-      });
-    }
-
-    async function recordGap() {
-      const input = document.getElementById("gap-question");
-      const question = input.value.trim();
-      if (!question) return;
-      await fetch("/api/gaps", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question })
-      });
-      input.value = "";
-      loadGaps();
-    }
-
-    async function deleteGap(id) {
-      await fetch("/api/gaps/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-      loadGaps();
-    }
-
-    function openSyncModal() { document.getElementById("sync-modal").style.display = "flex"; }
-    function closeSyncModal() { document.getElementById("sync-modal").style.display = "none"; }
-
-    const TEACHER_DEFAULT_MODELS = {
-      gemini: ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-flash"],
-      groq: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "deepseek-r1-distill-llama-70b"],
-      openrouter: ["google/gemini-2.0-flash-exp:free", "deepseek/deepseek-r1:free", "qwen/qwen-2.5-coder-32b-instruct:free"],
-      openai: ["gpt-4o-mini", "gpt-4o"]
-    };
-
-    async function detectModelsForProvider() {
-      const provider = document.getElementById("sync-provider").value;
-      const apiKey = document.getElementById("sync-api-key").value.trim();
-      const datalist = document.getElementById("sync-model-datalist");
-      const modelInput = document.getElementById("sync-model-input");
-
-      const prevVal = modelInput.value;
-      modelInput.placeholder = "Querying live provider API for models...";
-
-      try {
-        const res = await fetch(`/api/teacher/models?provider=${encodeURIComponent(provider)}&api_key=${encodeURIComponent(apiKey)}`);
-        const data = await res.json();
-        if (data.models && data.models.length > 0) {
-          datalist.innerHTML = "";
-          data.models.forEach(m => {
-            const opt = document.createElement("option");
-            opt.value = m;
-            datalist.appendChild(opt);
-          });
-          if (!prevVal || !data.models.includes(prevVal)) {
-            modelInput.value = data.models[0];
-          }
-          modelInput.placeholder = "Select or type any custom model...";
-        } else {
-          modelInput.placeholder = "No models found from key. Type custom model name.";
-        }
-      } catch(e) {
-        modelInput.placeholder = "Error contacting provider. Type model name manually.";
-      }
-    }
-
-    function onSyncProviderChange() {
-      const provider = document.getElementById("sync-provider").value;
-      const customBox = document.getElementById("custom-provider-fields");
-      const modelWrapper = document.getElementById("model-select-wrapper");
-      const modelInput = document.getElementById("sync-model-input");
-      const datalist = document.getElementById("sync-model-datalist");
-      const keyInput = document.getElementById("sync-api-key");
-
-      customBox.style.display = (provider === "custom") ? "block" : "none";
-      modelWrapper.style.display = (provider === "custom" || provider === "auto") ? "none" : "block";
-
-      if (TEACHER_DEFAULT_MODELS[provider]) {
-        datalist.innerHTML = "";
-        TEACHER_DEFAULT_MODELS[provider].forEach(m => {
-          const opt = document.createElement("option");
-          opt.value = m;
-          datalist.appendChild(opt);
+      if (activeConversationId && fullResponse) {
+        fetch(`/api/conversations/${activeConversationId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: "assistant", content: fullResponse })
         });
-        modelInput.value = TEACHER_DEFAULT_MODELS[provider][0];
       }
-
-      if (provider === "gemini") {
-        keyInput.placeholder = "AIza... (or leave empty to use server GEMINI_API_KEY)";
-      } else if (provider === "groq") {
-        keyInput.placeholder = "gsk_... (or leave empty to use GROQ_API_KEY)";
-      } else if (provider === "openrouter") {
-        keyInput.placeholder = "sk-or-...";
-      } else if (provider === "openai") {
-        keyInput.placeholder = "sk-...";
-      } else {
-        keyInput.placeholder = "Enter your API key (AIza..., gsk_..., sk-or-..., sk-...)";
-      }
-
-      if (keyInput.value.trim().length > 10) {
-        detectModelsForProvider();
-      }
+      loadConversations();
     }
 
-    async function triggerSync() {
-      const apiKey = document.getElementById("sync-api-key").value.trim();
-      let topic = document.getElementById("sync-topic").value.trim();
-      const provider = document.getElementById("sync-provider").value;
-      const modelInput = document.getElementById("sync-model-input");
-      const chosenModel = modelInput ? modelInput.value.trim() : "";
+    // File Attachment Handler
+    function handleFileUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
 
-      if (!apiKey && provider === "gemini") {
-        alert("Please enter your Gemini API key (starts with AIzaSy...).\n\nYou can get a free key in 10 seconds at: https://aistudio.google.com/apikey");
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = reader.result;
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: file.name, data: base64Data })
+        });
+        const d = await res.json();
+        if (d.success) {
+          attachedFile = d.file;
+          document.getElementById("attached-file-name").innerText = `${file.name} (${d.file.size_str})`;
+          document.getElementById("attachment-tray").style.display = "flex";
+          document.getElementById("btn-send").disabled = false;
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearAttachment() {
+      attachedFile = null;
+      document.getElementById("attachment-tray").style.display = "none";
+      document.getElementById("file-uploader").value = "";
+      autoResizeTextarea(document.getElementById("chat-textarea"));
+    }
+
+    // Voice Dictation (Web Speech API)
+    function toggleDictation() {
+      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        alert("Speech Recognition is not supported in this browser.");
+        return;
+      }
+      if (isDictating) {
+        recognition.stop();
         return;
       }
 
-      if (apiKey.includes(" ") || apiKey.startsWith("cd ") || apiKey.startsWith("sudo ") || apiKey.startsWith("git ") || apiKey.startsWith("./")) {
-        alert("Oops! It looks like you pasted a terminal bash command into the API Key box:\n\n\"" + apiKey + "\"\n\n👉 Run that command in your server's SSH terminal, not here.\n👉 Here in this box, paste your Google Gemini API key (starts with AIzaSy...).");
-        return;
-      }
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
 
-      if (!topic) {
-        topic = "Building resilient offline architecture, socket networking, and data processing in Python";
-      }
-
-      let endpoint = null;
-      let model = null;
-
-      if (provider === "gemini") {
-        model = chosenModel || "gemini-1.5-flash";
-        endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-      } else if (provider === "groq") {
-        endpoint = "https://api.groq.com/openai/v1/chat/completions";
-        model = chosenModel || "llama-3.3-70b-versatile";
-      } else if (provider === "openrouter") {
-        endpoint = "https://openrouter.ai/api/v1/chat/completions";
-        model = chosenModel || "google/gemini-2.0-flash-exp:free";
-      } else if (provider === "openai") {
-        endpoint = "https://api.openai.com/v1/chat/completions";
-        model = chosenModel || "gpt-4o-mini";
-      } else if (provider === "custom") {
-        endpoint = document.getElementById("sync-custom-endpoint").value.trim() || null;
-        model = document.getElementById("sync-custom-model").value.trim() || null;
-      }
-
-      closeSyncModal();
-      const banner = document.getElementById("sync-banner");
-      const text = document.getElementById("sync-status-text");
-      banner.style.display = "block";
-      text.innerText = `Connecting to ${model || 'Teacher AI'}...`;
-
-      try {
-        const res = await fetch("/api/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ api_key: apiKey, topic, endpoint, model })
-        });
-        const data = await res.json();
-        if (data.error) {
-          banner.style.display = "none";
-          alert("Sync error: " + data.error);
-          return;
-        }
-        startSyncPolling();
-      } catch (err) {
-        banner.style.display = "none";
-        alert("Failed to reach server: " + err);
-      }
+      recognition.onstart = () => {
+        isDictating = true;
+        document.getElementById("btn-mic").style.color = "var(--danger)";
+      };
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        const ta = document.getElementById("chat-textarea");
+        ta.value = (ta.value + " " + transcript).trim();
+        autoResizeTextarea(ta);
+      };
+      recognition.onend = () => {
+        isDictating = false;
+        document.getElementById("btn-mic").style.color = "var(--text-muted)";
+      };
+      recognition.start();
     }
 
-    function startSyncPolling() {
-      const banner = document.getElementById("sync-banner");
-      const text = document.getElementById("sync-status-text");
-      banner.style.display = "block";
-
-      if (syncPollInterval) clearInterval(syncPollInterval);
-      syncPollInterval = setInterval(async () => {
-        try {
-          const res = await fetch("/api/sync");
-          const state = await res.json();
-          if (state.is_syncing) {
-            text.innerText = `Syncing (${state.progress}/${state.total}): ${state.current_task || 'Querying teacher...'}`;
-          } else {
-            clearInterval(syncPollInterval);
-            banner.style.display = "none";
-            if (state.last_result === "error") {
-              alert("Teacher Sync Error:\n" + (state.last_error || "Could not connect to Gemini. Please check your API key."));
-            } else if (state.last_result === "completed") {
-              alert("✅ Distillation Complete! Gemini's lesson and verified code have been permanently added to Merlin's offline SQLite memory.");
-            }
-            loadKnowledge();
-            loadGaps();
-          }
-        } catch (e) {
-          clearInterval(syncPollInterval);
-        }
-      }, 1000);
-    }
-
-    // --- Hugging Face Dataset Import ---
-    let datasetPollInterval = null;
-
-    function openDatasetModal() { document.getElementById("dataset-modal").style.display = "flex"; }
-    function closeDatasetModal() { document.getElementById("dataset-modal").style.display = "none"; }
-
-    function onCuratedDatasetChange() {
-      const val = document.getElementById("hf-curated-select").value;
-      document.getElementById("hf-custom-repo-box").style.display = (val === "custom") ? "block" : "none";
-    }
-
-    async function triggerDatasetImport() {
-      const curated = document.getElementById("hf-curated-select").value;
-      const custom = document.getElementById("hf-custom-repo").value.trim();
-      const limit = parseInt(document.getElementById("hf-limit-select").value, 10) || 50;
-      let dataset = (curated === "custom") ? custom : curated;
-      const token = document.getElementById("hf-token-input") ? document.getElementById("hf-token-input").value.trim() : "";
-
-      if (!dataset) return alert("Please select or specify a Hugging Face dataset repository.");
-
-      let subset = null;
-      if (dataset.includes(":")) {
-        const parts = dataset.split(":");
-        dataset = parts[0];
-        subset = parts[1];
-      }
-
-      closeDatasetModal();
-      const banner = document.getElementById("sync-banner");
-      const text = document.getElementById("sync-status-text");
-      banner.style.display = "block";
-      const displayLabel = subset ? `${dataset} [${subset}]` : dataset;
-      text.innerText = `Starting Hugging Face stream for ${displayLabel}...`;
-
-      const saveLocal = document.getElementById("hf-save-local") ? document.getElementById("hf-save-local").checked : true;
-
-      try {
-        const res = await fetch("/api/dataset/import", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dataset, subset, limit, save_local: saveLocal, token })
-        });
-        const data = await res.json();
-        if (data.error) {
-          alert("Import error: " + data.error);
-          banner.style.display = "none";
-          return;
-        }
-        startDatasetPolling();
-      } catch (e) {
-        banner.style.display = "none";
-        alert("Failed to start dataset import: " + e);
-      }
-    }
-
-    function startDatasetPolling() {
-      const banner = document.getElementById("sync-banner");
-      const text = document.getElementById("sync-status-text");
-      banner.style.display = "block";
-
-      if (datasetPollInterval) clearInterval(datasetPollInterval);
-      datasetPollInterval = setInterval(async () => {
-        try {
-          const res = await fetch("/api/dataset/status");
-          const state = await res.json();
-          if (state.is_importing) {
-            text.innerText = `Importing HF Dataset (${state.progress}/${state.total}): ${state.current_dataset}`;
-          } else {
-            clearInterval(datasetPollInterval);
-            banner.style.display = "none";
-            if (state.last_result && state.last_result.startsWith("failed")) {
-              alert("Dataset Import Error:\n" + state.last_result);
-            } else if (state.last_result === "completed") {
-              alert("✅ Dataset Assimilation Complete!\n" + (state.progress || state.total) + " records have been assimilated into Merlin's offline memory.");
-            }
-            loadKnowledge();
-          }
-        } catch (e) {
-          clearInterval(datasetPollInterval);
-        }
-      }, 1000);
-    }
-
-    // --- System Telemetry & Logs ---
+    // Hardware Telemetry & Models
     async function loadTelemetry() {
       try {
-        const [sysRes, statusRes] = await Promise.all([fetch("/api/system"), fetch("/api/status")]);
-        const sys = await sysRes.json();
-        const status = await statusRes.json();
-
-        document.getElementById("stat-model").innerText = `${status.backend} (${status.model})`;
-        document.getElementById("stat-os").innerText = `${sys.os} (${sys.arch})`;
-        document.getElementById("stat-temp").innerText = sys.temperature;
-        document.getElementById("stat-cpu").innerText = sys.cpu_usage;
-        document.getElementById("stat-mem").innerText = sys.memory;
-        document.getElementById("stat-disk").innerText = sys.disk;
-        document.getElementById("stat-uptime").innerText = sys.uptime;
-        document.getElementById("backend-badge").innerText = status.backend.toUpperCase();
+        const res = await fetch("/api/system");
+        const d = await res.json();
+        document.getElementById("diag-temp").innerText = d.temperature;
+        document.getElementById("diag-cpu").innerText = d.cpu_usage;
+        document.getElementById("diag-mem").innerText = d.memory;
+        document.getElementById("diag-disk").innerText = d.disk;
       } catch (e) {}
     }
 
-    async function loadAuditLogs() {
-      try {
-        const res = await fetch("/api/audit");
-        const logs = await res.json();
-        const list = document.getElementById("audit-list");
-        list.innerHTML = logs.map(l => `<div>[${l.created_at.split(' ')[1]}] <b>${l.event_type}</b>: ${l.details}</div>`).join("");
-      } catch (e) {}
-    }
-
-    // --- Model Management ---
     async function loadModels() {
       try {
         const res = await fetch("/api/models");
         const models = await res.json();
-        const sel = document.getElementById("model-selector");
-        if (!models || models.length === 0) {
-          sel.innerHTML = "<option value=''>⚡ No models downloaded</option>";
+        const sel = document.getElementById("model-select");
+        sel.innerHTML = "";
+        if (!models.length) {
+          sel.innerHTML = '<option value="">No local .gguf models found</option>';
           return;
         }
-        sel.innerHTML = "";
         models.forEach(m => {
           const opt = document.createElement("option");
           opt.value = m.filename;
-          opt.text = `⚡ ${m.name} (${m.size_mb} MB)`;
+          opt.innerText = `${m.name} (${m.size_mb} MB) ${m.is_active ? '✓ Active' : ''}`;
           if (m.is_active) opt.selected = true;
           sel.appendChild(opt);
         });
       } catch (e) {}
     }
 
-    async function switchModel(modelFilename) {
-      if (!modelFilename) return;
-      const statusTag = document.getElementById("status-tag");
-      const prevTag = statusTag.innerText;
-      statusTag.innerText = "Switching model...";
-      try {
-        const res = await fetch("/api/models/active", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: modelFilename })
-        });
-        const data = await res.json();
-        if (data.success) {
-          statusTag.innerText = `Active: ${modelFilename}`;
-          loadTelemetry();
-          loadModels();
-        } else {
-          alert("Could not switch model: " + data.message);
-          statusTag.innerText = prevTag;
-        }
-      } catch (e) {
-        alert("Error switching model: " + e);
-        statusTag.innerText = prevTag;
-      }
+    async function switchModel(val) {
+      if (!val) return;
+      await fetch("/api/models/active", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: val })
+      });
+      loadModels();
     }
 
-    // Initial Load
-    loadTodos();
-    loadNotes();
-    loadTelemetry();
-    loadModels();
+    // Teacher Sync & Datasets
+    async function startTeacherSync() {
+      const apiKey = document.getElementById("teacher-api-key").value.trim();
+      const topic = document.getElementById("teacher-topic").value.trim();
+      if (!apiKey) return alert("Please enter an API Key.");
+      closeModal("sync-modal");
+      alert("Teacher distillation started in the background. Learned skills will be indexed into local memory.");
+      await fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: apiKey, topic })
+      });
+    }
+
+    async function startDatasetImport() {
+      const dataset = document.getElementById("hf-dataset-select").value;
+      const limit = parseInt(document.getElementById("hf-limit").value) || 50;
+      closeModal("dataset-modal");
+      alert(`Streaming ingestion started for ${dataset}.`);
+      await fetch("/api/dataset/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataset, limit })
+      });
+    }
+
+    // Initializer
+    window.addEventListener("DOMContentLoaded", () => {
+      initTheme();
+      loadConversations();
+    });
   </script>
 </body>
 </html>

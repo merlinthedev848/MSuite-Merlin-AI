@@ -93,6 +93,46 @@ http://<YOUR_PI_IP>:5000
 
 ---
 
+## 🌐 OpenAI-Compatible REST API
+
+Merlin AI exposes a drop-in replacement for OpenAI endpoints (`POST /v1/chat/completions` and `GET /v1/models`), allowing external IDEs, extensions (Continue.dev, Cursor, Neovim), scripts, and workflows to connect offline with zero cloud dependency:
+
+### 1. Streaming Chat Completion (`stream: true`)
+```bash
+curl http://localhost:5000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "merlin-ai",
+    "messages": [
+      {"role": "system", "content": "You are an expert software engineer."},
+      {"role": "user", "content": "Write an async Python socket server."}
+    ],
+    "stream": true
+  }'
+```
+
+### 2. List Available Local Models
+```bash
+curl http://localhost:5000/v1/models
+```
+
+### 3. VS Code / Continue.dev Configuration
+In `~/.continue/config.json`:
+```json
+{
+  "models": [
+    {
+      "title": "Merlin AI (Offline)",
+      "provider": "openai",
+      "model": "merlin-ai",
+      "apiBase": "http://<YOUR_SERVER_IP>:5000/v1"
+    }
+  ]
+}
+```
+
+---
+
 ## Operating as a Background Service (`systemd`)
 
 To run the assistant automatically on boot:

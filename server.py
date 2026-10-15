@@ -10,6 +10,8 @@ import struct
 
 from memory import (
     init_db,
+    create_conversation, get_conversations, get_conversation, update_conversation, delete_conversation,
+    save_message, get_conversation_messages, clear_conversation_messages,
     add_todo, get_todos, toggle_todo, delete_todo,
     add_note, get_notes, update_note, delete_note,
     get_all_knowledge, add_knowledge, delete_knowledge,
@@ -26,6 +28,7 @@ os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "5000"))
+API_KEY_SECRET = os.getenv("MERLIN_API_KEY") or os.getenv("API_KEY")
 
 engine = None
 server_start_time = time.time()
@@ -36,6 +39,16 @@ def format_bytes(size):
             return f"{size:.1f} {unit}" if unit != 'B' else f"{size} B"
         size /= 1024.0
     return f"{size:.1f} TB"
+
+def check_auth(headers):
+    """Optional bearer token authentication for OpenAI-compatible and management endpoints."""
+    if not API_KEY_SECRET:
+        return True
+    auth = headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:].strip()
+        return token == API_KEY_SECRET
+    return False
 
 class AssistantRequestHandler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -49,24 +62,82 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
         self.end_headers()
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
-        # 1. SSE Real-Time Streaming Chat
-        if path == "/api/chat/stream":
+        # -------------------------------------------------------------
+        # OpenAI-Compatible Endpoints: GET /v1/models & /v1/models/<id>
+        # -------------------------------------------------------------
+        if path == "/v1/models":
+            available = engine.get_available_models()
+            model_items = [
+                {
+                    "id": "merlin-ai",
+                    "object": "model",
+                    "created": int(server_start_time),
+                    "owned_by": "merlin-ai",
+                    "permission": [],
+                    "root": "merlin-ai",
+                    "parent": None
+                }
+            ]
+            for m in available:
+                model_items.append({
+                    "id": m["name"],
+                    "object": "model",
+                    "created": int(server_start_time),
+                    "owned_by": "local",
+                    "permission": [],
+                    "root": m["filename"],
+                    "parent": None
+                })
+            self.send_json({"object": "list", "data": model_items})
+            return
+
+        elif path.startswith("/v1/models/"):
+            model_id = path.split("/v1/models/")[1].strip()
+            self.send_json({
+                "id": model_id,
+                "object": "model",
+                "created": int(server_start_time),
+                "owned_by": "local"
+            })
+            return
+
+        # -------------------------------------------------------------
+        # Conversational State Engine: GET /api/conversations
+        # -------------------------------------------------------------
+        elif path == "/api/conversations":
+            self.send_json(get_conversations())
+            return
+
+        elif path.startswith("/api/conversations/"):
+            conv_id = path.split("/api/conversations/")[1].strip().split("/")[0]
+            conv = get_conversation(conv_id)
+            if not conv:
+                self.send_json({"error": "Conversation not found"}, status=404)
+                return
+            messages = get_conversation_messages(conv_id)
+            self.send_json({"conversation": conv, "messages": messages})
+            return
+
+        # -------------------------------------------------------------
+        # Native SSE Real-Time Streaming Chat: /api/chat/stream
+        # -------------------------------------------------------------
+        elif path == "/api/chat/stream":
             query = urllib.parse.parse_qs(parsed.query)
             prompt = query.get("prompt", [""])[0]
             mode = query.get("mode", ["assistant"])[0]
@@ -84,7 +155,7 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
 
-            # Immediate initial comment ping so the browser/proxy establishes the stream with 0 latency
+            # Immediate initial comment ping so the browser/proxy establishes stream with 0 latency
             try:
                 self.wfile.write(b": connected\n\n")
                 self.wfile.flush()
@@ -104,7 +175,9 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
                 log_event("stream_error", f"Stream exception: {e}", "danger")
             return
 
-        # 2. Status & Model Health
+        # -------------------------------------------------------------
+        # Status, System & Knowledge Endpoints
+        # -------------------------------------------------------------
         elif path == "/api/status":
             uptime_sec = int(time.time() - server_start_time)
             status_data = {
@@ -117,37 +190,30 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
             self.send_json(status_data)
             return
 
-        # 3. System Hardware Telemetry
         elif path == "/api/system":
             self.send_json(get_system_telemetry())
             return
 
-        # 4. To-Dos
         elif path == "/api/todos":
             self.send_json(get_todos())
             return
 
-        # 5. Notes
         elif path == "/api/notes":
             self.send_json(get_notes())
             return
 
-        # 6. Knowledge Base
         elif path == "/api/knowledge":
             self.send_json(get_all_knowledge())
             return
 
-        # 7. Knowledge Gaps
         elif path == "/api/gaps":
             self.send_json(get_unresolved_gaps())
             return
 
-        # 8. Teacher Sync Status
         elif path == "/api/sync":
             self.send_json(sync_state)
             return
 
-        # 8b. Dynamic Teacher Models Discovery
         elif path == "/api/teacher/models":
             query = urllib.parse.parse_qs(parsed.query)
             provider = query.get("provider", ["gemini"])[0]
@@ -156,17 +222,14 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
             self.send_json({"provider": provider, "models": models})
             return
 
-        # 9. Audit Logs
         elif path == "/api/audit":
             self.send_json(get_recent_audit_logs())
             return
 
-        # 10. Available Downloaded Models
         elif path == "/api/models":
             self.send_json(engine.get_available_models())
             return
 
-        # 11. Hugging Face Dataset Status & Curated Repos
         elif path == "/api/dataset/status":
             self.send_json(import_state)
             return
@@ -190,6 +253,16 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
             except Exception:
                 pass
 
+    def do_DELETE(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path.startswith("/api/conversations/"):
+            conv_id = path.split("/api/conversations/")[1].strip().split("/")[0]
+            success = delete_conversation(conv_id)
+            self.send_json({"success": success})
+            return
+        self.send_json({"error": "Not found"}, status=404)
+
     def _handle_post(self):
         def safe_str(val):
             return str(val).strip() if val is not None else ""
@@ -209,8 +282,150 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
         except Exception:
             data = {}
 
+        # -------------------------------------------------------------
+        # OpenAI-Compatible REST API: POST /v1/chat/completions
+        # -------------------------------------------------------------
+        if path == "/v1/chat/completions":
+            if not check_auth(self.headers):
+                self.send_json({"error": {"message": "Invalid API key provided", "type": "invalid_request_error"}}, status=401)
+                return
+
+            messages = data.get("messages", [])
+            if not messages or not isinstance(messages, list):
+                self.send_json({"error": {"message": "'messages' array is required", "type": "invalid_request_error"}}, status=400)
+                return
+
+            model = safe_str(data.get("model")) or engine.active_model_name or "merlin-ai"
+            stream = bool(data.get("stream", False))
+            temperature = float(data.get("temperature", 0.7))
+            max_tokens = int(data.get("max_tokens", 1024))
+            stop = data.get("stop", None)
+
+            if stream:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache, no-transform")
+                self.send_header("Connection", "keep-alive")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+
+                chat_id = f"chatcmpl-{int(time.time()*1000)}"
+                created_ts = int(time.time())
+
+                try:
+                    for delta_chunk in engine.generate_chat_completion(
+                        messages, temperature=temperature, max_tokens=max_tokens, stream=True, stop=stop
+                    ):
+                        chunk_obj = {
+                            "id": chat_id,
+                            "object": "chat.completion.chunk",
+                            "created": created_ts,
+                            "model": model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"content": delta_chunk},
+                                    "finish_reason": None
+                                }
+                            ]
+                        }
+                        self.wfile.write(f"data: {json.dumps(chunk_obj)}\n\n".encode("utf-8"))
+                        self.wfile.flush()
+
+                    # Final finish chunk
+                    final_chunk = {
+                        "id": chat_id,
+                        "object": "chat.completion.chunk",
+                        "created": created_ts,
+                        "model": model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": "stop"
+                            }
+                        ]
+                    }
+                    self.wfile.write(f"data: {json.dumps(final_chunk)}\n\n".encode("utf-8"))
+                    self.wfile.write(b"data: [DONE]\n\n")
+                    self.wfile.flush()
+                except Exception as e:
+                    log_event("v1_stream_error", f"Error in /v1/chat/completions stream: {e}", "danger")
+                return
+            else:
+                completion_text = engine.generate_chat_completion(
+                    messages, temperature=temperature, max_tokens=max_tokens, stream=False, stop=stop
+                )
+                prompt_tokens = sum(len(m.get("content", "")) // 4 for m in messages)
+                completion_tokens = len(str(completion_text)) // 4
+                self.send_json({
+                    "id": f"chatcmpl-{int(time.time()*1000)}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": str(completion_text)
+                            },
+                            "finish_reason": "stop"
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": prompt_tokens + completion_tokens
+                    }
+                })
+                return
+
+        # -------------------------------------------------------------
+        # Conversational State Engine: POST /api/conversations
+        # -------------------------------------------------------------
+        elif path == "/api/conversations":
+            title = safe_str(data.get("title")) or "New Chat"
+            mode = safe_str(data.get("mode")) or "assistant"
+            conv_id = safe_str(data.get("id")) or None
+            conv = create_conversation(title=title, mode=mode, conv_id=conv_id)
+            self.send_json(conv)
+            return
+
+        elif path.startswith("/api/conversations/") and path.endswith("/clear"):
+            conv_id = path.split("/api/conversations/")[1].split("/clear")[0].strip()
+            clear_conversation_messages(conv_id)
+            self.send_json({"success": True})
+            return
+
+        elif path.startswith("/api/conversations/") and path.endswith("/delete"):
+            conv_id = path.split("/api/conversations/")[1].split("/delete")[0].strip()
+            success = delete_conversation(conv_id)
+            self.send_json({"success": success})
+            return
+
+        elif path.startswith("/api/conversations/") and path.endswith("/messages"):
+            conv_id = path.split("/api/conversations/")[1].split("/messages")[0].strip()
+            role = safe_str(data.get("role")) or "user"
+            content = safe_str(data.get("content"))
+            meta = data.get("metadata", {})
+            mid = save_message(conv_id, role, content, metadata=meta)
+            self.send_json({"success": True, "id": mid})
+            return
+
+        elif path.startswith("/api/conversations/"):
+            conv_id = path.split("/api/conversations/")[1].strip()
+            title = data.get("title")
+            mode = data.get("mode")
+            pinned = data.get("pinned")
+            success = update_conversation(conv_id, title=title, mode=mode, pinned=pinned)
+            self.send_json({"success": success})
+            return
+
+        # -------------------------------------------------------------
         # File Upload (Audio, Images, Code, Documents)
-        if path == "/api/upload":
+        # -------------------------------------------------------------
+        elif path == "/api/upload":
             name = safe_str(data.get("name")) or "upload.bin"
             clean_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', os.path.basename(name))
             file_ext = os.path.splitext(clean_name)[1].lower()
@@ -291,7 +506,9 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        # -------------------------------------------------------------
         # Multimodal AI Analysis (Images, Audio, Docs)
+        # -------------------------------------------------------------
         elif path == "/api/analyze/multimodal":
             file_id = safe_str(data.get("file_id"))
             prompt = safe_str(data.get("prompt")) or "Analyze this file thoroughly and describe all details, insights, or text."
@@ -447,7 +664,7 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
             endpoint = safe_str(data.get("endpoint")) or None
             model = safe_str(data.get("model")) or None
             if not api_key:
-                self.send_json({"error": "API Key is required to communicate with the teacher AI. Enter your Gemini API key or set GEMINI_API_KEY."}, status=400)
+                self.send_json({"error": "API Key is required to communicate with teacher AI."}, status=400)
                 return
 
             if sync_state.get("is_syncing"):
@@ -490,9 +707,10 @@ def run():
     engine = InferenceEngine()
     server = ThreadingHTTPServer((HOST, PORT), AssistantRequestHandler)
     print("=" * 66)
-    print("  MERLIN AI — OFFLINE ASSISTANT & CODER (PRODUCTION READY)")
-    print(f"  Local Access:      http://localhost:{PORT}")
-    print(f"  Network Access:    http://0.0.0.0:{PORT} (Open from any LAN device)")
+    print("  MERLIN AI — GEMINI-GRADE ASSISTANT & CODER (PRODUCTION READY)")
+    print(f"  Web UI:            http://localhost:{PORT}")
+    print(f"  OpenAI REST API:   http://localhost:{PORT}/v1/chat/completions")
+    print(f"  Network Access:    http://0.0.0.0:{PORT} (Accessible across LAN)")
     print(f"  Model Engine:      {engine.backend} ({engine.active_model_name})")
     print("=" * 66)
     try:

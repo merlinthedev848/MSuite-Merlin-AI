@@ -4,7 +4,7 @@ import re
 import urllib.request
 import urllib.error
 import threading
-from memory import search_knowledge, get_recent_chat, save_chat_message, log_event
+from memory import search_knowledge, get_recent_chat, save_chat_message, log_event, get_context_window
 
 try:
     import requests
@@ -299,10 +299,10 @@ class InferenceEngine:
                 if k['code_example']:
                     memory_prompt += f"  Reference Code:\n{k['code_example']}\n"
 
-        # Assemble conversation context (strip prior internal <think>...</think> from history to keep prefill instantaneous)
-        history = get_recent_chat(session_id, limit=6)
+        # Assemble conversation context via intelligent sliding-window context manager
+        context_history = get_context_window(session_id, max_tokens=4200)
         messages = [{"role": "system", "content": self.build_system_prompt(mode) + memory_prompt}]
-        for h in history[:-1]:
+        for h in context_history[:-1]:
             content = h["content"]
             if h["role"] == "assistant":
                 content = re.sub(r"<think>[\s\S]*?</think>", "", content).strip()
@@ -312,7 +312,7 @@ class InferenceEngine:
         messages.append({"role": "user", "content": safe_prompt})
 
         full_response = ""
-        max_tokens = 90 if is_greeting else int(os.getenv("MAX_TOKENS", "1024"))
+        max_tokens = 90 if is_greeting else int(os.getenv("MAX_TOKENS", "2048"))
         stop_tokens = ["<|im_end|>", "<|endoftext|>", "</s>"]
 
         # Acquire lock to ensure only one thread generates on the CPU at a time
@@ -390,3 +390,68 @@ class InferenceEngine:
             self._active_abort_events.pop(session_id, None)
             if full_response:
                 save_chat_message(session_id, "assistant", full_response)
+
+    def generate_chat_completion_stream(self, messages, temperature=0.7, max_tokens=1024, stop=None):
+        """
+        OpenAI-compatible streaming generator for /v1/chat/completions.
+        """
+        abort_event = threading.Event()
+        stop_tokens = stop if isinstance(stop, list) else (["<|im_end|>", "<|endoftext|>", "</s>"] if not stop else [stop])
+
+        acquired = self._inference_lock.acquire(timeout=30.0)
+        if not acquired:
+            yield "[Error: Server is currently busy executing another request.]"
+            return
+
+        try:
+            if self.backend == "offline_standby":
+                self.refresh_backend()
+
+            if self.backend == "llama-server":
+                payload_dict = {
+                    "messages": messages,
+                    "temperature": temperature,
+                    "stream": True,
+                    "max_tokens": max_tokens,
+                    "stop": stop_tokens
+                }
+                for chunk in self._stream_from_llama_server(payload_dict, abort_event):
+                    yield chunk
+
+            elif self.backend == "llama-cpp-python" and self.llama_cpp_model:
+                res = self.llama_cpp_model.create_chat_completion(
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=True,
+                    stop=stop_tokens
+                )
+                for chunk in res:
+                    delta = chunk["choices"][0]["delta"].get("content", "")
+                    if delta:
+                        yield delta
+            else:
+                yield (
+                    "Merlin AI is in offline standby mode. No local model weights (.gguf) are currently loaded. "
+                    "Run `./download_model.sh` to load a model."
+                )
+
+        except Exception as e:
+            yield f"[Inference error: {e}]"
+        finally:
+            self._inference_lock.release()
+
+    def generate_chat_completion(self, messages, temperature=0.7, max_tokens=1024, stream=False, stop=None):
+        """
+        OpenAI-compatible handler for /v1/chat/completions.
+        Returns generator if stream=True, or complete string if stream=False.
+        """
+        if stream:
+            return self.generate_chat_completion_stream(messages, temperature=temperature, max_tokens=max_tokens, stop=stop)
+
+        chunks = []
+        for delta in self.generate_chat_completion_stream(messages, temperature=temperature, max_tokens=max_tokens, stop=stop):
+            chunks.append(delta)
+        return "".join(chunks)
+
+

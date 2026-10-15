@@ -4,6 +4,8 @@ import datetime
 import platform
 import shutil
 import time
+import json
+import uuid
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assistant_memory.db")
 
@@ -19,12 +21,57 @@ def get_db():
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
+def estimate_tokens(text):
+    """Accurate token estimator (~3.8 characters per token for English & code)."""
+    if not text:
+        return 0
+    return max(1, int(len(text) / 3.8))
+
 def init_db():
     """Initializes tables, indices, and audit logging."""
     with get_db() as conn:
         c = conn.cursor()
         
-        # Knowledge Base
+        # 1. Conversations (Sessions)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            mode TEXT DEFAULT 'assistant',
+            pinned INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_conversations_pinned ON conversations(pinned DESC, updated_at DESC);")
+
+        # 2. Messages (Structured multi-turn history)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            token_count INTEGER DEFAULT 0,
+            metadata TEXT DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+        );
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, id ASC);")
+
+        # 3. Workspaces & User Settings
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS workspaces (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            settings TEXT DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
+        # 4. Knowledge Base
         c.execute("""
         CREATE TABLE IF NOT EXISTS knowledge (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +86,7 @@ def init_db():
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_topic ON knowledge(topic);")
         c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_tags ON knowledge(tags);")
 
-        # Knowledge Gaps (State Machine: pending -> processing -> resolved / failed)
+        # 5. Knowledge Gaps (State Machine: pending -> processing -> resolved / failed)
         c.execute("""
         CREATE TABLE IF NOT EXISTS gaps (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +114,7 @@ def init_db():
 
         c.execute("CREATE INDEX IF NOT EXISTS idx_gaps_status ON gaps(status);")
 
-        # Personal Assistant: To-Dos
+        # 6. Personal Assistant: To-Dos
         c.execute("""
         CREATE TABLE IF NOT EXISTS todos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,7 +126,7 @@ def init_db():
         );
         """)
 
-        # Personal Assistant: Notes
+        # 7. Personal Assistant: Notes
         c.execute("""
         CREATE TABLE IF NOT EXISTS notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,7 +137,7 @@ def init_db():
         );
         """)
 
-        # Chat History & Context Windows
+        # 8. Legacy chat_history table for backward compatibility
         c.execute("""
         CREATE TABLE IF NOT EXISTS chat_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,7 +149,7 @@ def init_db():
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_history(session_id, id);")
 
-        # System & Cron Audit Log
+        # 9. System & Cron Audit Log
         c.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,6 +160,196 @@ def init_db():
         );
         """)
 
+# --- Conversation & Message State Engine ---
+
+def create_conversation(title="New Chat", mode="assistant", conv_id=None):
+    cid = conv_id or str(uuid.uuid4())[:8]
+    now = datetime.datetime.now().isoformat()
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO conversations (id, title, mode, pinned, created_at, updated_at)
+            VALUES (?, ?, ?, 0, ?, ?)
+        """, (cid, title.strip() or "New Chat", mode, now, now))
+    return {"id": cid, "title": title, "mode": mode, "pinned": 0, "created_at": now, "updated_at": now}
+
+def get_conversations(limit=100):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT c.id, c.title, c.mode, c.pinned, c.created_at, c.updated_at,
+                   COUNT(m.id) as message_count,
+                   (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY id DESC LIMIT 1) as last_message
+            FROM conversations c
+            LEFT JOIN messages m ON m.conversation_id = c.id
+            GROUP BY c.id
+            ORDER BY c.pinned DESC, c.updated_at DESC
+            LIMIT ?
+        """, (limit,))
+        return [dict(r) for r in c.fetchall()]
+
+def get_conversation(conv_id):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, title, mode, pinned, created_at, updated_at FROM conversations WHERE id = ?", (conv_id,))
+        row = c.fetchone()
+        return dict(row) if row else None
+
+def update_conversation(conv_id, title=None, mode=None, pinned=None):
+    with get_db() as conn:
+        c = conn.cursor()
+        updates = []
+        params = []
+        if title is not None:
+            updates.append("title = ?")
+            params.append(title.strip())
+        if mode is not None:
+            updates.append("mode = ?")
+            params.append(mode.strip())
+        if pinned is not None:
+            updates.append("pinned = ?")
+            params.append(1 if pinned else 0)
+        
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(conv_id)
+
+        sql = f"UPDATE conversations SET {', '.join(updates)} WHERE id = ?"
+        c.execute(sql, params)
+        return c.rowcount > 0
+
+def delete_conversation(conv_id):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM messages WHERE conversation_id = ?", (conv_id,))
+        c.execute("DELETE FROM chat_history WHERE session_id = ?", (conv_id,))
+        c.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
+        return c.rowcount > 0
+
+def save_message(conversation_id, role, content, metadata=None):
+    """
+    Saves a message to the structured messages table and updates conversation's updated_at.
+    Also mirrors to legacy chat_history for backward compatibility.
+    """
+    token_count = estimate_tokens(content)
+    meta_json = json.dumps(metadata or {})
+    
+    with get_db() as conn:
+        c = conn.cursor()
+        # Auto-create conversation if not exists
+        c.execute("SELECT id FROM conversations WHERE id = ?", (conversation_id,))
+        if not c.fetchone():
+            # Derive title from first user message
+            title = content[:32] + "..." if len(content) > 32 else content
+            title = title.replace("\n", " ").strip() or "New Chat"
+            c.execute("""
+                INSERT INTO conversations (id, title, mode, pinned, created_at, updated_at)
+                VALUES (?, ?, 'assistant', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """, (conversation_id, title))
+        else:
+            c.execute("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (conversation_id,))
+
+        c.execute("""
+            INSERT INTO messages (conversation_id, role, content, token_count, metadata, created_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (conversation_id, role, content, token_count, meta_json))
+        msg_id = c.lastrowid
+
+        # Mirror to legacy chat_history
+        c.execute("INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)",
+                  (conversation_id, role, content))
+
+        return msg_id
+
+def get_conversation_messages(conversation_id, limit=200):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, conversation_id, role, content, token_count, metadata, created_at
+            FROM messages
+            WHERE conversation_id = ?
+            ORDER BY id ASC
+            LIMIT ?
+        """, (conversation_id, limit))
+        return [dict(r) for r in c.fetchall()]
+
+def clear_conversation_messages(conversation_id):
+    with get_db() as conn:
+        conn.execute("DELETE FROM messages WHERE conversation_id = ?", (conversation_id,))
+        conn.execute("DELETE FROM chat_history WHERE session_id = ?", (conversation_id,))
+        return True
+
+def get_context_window(conversation_id, max_tokens=4500):
+    """
+    Sliding-window context manager:
+    Fetches past messages and intelligently retains the earliest intent + latest turns
+    so that the context window is never exceeded on local models.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT role, content, token_count FROM messages
+            WHERE conversation_id = ?
+            ORDER BY id ASC
+        """, (conversation_id,))
+        msgs = [dict(r) for r in c.fetchall()]
+
+    if not msgs:
+        # Fallback to chat_history if messages table has no entry
+        return get_recent_chat(conversation_id, limit=8)
+
+    total_tokens = sum(m.get("token_count") or estimate_tokens(m["content"]) for m in msgs)
+    if total_tokens <= max_tokens:
+        return [{"role": m["role"], "content": m["content"]} for m in msgs]
+
+    # Trim: Keep first user message (intent) + most recent messages that fit
+    first_msg = msgs[0]
+    first_tokens = first_msg.get("token_count") or estimate_tokens(first_msg["content"])
+    remaining_budget = max_tokens - first_tokens
+
+    recent = []
+    accumulated = 0
+    for m in reversed(msgs[1:]):
+        tok = m.get("token_count") or estimate_tokens(m["content"])
+        if accumulated + tok > remaining_budget:
+            break
+        recent.append({"role": m["role"], "content": m["content"]})
+        accumulated += tok
+
+    recent.reverse()
+    result = [{"role": first_msg["role"], "content": first_msg["content"]}]
+    if len(msgs) > len(recent) + 1:
+        result.append({
+            "role": "system",
+            "content": f"[Note: {len(msgs) - len(recent) - 1} earlier conversation turns truncated to fit local memory]"
+        })
+    result.extend(recent)
+    return result
+
+# --- Legacy Compatibility Aliases ---
+
+def save_chat_message(session_id, role, content):
+    save_message(session_id, role, content)
+
+def get_recent_chat(session_id, limit=8):
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT role, content FROM (
+                SELECT id, role, content FROM chat_history 
+                WHERE session_id = ? 
+                ORDER BY id DESC LIMIT ?
+            ) ORDER BY id ASC
+        """, (session_id, limit))
+        return [dict(r) for r in c.fetchall()]
+
+def clear_chat_history(session_id=None):
+    with get_db() as conn:
+        if session_id:
+            conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
+            conn.execute("DELETE FROM messages WHERE conversation_id = ?", (session_id,))
+        else:
+            conn.execute("DELETE FROM chat_history")
+            conn.execute("DELETE FROM messages")
+
 # --- Audit & Logging ---
 
 def log_event(event_type, details, status="info"):
@@ -120,7 +357,7 @@ def log_event(event_type, details, status="info"):
         conn.execute("INSERT INTO audit_log (event_type, details, status) VALUES (?, ?, ?)",
                      (event_type, str(details), status))
 
-def get_recent_audit_logs(limit=20):
+def get_recent_audit_logs(limit=25):
     with get_db() as conn:
         c = conn.cursor()
         c.execute("SELECT id, event_type, details, status, created_at FROM audit_log ORDER BY id DESC LIMIT ?", (limit,))
@@ -145,10 +382,6 @@ def delete_knowledge(knowledge_id):
         return True
 
 def search_knowledge(query, limit=3):
-    """
-    Ranks knowledge by token overlap across topic, lesson, tags, and code.
-    Thread-safe and handles empty queries gracefully.
-    """
     if not query or not query.strip():
         return []
 
@@ -185,7 +418,6 @@ def get_all_knowledge(limit=100):
 def add_gap(question, context=""):
     with get_db() as conn:
         c = conn.cursor()
-        # Avoid exact duplicate pending gaps
         c.execute("SELECT id FROM gaps WHERE question = ? AND status = 'pending'", (question.strip(),))
         existing = c.fetchone()
         if existing:
@@ -279,32 +511,6 @@ def delete_note(note_id):
         conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
         return True
 
-# --- Chat History & State ---
-
-def save_chat_message(session_id, role, content):
-    with get_db() as conn:
-        conn.execute("INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)",
-                     (session_id, role, content))
-
-def get_recent_chat(session_id, limit=8):
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("""
-            SELECT role, content FROM (
-                SELECT id, role, content FROM chat_history 
-                WHERE session_id = ? 
-                ORDER BY id DESC LIMIT ?
-            ) ORDER BY id ASC
-        """, (session_id, limit))
-        return [dict(r) for r in c.fetchall()]
-
-def clear_chat_history(session_id=None):
-    with get_db() as conn:
-        if session_id:
-            conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
-        else:
-            conn.execute("DELETE FROM chat_history")
-
 # --- Hardware Diagnostics & Telemetry ---
 
 def get_system_telemetry():
@@ -380,5 +586,5 @@ def get_system_telemetry():
 
     return stats
 
-# Ensure tables are always ready
+# Initialize on import
 init_db()
