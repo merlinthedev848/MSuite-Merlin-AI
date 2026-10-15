@@ -1,5 +1,5 @@
 [Unit]
-Description=Aether Offline Assistant Periodic Background Maintenance & Sync
+Description=Merlin AI Offline Assistant Periodic Background Maintenance & Sync
 After=network.target
 
 [Service]

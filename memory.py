@@ -369,7 +369,8 @@ def get_system_telemetry():
 
     # Disk usage
     try:
-        total, used, free = shutil.disk_usage("/")
+        root_dir = (os.path.splitdrive(os.path.abspath(__file__))[0] + "\\") if platform.system() == "Windows" else "/"
+        total, used, free = shutil.disk_usage(root_dir)
         total_gb = total // (2**30)
         used_gb = used // (2**30)
         pct = int((used / max(total, 1)) * 100)
@@ -378,3 +379,6 @@ def get_system_telemetry():
         pass
 
     return stats
+
+# Ensure tables are always ready
+init_db()

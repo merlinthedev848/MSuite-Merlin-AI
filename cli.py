@@ -6,8 +6,8 @@ from engine import InferenceEngine
 def main():
     init_db()
     print("==========================================================")
-    print("  AETHER OFFLINE AI ASSISTANT & CODER (CLI MODE)")
-    print("  Commands: :tasks, :addtask <task>, :skills, :gap <question>, :sys, :exit")
+    print("  MERLIN AI — OFFLINE ASSISTANT & CODER (CLI MODE)")
+    print("  Commands: :teach <topic>, :dataset <repo> [N], :tasks, :addtask, :skills, :gap, :sys, :exit")
     print("==========================================================")
 
     engine = InferenceEngine()
@@ -16,7 +16,7 @@ def main():
 
     while True:
         try:
-            user_input = input(f"\n[{mode.upper()}] > ").strip()
+            user_input = input(f"\n[MERLIN {mode.upper()}] > ").strip()
             if not user_input:
                 continue
 
@@ -58,6 +58,33 @@ def main():
                 print("\n--- System Diagnostics ---")
                 for k, v in stats.items():
                     print(f"{k.capitalize()}: {v}")
+                continue
+
+            elif user_input.startswith(":teach"):
+                topic = user_input[6:].strip()
+                key = (
+                    os.getenv("GEMINI_API_KEY")
+                    or os.getenv("GOOGLE_API_KEY")
+                    or os.getenv("TEACHER_API_KEY")
+                    or os.getenv("GROQ_API_KEY")
+                    or os.getenv("OPENAI_API_KEY")
+                )
+                if not key:
+                    key = input("Enter Gemini API Key: ").strip()
+                if not key:
+                    print("Teacher sync cancelled: API key required.")
+                    continue
+                print(f"[*] Distilling knowledge via Gemini Teacher...")
+                from sync_teacher import run_sync
+                res = run_sync(key, topic_to_explore=topic or None)
+            elif user_input.startswith(":dataset"):
+                parts = user_input[8:].strip().split()
+                repo_id = parts[0] if parts else "openbmb/UltraData-Stack-v3-L2"
+                limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 50
+                print(f"[*] Assimilating and caching locally {limit} samples from: {repo_id}...")
+                from import_dataset import import_hf_dataset
+                res = import_hf_dataset(repo_id, limit=limit, save_local=True)
+                print(f"[✓] Result: {res.get('message', 'Done')}")
                 continue
 
             elif user_input.lower() == ":toggle":

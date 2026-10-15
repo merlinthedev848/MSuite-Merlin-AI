@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aether — Offline AI Assistant & Coder</title>
+  <title>Merlin AI — Offline Assistant & Coder</title>
   <style>
     :root {
       --bg: #0b1120;
@@ -197,6 +197,48 @@
       border: 1px solid var(--surface-border);
       border-bottom-left-radius: 2px;
     }
+    .thinking-box {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--accent);
+      font-size: 0.88rem;
+    }
+    .thinking-dots {
+      display: inline-flex;
+      gap: 4px;
+    }
+    .thinking-dots span {
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: thinkingPulse 1.4s infinite ease-in-out both;
+    }
+    .thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes thinkingPulse {
+      0%, 80%, 100% { transform: scale(0.3); opacity: 0.3; }
+      40% { transform: scale(1.0); opacity: 1; }
+    }
+
+    .thought-box {
+      background: rgba(148, 163, 184, 0.08);
+      border-left: 3px solid var(--accent);
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .thought-box summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 6px;
+      user-select: none;
+    }
 
     pre {
       background: var(--code-bg);
@@ -278,7 +320,7 @@
   <!-- SIDEBAR -->
   <div id="sidebar">
     <div class="header">
-      <h1>Aether PA <span class="badge" id="backend-badge">OFFLINE</span></h1>
+      <h1>Merlin AI <span class="badge" id="backend-badge">OFFLINE</span></h1>
     </div>
 
     <div class="sidebar-tabs">
@@ -311,9 +353,12 @@
         <div id="sync-banner">
           <span id="sync-status-text">Synchronizing...</span>
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px;">
           <h3 style="font-size:0.8rem; color:var(--text-muted);">ASSIMILATED KNOWLEDGE</h3>
-          <button class="btn-action" style="font-size:0.75rem; padding:4px 8px;" onclick="openSyncModal()">⚡ Sync Teacher</button>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-action" style="font-size:0.75rem; padding:4px 8px; background:#4f46e5; color:#fff;" onclick="openDatasetModal()">🤗 Import Dataset</button>
+            <button class="btn-action" style="font-size:0.75rem; padding:4px 8px;" onclick="openSyncModal()">⚡ Sync Teacher</button>
+          </div>
         </div>
         <div id="knowledge-list">Loading learned skills...</div>
 
@@ -348,16 +393,21 @@
   <!-- MAIN CHAT -->
   <div id="main-chat">
     <div class="header">
-      <div class="mode-toggle">
-        <button id="btn-mode-assistant" class="mode-btn active" onclick="setMode('assistant')">🤖 PA Mode</button>
-        <button id="btn-mode-coder" class="mode-btn" onclick="setMode('coder')">💻 Coder Mode</button>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="mode-toggle">
+          <button id="btn-mode-assistant" class="mode-btn active" onclick="setMode('assistant')">🤖 PA Mode</button>
+          <button id="btn-mode-coder" class="mode-btn" onclick="setMode('coder')">💻 Coder Mode</button>
+        </div>
+        <select id="model-selector" onchange="switchModel(this.value)" style="background:var(--bg); color:var(--accent); border:1px solid var(--surface-border); padding:5px 10px; border-radius:6px; font-size:0.75rem; font-weight:600; outline:none; cursor:pointer;" title="Switch Active Offline Model">
+          <option value="">⚡ Model: Auto</option>
+        </select>
       </div>
       <div style="font-size:0.8rem; color:var(--text-muted);" id="status-tag">Connected (Offline Mode)</div>
     </div>
 
     <div id="messages-container">
       <div class="message assistant">
-        👋 Welcome! I am your private, offline AI Assistant and Software Engineer. 
+        👋 Welcome! I am Merlin, your private offline AI Assistant and Software Engineer (Merlin AI). 
         All answers and code generation run locally on your server.
       </div>
     </div>
@@ -372,17 +422,105 @@
   <!-- TEACHER SYNC MODAL -->
   <div id="sync-modal" class="modal">
     <div class="modal-content">
-      <h3 style="margin-bottom:8px;">Sync with Commercial AI (Teacher)</h3>
-      <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">
-        Connect momentarily to interview an external model to resolve gaps and distill new code patterns into local memory.
+      <h3 style="margin-bottom:8px;">Sync with AI Teacher</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:12px;">
+        Connect to interview an external teacher model to resolve knowledge gaps and permanently distill new code patterns into local SQLite memory.
       </p>
-      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Teacher API Key:</label>
-      <input type="password" id="sync-api-key" placeholder="sk-..." style="width:100%; margin-bottom:12px;">
-      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Optional Topic to Explore:</label>
-      <input type="text" id="sync-topic" placeholder="E.g. Memory-mapped I/O in Python" style="width:100%; margin-bottom:16px;">
+
+      <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:14px; background:rgba(56,189,248,0.1); padding:8px 10px; border-radius:6px; border:1px solid rgba(56,189,248,0.25); line-height:1.4;">
+        💡 <b>Free AI Teacher Keys:</b><br>
+        • <b>Google Gemini (Recommended / Free Tier)</b>: <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent); text-decoration:underline;">aistudio.google.com/apikey</a><br>
+        • <b>Groq (Free & Ultra-Fast)</b>: <a href="https://console.groq.com/keys" target="_blank" style="color:var(--accent); text-decoration:underline;">console.groq.com/keys</a><br>
+        • <b>OpenRouter (Free Models)</b>: <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--accent); text-decoration:underline;">openrouter.ai/keys</a>
+      </div>
+
+      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Teacher Provider:</label>
+      <select id="sync-provider" onchange="onSyncProviderChange()" style="width:100%; margin-bottom:10px; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
+        <option value="gemini" selected>Google Gemini (FREE - Gemini 2.0 Flash / Pro)</option>
+        <option value="groq">Groq (FREE - Llama 3.3 70B Versatile)</option>
+        <option value="openrouter">OpenRouter (FREE - Llama 3.3 70B Free)</option>
+        <option value="openai">OpenAI (GPT-4o Mini / GPT-4o)</option>
+        <option value="auto">Auto-detect from Key Prefix</option>
+        <option value="custom">Custom Endpoint & Model</option>
+      </select>
+
+      <div id="model-select-wrapper" style="margin-bottom:10px;">
+        <label style="font-size:0.78rem; display:block; margin-bottom:4px; color:var(--text-muted);">Teacher Model:</label>
+        <select id="sync-model-select" style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
+          <option value="gemini-2.0-flash">gemini-2.0-flash (Recommended: Free, Ultra-Fast & Accurate)</option>
+          <option value="gemini-1.5-flash">gemini-1.5-flash (Free, High Throughput)</option>
+          <option value="gemini-1.5-pro">gemini-1.5-pro (Free, Deep Reasoning & Complex Code)</option>
+        </select>
+      </div>
+
+      <div id="custom-provider-fields" style="display:none; margin-bottom:8px;">
+        <label style="font-size:0.78rem; display:block; margin-bottom:4px; color:var(--text-muted);">Custom Endpoint URL:</label>
+        <input type="text" id="sync-custom-endpoint" placeholder="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" style="width:100%; margin-bottom:8px;">
+        <label style="font-size:0.78rem; display:block; margin-bottom:4px; color:var(--text-muted);">Custom Model Name:</label>
+        <input type="text" id="sync-custom-model" placeholder="gemini-2.0-flash" style="width:100%; margin-bottom:12px;">
+      </div>
+
+      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">API Key:</label>
+      <input type="password" id="sync-api-key" placeholder="AIza... (or leave empty if GEMINI_API_KEY environment variable is set)" style="width:100%; margin-bottom:12px;">
+
+      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Optional Topic to Learn & Assimilate:</label>
+      <input type="text" id="sync-topic" placeholder="E.g. Building an async WebSocket protocol in Python" style="width:100%; margin-bottom:16px;">
+
       <div style="display:flex; justify-content:flex-end; gap:8px;">
         <button class="btn-action" style="background:#475569; color:#fff;" onclick="closeSyncModal()">Cancel</button>
         <button class="btn-action" onclick="triggerSync()">Start Distillation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HUGGING FACE DATASET IMPORT MODAL -->
+  <div id="dataset-modal" class="modal">
+    <div class="modal-content">
+      <h3 style="margin-bottom:8px;">Import from Hugging Face Datasets</h3>
+      <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:12px;">
+        Automatically pull and assimilate curated coding & instruction datasets from <a href="https://huggingface.co/datasets" target="_blank" style="color:var(--accent); text-decoration:underline;">huggingface.co/datasets</a> into Merlin's offline memory.
+      </p>
+
+      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Select Dataset:</label>
+      <select id="hf-curated-select" onchange="onCuratedDatasetChange()" style="width:100%; margin-bottom:10px; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
+        <option value="openbmb/UltraData-Stack-v3-L2" selected>openbmb/UltraData-Stack-v3-L2 (Default - Curated High-Yield Data Stack)</option>
+        <option value="openbmb/UltraData-SFT-Agent-2609:Code-Agent">openbmb/UltraData-SFT-Agent-2609 [Code-Agent] (Agentic Coding & Tool Use)</option>
+        <option value="openbmb/UltraData-SFT-Agent-2609:General-Agent">openbmb/UltraData-SFT-Agent-2609 [General-Agent] (Multi-Step Agent Reasoning)</option>
+        <option value="openbmb/UltraData-SFT-Agent-2609:Search-Agent">openbmb/UltraData-SFT-Agent-2609 [Search-Agent] (Web & Retrieval Agent Execution)</option>
+        <option value="Anthropic/hh-rlhf">Anthropic/hh-rlhf (Helpful & Harmless Dialogue Alignment)</option>
+        <option value="sahil2801/CodeAlpaca-20k">sahil2801/CodeAlpaca-20k (20k Coding Tasks & Solutions)</option>
+        <option value="iamtarun/python_code_instructions_18k_alpaca">iamtarun/python_code_instructions_18k_alpaca (18k Python Problems)</option>
+        <option value="HuggingFaceH4/no_robots">HuggingFaceH4/no_robots (High-Quality Human Demonstrations)</option>
+        <option value="tatsu-lab/alpaca">tatsu-lab/alpaca (52k General Knowledge & Tasks)</option>
+        <option value="custom">Custom Hugging Face Repository...</option>
+      </select>
+
+      <div id="hf-custom-repo-box" style="display:none; margin-bottom:10px;">
+        <label style="font-size:0.78rem; display:block; margin-bottom:4px; color:var(--text-muted);">Repository ID (with optional :subset):</label>
+        <input type="text" id="hf-custom-repo" placeholder="e.g. openbmb/UltraData-SFT-Agent-2609:Code-Agent" style="width:100%;">
+      </div>
+
+      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Number of Samples to Assimilate:</label>
+      <select id="hf-limit-select" style="width:100%; margin-bottom:10px; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
+        <option value="25">25 samples (Quick Assimilation)</option>
+        <option value="50" selected>50 samples (Recommended)</option>
+        <option value="100">100 samples</option>
+        <option value="250">250 samples (Comprehensive)</option>
+      </select>
+
+      <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Optional Hugging Face Access Token:</label>
+      <input type="password" id="hf-token-input" placeholder="hf_... (Required only for gated datasets if not logged in)" style="width:100%; margin-bottom:12px;">
+
+      <div style="margin-bottom:16px;">
+        <label style="font-size:0.78rem; display:flex; align-items:center; gap:6px; color:var(--text); cursor:pointer;">
+          <input type="checkbox" id="hf-save-local" checked>
+          <span>Save permanently to local disk cache (<code>data/datasets</code>) for offline access</span>
+        </label>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn-action" style="background:#475569; color:#fff;" onclick="closeDatasetModal()">Cancel</button>
+        <button class="btn-action" style="background:#4f46e5; color:#fff;" onclick="triggerDatasetImport()">Import & Assimilate</button>
       </div>
     </div>
   </div>
@@ -392,6 +530,9 @@
     const sessionId = "session_" + Math.random().toString(36).substring(2, 9);
     let activeEventSource = null;
     let syncPollInterval = null;
+    let currentAssistantMsg = null;
+    let currentFullText = "";
+    let streamWatchdog = null;
 
     function setMode(mode) {
       currentMode = mode;
@@ -412,6 +553,10 @@
     function handleKeyDown(e) {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
+        if (activeEventSource) {
+          // If already generating, preserve text so user can continue typing without interrupting
+          return;
+        }
         sendMessage();
       }
     }
@@ -437,10 +582,24 @@
       });
 
       escaped = escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+      // 1. Format closed DeepSeek-R1 / thinking models <think> tags
+      escaped = escaped.replace(/&lt;think&gt;([\s\S]*?)&lt;\/think&gt;/gi, function(match, thought) {
+        return `<details class="thought-box"><summary>💭 Thought Process (Reasoning)</summary><div>${thought.trim()}</div></details>`;
+      });
+
+      // 2. Format in-progress / live streaming thinking block (no closing </think> yet)
+      escaped = escaped.replace(/&lt;think&gt;([\s\S]*)$/gi, function(match, thought) {
+        return `<details class="thought-box" open><summary>💭 Thinking in progress... <span class="thinking-dots"><span></span><span></span><span></span></span></summary><div>${thought.trim()}</div></details>`;
+      });
+
       return escaped.replace(/\n/g, "<br>");
     }
 
+    let thinkingTimer = null;
+
     async function sendMessage() {
+      if (activeEventSource) return;
       const input = document.getElementById("chat-input");
       const sendBtn = document.getElementById("btn-send");
       const stopBtn = document.getElementById("btn-stop");
@@ -448,16 +607,45 @@
       if (!text) return;
 
       input.value = "";
-      input.disabled = true;
+      // NEVER disable input box: user can freely continue typing while Merlin responds
+      input.disabled = false;
       sendBtn.style.display = "none";
       stopBtn.style.display = "block";
 
       appendMessage("user", text);
-      const assistantMsg = appendMessage("assistant", "Thinking...");
+      currentFullText = "";
+      currentAssistantMsg = appendMessage("assistant", `
+        <div class="thinking-box">
+          <span>Merlin is thinking<span class="thinking-seconds"> (0s)</span></span>
+          <div class="thinking-dots"><span></span><span></span><span></span></div>
+        </div>
+      `);
 
-      let fullText = "";
+      const startTime = Date.now();
+      clearInterval(thinkingTimer);
+      thinkingTimer = setInterval(() => {
+        const sec = Math.floor((Date.now() - startTime) / 1000);
+        const secSpan = currentAssistantMsg ? currentAssistantMsg.querySelector(".thinking-seconds") : null;
+        if (secSpan) {
+          secSpan.textContent = ` (${sec}s)`;
+        }
+      }, 1000);
+
       const url = `/api/chat/stream?prompt=${encodeURIComponent(text)}&mode=${currentMode}&session_id=${sessionId}`;
       activeEventSource = new EventSource(url);
+
+      // Watchdog: If no token arrives within 35s, give helpful status feedback without freezing
+      clearTimeout(streamWatchdog);
+      streamWatchdog = setTimeout(() => {
+        if (!currentFullText && activeEventSource && currentAssistantMsg) {
+          currentAssistantMsg.innerHTML = `
+            <div style="color:var(--warning); font-size:0.85rem;">
+              ⏳ Evaluating prompt on CPU...<br>
+              <small style="color:var(--text-muted);">Inference is running. First tokens will stream momentarily.</small>
+            </div>
+          `;
+        }
+      }, 35000);
 
       activeEventSource.onmessage = function(event) {
         if (event.data === "[DONE]") {
@@ -466,37 +654,66 @@
         }
         try {
           const data = JSON.parse(event.data);
-          fullText += data.chunk;
-          assistantMsg.innerHTML = formatContent(fullText);
-          document.getElementById("messages-container").scrollTop = document.getElementById("messages-container").scrollHeight;
+          if (data.chunk) {
+            clearInterval(thinkingTimer);
+            clearTimeout(streamWatchdog);
+            currentFullText += data.chunk;
+            currentAssistantMsg.innerHTML = formatContent(currentFullText);
+            const container = document.getElementById("messages-container");
+            container.scrollTop = container.scrollHeight;
+          }
         } catch(e) {}
       };
 
       activeEventSource.onerror = function() {
+        clearInterval(thinkingTimer);
+        clearTimeout(streamWatchdog);
+        if (!currentFullText && currentAssistantMsg) {
+          currentAssistantMsg.innerHTML = `
+            <div style="color:var(--danger); font-size:0.85rem;">
+              ⚠️ AI engine is unreachable or busy.<br>
+              <small style="color:var(--text-muted);">Verify that <code>./start_llama_server.sh</code> is running or inspect the System tab.</small>
+            </div>
+          `;
+        }
         finishStream();
       };
     }
 
     async function stopMessage() {
+      clearInterval(thinkingTimer);
+      clearTimeout(streamWatchdog);
       if (activeEventSource) {
         activeEventSource.close();
         activeEventSource = null;
       }
-      await fetch("/api/chat/stop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId })
-      });
+      try {
+        await fetch("/api/chat/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId })
+        });
+      } catch(e) {}
+
+      if (currentAssistantMsg) {
+        if (!currentFullText) {
+          currentAssistantMsg.innerHTML = '<span style="color:var(--text-muted); font-style:italic;">[Generation stopped by user]</span>';
+        } else {
+          currentAssistantMsg.innerHTML = formatContent(currentFullText) + '<br><span style="color:var(--text-muted); font-size:0.75rem; font-style:italic;">[Stopped]</span>';
+        }
+      }
       finishStream();
     }
 
     function finishStream() {
+      clearInterval(thinkingTimer);
+      clearTimeout(streamWatchdog);
       if (activeEventSource) {
         activeEventSource.close();
         activeEventSource = null;
       }
-      document.getElementById("chat-input").disabled = false;
-      document.getElementById("chat-input").focus();
+      const input = document.getElementById("chat-input");
+      input.disabled = false;
       document.getElementById("btn-send").style.display = "block";
       document.getElementById("btn-stop").style.display = "none";
     }
@@ -642,16 +859,92 @@
     function openSyncModal() { document.getElementById("sync-modal").style.display = "flex"; }
     function closeSyncModal() { document.getElementById("sync-modal").style.display = "none"; }
 
+    const TEACHER_MODELS = {
+      gemini: [
+        { id: "gemini-2.0-flash", name: "gemini-2.0-flash (Recommended: Free, Ultra-Fast & Accurate)" },
+        { id: "gemini-1.5-flash", name: "gemini-1.5-flash (Free, High Throughput)" },
+        { id: "gemini-1.5-pro", name: "gemini-1.5-pro (Free, Deep Reasoning & Architecture)" }
+      ],
+      groq: [
+        { id: "llama-3.3-70b-versatile", name: "llama-3.3-70b-versatile (Free & Fast)" },
+        { id: "mixtral-8x7b-32768", name: "mixtral-8x7b-32768 (Free 32k Context)" },
+        { id: "deepseek-r1-distill-llama-70b", name: "deepseek-r1-distill-llama-70b (Free Reasoning)" }
+      ],
+      openrouter: [
+        { id: "meta-llama/llama-3.3-70b-instruct:free", name: "meta-llama/llama-3.3-70b-instruct:free" },
+        { id: "deepseek/deepseek-r1:free", name: "deepseek/deepseek-r1:free" },
+        { id: "google/gemini-2.0-flash-exp:free", name: "google/gemini-2.0-flash-exp:free" }
+      ],
+      openai: [
+        { id: "gpt-4o-mini", name: "gpt-4o-mini (Cost-Efficient)" },
+        { id: "gpt-4o", name: "gpt-4o (Flagship)" }
+      ]
+    };
+
+    function onSyncProviderChange() {
+      const provider = document.getElementById("sync-provider").value;
+      const customBox = document.getElementById("custom-provider-fields");
+      const modelWrapper = document.getElementById("model-select-wrapper");
+      const modelSelect = document.getElementById("sync-model-select");
+      const keyInput = document.getElementById("sync-api-key");
+
+      customBox.style.display = (provider === "custom") ? "block" : "none";
+      modelWrapper.style.display = (provider === "custom" || provider === "auto") ? "none" : "block";
+
+      if (TEACHER_MODELS[provider]) {
+        modelSelect.innerHTML = "";
+        TEACHER_MODELS[provider].forEach(m => {
+          const opt = document.createElement("option");
+          opt.value = m.id;
+          opt.innerText = m.name;
+          modelSelect.appendChild(opt);
+        });
+      }
+
+      if (provider === "gemini") {
+        keyInput.placeholder = "AIza... (or leave empty to use server GEMINI_API_KEY)";
+      } else if (provider === "groq") {
+        keyInput.placeholder = "gsk_... (or leave empty to use GROQ_API_KEY)";
+      } else if (provider === "openrouter") {
+        keyInput.placeholder = "sk-or-...";
+      } else if (provider === "openai") {
+        keyInput.placeholder = "sk-...";
+      } else {
+        keyInput.placeholder = "Enter your API key (AIza..., gsk_..., sk-or-..., sk-...)";
+      }
+    }
+
     async function triggerSync() {
       const apiKey = document.getElementById("sync-api-key").value.trim();
       const topic = document.getElementById("sync-topic").value.trim();
-      if (!apiKey) return alert("Please enter an API Key.");
-      
+      const provider = document.getElementById("sync-provider").value;
+      const modelSelect = document.getElementById("sync-model-select");
+
+      let endpoint = null;
+      let model = null;
+
+      if (provider === "gemini") {
+        endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+        model = (modelSelect && modelSelect.value) ? modelSelect.value : "gemini-2.0-flash";
+      } else if (provider === "groq") {
+        endpoint = "https://api.groq.com/openai/v1/chat/completions";
+        model = (modelSelect && modelSelect.value) ? modelSelect.value : "llama-3.3-70b-versatile";
+      } else if (provider === "openrouter") {
+        endpoint = "https://openrouter.ai/api/v1/chat/completions";
+        model = (modelSelect && modelSelect.value) ? modelSelect.value : "meta-llama/llama-3.3-70b-instruct:free";
+      } else if (provider === "openai") {
+        endpoint = "https://api.openai.com/v1/chat/completions";
+        model = (modelSelect && modelSelect.value) ? modelSelect.value : "gpt-4o-mini";
+      } else if (provider === "custom") {
+        endpoint = document.getElementById("sync-custom-endpoint").value.trim() || null;
+        model = document.getElementById("sync-custom-model").value.trim() || null;
+      }
+
       closeSyncModal();
       const res = await fetch("/api/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: apiKey, topic })
+        body: JSON.stringify({ api_key: apiKey, topic, endpoint, model })
       });
       const data = await res.json();
       if (data.error) {
@@ -685,6 +978,84 @@
       }, 1000);
     }
 
+    // --- Hugging Face Dataset Import ---
+    let datasetPollInterval = null;
+
+    function openDatasetModal() { document.getElementById("dataset-modal").style.display = "flex"; }
+    function closeDatasetModal() { document.getElementById("dataset-modal").style.display = "none"; }
+
+    function onCuratedDatasetChange() {
+      const val = document.getElementById("hf-curated-select").value;
+      document.getElementById("hf-custom-repo-box").style.display = (val === "custom") ? "block" : "none";
+    }
+
+    async function triggerDatasetImport() {
+      const curated = document.getElementById("hf-curated-select").value;
+      const custom = document.getElementById("hf-custom-repo").value.trim();
+      const limit = parseInt(document.getElementById("hf-limit-select").value, 10) || 50;
+      let dataset = (curated === "custom") ? custom : curated;
+      const token = document.getElementById("hf-token-input") ? document.getElementById("hf-token-input").value.trim() : "";
+
+      if (!dataset) return alert("Please select or specify a Hugging Face dataset repository.");
+
+      let subset = null;
+      if (dataset.includes(":")) {
+        const parts = dataset.split(":");
+        dataset = parts[0];
+        subset = parts[1];
+      }
+
+      closeDatasetModal();
+      const banner = document.getElementById("sync-banner");
+      const text = document.getElementById("sync-status-text");
+      banner.style.display = "block";
+      const displayLabel = subset ? `${dataset} [${subset}]` : dataset;
+      text.innerText = `Starting Hugging Face stream for ${displayLabel}...`;
+
+      const saveLocal = document.getElementById("hf-save-local") ? document.getElementById("hf-save-local").checked : true;
+
+      try {
+        const res = await fetch("/api/dataset/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dataset, subset, limit, save_local: saveLocal, token })
+        });
+        const data = await res.json();
+        if (data.error) {
+          alert("Import error: " + data.error);
+          banner.style.display = "none";
+          return;
+        }
+        startDatasetPolling();
+      } catch (e) {
+        banner.style.display = "none";
+        alert("Failed to start dataset import: " + e);
+      }
+    }
+
+    function startDatasetPolling() {
+      const banner = document.getElementById("sync-banner");
+      const text = document.getElementById("sync-status-text");
+      banner.style.display = "block";
+
+      if (datasetPollInterval) clearInterval(datasetPollInterval);
+      datasetPollInterval = setInterval(async () => {
+        try {
+          const res = await fetch("/api/dataset/status");
+          const state = await res.json();
+          if (state.is_importing) {
+            text.innerText = `Importing HF Dataset (${state.progress}/${state.total}): ${state.current_dataset}`;
+          } else {
+            clearInterval(datasetPollInterval);
+            banner.style.display = "none";
+            loadKnowledge();
+          }
+        } catch (e) {
+          clearInterval(datasetPollInterval);
+        }
+      }, 1000);
+    }
+
     // --- System Telemetry & Logs ---
     async function loadTelemetry() {
       try {
@@ -712,10 +1083,58 @@
       } catch (e) {}
     }
 
+    // --- Model Management ---
+    async function loadModels() {
+      try {
+        const res = await fetch("/api/models");
+        const models = await res.json();
+        const sel = document.getElementById("model-selector");
+        if (!models || models.length === 0) {
+          sel.innerHTML = "<option value=''>⚡ No models downloaded</option>";
+          return;
+        }
+        sel.innerHTML = "";
+        models.forEach(m => {
+          const opt = document.createElement("option");
+          opt.value = m.filename;
+          opt.text = `⚡ ${m.name} (${m.size_mb} MB)`;
+          if (m.is_active) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      } catch (e) {}
+    }
+
+    async function switchModel(modelFilename) {
+      if (!modelFilename) return;
+      const statusTag = document.getElementById("status-tag");
+      const prevTag = statusTag.innerText;
+      statusTag.innerText = "Switching model...";
+      try {
+        const res = await fetch("/api/models/active", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: modelFilename })
+        });
+        const data = await res.json();
+        if (data.success) {
+          statusTag.innerText = `Active: ${modelFilename}`;
+          loadTelemetry();
+          loadModels();
+        } else {
+          alert("Could not switch model: " + data.message);
+          statusTag.innerText = prevTag;
+        }
+      } catch (e) {
+        alert("Error switching model: " + e);
+        statusTag.innerText = prevTag;
+      }
+    }
+
     // Initial Load
     loadTodos();
     loadNotes();
     loadTelemetry();
+    loadModels();
   </script>
 </body>
 </html>

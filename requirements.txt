@@ -1,0 +1,5 @@
+# Merlin AI Dependencies
+requests>=2.32.0
+llama-cpp-python>=0.3.0
+datasets>=3.0.0
+huggingface-hub>=0.28.0

@@ -15,6 +15,7 @@ from memory import (
 )
 from engine import InferenceEngine
 from sync_teacher import run_sync, sync_state
+from import_dataset import import_hf_dataset, import_state, POPULAR_DATASETS
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 HOST = os.getenv("HOST", "0.0.0.0")
@@ -24,6 +25,8 @@ engine = None
 server_start_time = time.time()
 
 class AssistantRequestHandler(SimpleHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=WEB_DIR, **kwargs)
 
@@ -61,11 +64,19 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
                 return
 
             self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-transform")
             self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
+
+            # Immediate initial comment ping so the browser/proxy establishes the stream with 0 latency
+            try:
+                self.wfile.write(b": connected\n\n")
+                self.wfile.flush()
+            except Exception:
+                return
 
             try:
                 for chunk in engine.generate_stream(prompt, session_id=session_id, mode=mode):
@@ -128,6 +139,20 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
             self.send_json(get_recent_audit_logs())
             return
 
+        # 10. Available Downloaded Models
+        elif path == "/api/models":
+            self.send_json(engine.get_available_models())
+            return
+
+        # 11. Hugging Face Dataset Status & Curated Repos
+        elif path == "/api/dataset/status":
+            self.send_json(import_state)
+            return
+
+        elif path == "/api/dataset/popular":
+            self.send_json(POPULAR_DATASETS)
+            return
+
         # Static Web App
         if path in ["", "/"]:
             self.path = "/index.html"
@@ -154,6 +179,16 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
             session_id = data.get("session_id", "default")
             stopped = engine.stop_generation(session_id)
             self.send_json({"success": stopped})
+            return
+
+        # Switch Active Model
+        elif path == "/api/models/active":
+            model_name = data.get("model", "").strip()
+            if not model_name:
+                self.send_json({"error": "Model filename required"}, status=400)
+                return
+            success, msg = engine.set_active_model(model_name)
+            self.send_json({"success": success, "message": msg, "active_model": engine.active_model_name}, status=200 if success else 400)
             return
 
         # To-Dos CRUD
@@ -250,10 +285,19 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
 
         # Trigger Teacher Sync
         elif path == "/api/sync":
-            api_key = data.get("api_key", "").strip() or os.getenv("TEACHER_API_KEY", "")
+            api_key = (
+                data.get("api_key", "").strip()
+                or os.getenv("GEMINI_API_KEY", "")
+                or os.getenv("GOOGLE_API_KEY", "")
+                or os.getenv("TEACHER_API_KEY", "")
+                or os.getenv("GROQ_API_KEY", "")
+                or os.getenv("OPENAI_API_KEY", "")
+            )
             topic = data.get("topic", "").strip()
+            endpoint = data.get("endpoint", "").strip() or None
+            model = data.get("model", "").strip() or None
             if not api_key:
-                self.send_json({"error": "API Key is required to communicate with the teacher AI"}, status=400)
+                self.send_json({"error": "API Key is required to communicate with the teacher AI. Enter your Gemini API key or set GEMINI_API_KEY."}, status=400)
                 return
 
             if sync_state.get("is_syncing"):
@@ -261,11 +305,31 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
                 return
 
             def bg_sync():
-                run_sync(api_key, topic_to_explore=topic or None)
+                run_sync(api_key, endpoint=endpoint, model=model, topic_to_explore=topic or None)
 
             t = threading.Thread(target=bg_sync, daemon=True)
             t.start()
             self.send_json({"success": True, "message": "Teacher synchronization started."})
+            return
+
+        # Trigger Hugging Face Dataset Import
+        elif path == "/api/dataset/import":
+            repo_id = data.get("dataset", "").strip() or "openbmb/UltraData-Stack-v3-L2"
+            subset = data.get("subset", "").strip() or None
+            limit = int(data.get("limit", 50))
+            save_local = bool(data.get("save_local", True))
+            token = data.get("token", "").strip() or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN") or None
+
+            if import_state.get("is_importing"):
+                self.send_json({"error": "Another dataset import is already in progress"}, status=409)
+                return
+
+            def bg_import():
+                import_hf_dataset(repo_id, subset=subset, limit=limit, save_local=save_local, token=token)
+
+            t = threading.Thread(target=bg_import, daemon=True)
+            t.start()
+            self.send_json({"success": True, "message": f"Started streaming import from Hugging Face: {repo_id}"})
             return
 
         self.send_json({"error": f"Endpoint '{path}' not found"}, status=404)
@@ -276,7 +340,7 @@ def run():
     engine = InferenceEngine()
     server = ThreadingHTTPServer((HOST, PORT), AssistantRequestHandler)
     print("=" * 66)
-    print("  AETHER OFFLINE AI ASSISTANT & CODER (PRODUCTION READY)")
+    print("  MERLIN AI — OFFLINE ASSISTANT & CODER (PRODUCTION READY)")
     print(f"  Local Access:      http://localhost:{PORT}")
     print(f"  Network Access:    http://0.0.0.0:{PORT} (Open from any LAN device)")
     print(f"  Model Engine:      {engine.backend} ({engine.active_model_name})")

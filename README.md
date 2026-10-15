@@ -1,4 +1,4 @@
-# Aether — Offline AI Assistant & Self-Learning Coder
+# Merlin AI — Offline AI Assistant & Self-Learning Coder
 
 An air-gapped, ultra-lightweight AI Personal Assistant (PA) and coding assistant engineered specifically for **Raspberry Pi 5** and low-resource **Linux servers**.
 
@@ -52,7 +52,7 @@ An air-gapped, ultra-lightweight AI Personal Assistant (PA) and coding assistant
 Run this single command on your server to install dependencies, clone the repo, download the coding model, and start the systemd daemon automatically:
 
 ```bash
-sudo apt update && sudo apt install -y git curl build-essential cmake python3 python3-pip python3-venv && git clone https://github.com/merlinthedev848/merlin-ai.git && cd merlin-ai && chmod +x install.sh download_model.sh start_llama_server.sh cron_worker.py && ./install.sh && ./venv/bin/pip install llama-cpp-python requests && mkdir -p models && curl -L -C - -o models/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf && sudo sed -i "s|User=pi|User=$USER|g; s|/home/pi/offline-ai-assistant|$PWD|g" offline-assistant.service && sudo cp offline-assistant.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now offline-assistant.service && echo -e "\n\n[SUCCESS] Merlin-AI is running! Access it at: http://$(hostname -I | awk '{print $1}'):5000\n"
+sudo apt update && sudo apt install -y git curl build-essential cmake python3 python3-pip python3-venv && git clone https://github.com/merlinthedev848/merlin-ai.git && cd merlin-ai && chmod +x install.sh download_model.sh start_llama_server.sh cron_worker.py && ./install.sh && ./download_model.sh && sudo sed -i "s|User=pi|User=$USER|g; s|/home/pi/offline-ai-assistant|$PWD|g" offline-assistant.service && sudo cp offline-assistant.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now offline-assistant.service && echo -e "\n\n[SUCCESS] Merlin AI is running! Access it at: http://$(hostname -I | awk '{print $1}'):5000\n"
 ```
 
 ---
@@ -62,11 +62,11 @@ sudo apt update && sudo apt install -y git curl build-essential cmake python3 py
 ### 1. Transfer or Clone to Pi / Server
 Copy this folder to your Pi or Linux machine:
 ```bash
-scp -r offline-ai-assistant pi@<PI_IP>:~/offline-ai-assistant
+scp -r merlin-ai pi@<PI_IP>:~/merlin-ai
 ```
 Or run directly inside the directory:
 ```bash
-cd offline-ai-assistant
+cd merlin-ai
 ```
 
 ### 2. Run the Installer
@@ -127,12 +127,59 @@ sudo systemctl enable --now offline-cron.timer
 1. **Daily Offline Use**:
    - While coding or asking questions, if you notice the assistant lacks a concept, click **"Record a Knowledge Gap"** in the sidebar (or type `:gap <question>` in CLI).
    - The gap is recorded in `assistant_memory.db`.
-2. **Plugging into Commercial AI**:
-   - When you have internet access, click **"⚡ Sync Teacher"** in the web UI (or run `python sync_teacher.py <API_KEY>`).
-   - The assistant contacts the commercial AI (OpenAI, Gemini, OpenRouter), asks its queued questions, validates the syntax of the returned code, and saves the verified lesson into the `knowledge` table.
-   - It also appends the training pair to `training_dataset.jsonl`.
-3. **Automatic Recall**:
-   - The next time you are offline and ask about that topic, the assistant retrieves the distilled lesson from its local database and applies it to your solution.
+2. **Teaching Merlin with Google Gemini (Free Tier)**:
+   - Obtain a free API key from Google AI Studio: [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+   - **Via Web Dashboard**:
+     - Click **"⚡ Sync Teacher"** in the Memory tab.
+     - Select **Google Gemini** as Provider.
+     - Choose your model (`gemini-2.0-flash` [Recommended], `gemini-1.5-flash`, or `gemini-1.5-pro`).
+     - Paste your `AIza...` key (or leave empty if `GEMINI_API_KEY` is exported).
+     - Enter an optional topic to distill immediately, or let it resolve all pending knowledge gaps.
+     - Click **"Start Distillation"**.
+   - **Via Terminal / CLI**:
+     ```bash
+     export GEMINI_API_KEY="AIzaSyYourGeminiApiKeyHere"
+     python sync_teacher.py --topic "Building an async WebSocket server in Python"
+     ```
+     Or interactively in CLI mode:
+     ```bash
+     python cli.py
+     # Type: :teach Building high throughput TCP servers
+     ```
+3. **Local Hugging Face Datasets (`openbmb/UltraData-Stack-v3-L2` by Default)**:
+   - Merlin uses **`openbmb/UltraData-Stack-v3-L2`** by default for high-yield pre-training and instruction knowledge, cached locally on disk in `data/datasets/` for 100% offline access.
+   - **Download & Cache Locally (One Command)**:
+     ```bash
+     ./download_dataset.sh
+     ```
+     *(Streams and saves `openbmb/UltraData-Stack-v3-L2` to local disk at `data/datasets/openbmb_UltraData-Stack-v3-L2`)*
+   - **In Python Code**:
+     ```python
+     from import_dataset import load_local_dataset
+
+     # 1. Default AGI Pretraining Stack
+     ds_ultra = load_local_dataset("openbmb/UltraData-Stack-v3-L2")
+
+     # 2. Agentic SFT Subsets (Pass HF_TOKEN if gated or authenticate via huggingface-cli login)
+     ds_code_agent    = load_local_dataset("openbmb/UltraData-SFT-Agent-2609", subset="Code-Agent")
+     ds_general_agent = load_local_dataset("openbmb/UltraData-SFT-Agent-2609", subset="General-Agent")
+     ds_search_agent  = load_local_dataset("openbmb/UltraData-SFT-Agent-2609", subset="Search-Agent")
+
+     # 3. Anthropic RLHF Alignment
+     ds_rlhf = load_local_dataset("Anthropic/hh-rlhf")
+     ```
+   - **Via Web Dashboard**:
+     - Click **"🤗 Import Dataset"** in the Memory & Skills tab.
+     - Select any dataset or subset (e.g., `openbmb/UltraData-SFT-Agent-2609 [Code-Agent]`).
+     - Enter your optional Hugging Face access token (`hf_...`) if accessing gated datasets.
+     - Click **"Import & Assimilate"** to stream and save to disk.
+   - **Via Interactive CLI**:
+     ```bash
+     python cli.py
+     # Type: :dataset openbmb/UltraData-SFT-Agent-2609:Code-Agent 50
+     ```
+4. **Automatic Recall**:
+   - The next time you are offline and ask about that topic, Merlin automatically retrieves the distilled lesson from its local database and incorporates it into your answer.
 
 ---
 
@@ -143,6 +190,8 @@ For SSH terminal sessions without a browser:
 ./venv/bin/python cli.py
 ```
 Commands:
+- `:teach <topic>` — Distill a topic directly from the Gemini Teacher
+- `:dataset <repo> [N]` — Stream and assimilate Hugging Face datasets
 - `:tasks` — View active to-do list
 - `:addtask <task>` — Add a new task
 - `:skills` — Inspect learned knowledge

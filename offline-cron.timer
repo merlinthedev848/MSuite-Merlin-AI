@@ -1,5 +1,5 @@
 [Unit]
-Description=Run Aether Background Maintenance every 15 minutes
+Description=Run Merlin AI Background Maintenance every 15 minutes
 Requires=offline-cron.service
 
 [Timer]

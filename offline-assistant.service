@@ -1,5 +1,5 @@
 [Unit]
-Description=Aether Offline AI Personal Assistant & Coder
+Description=Merlin AI Offline Personal Assistant & Coder
 After=network.target
 
 [Service]
