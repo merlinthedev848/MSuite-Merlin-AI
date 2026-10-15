@@ -330,6 +330,19 @@ async function submitMessage() {
   toggleStreamingUI(true);
 
   let fullResponse = "";
+  let renderScheduled = false;
+
+  function scheduleRender() {
+    if (!renderScheduled) {
+      renderScheduled = true;
+      requestAnimationFrame(() => {
+        assistantBubble.innerHTML = renderMarkdown(fullResponse);
+        scrollViewportToBottom();
+        renderScheduled = false;
+      });
+    }
+  }
+
   const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=${currentMode}&session_id=${activeConversationId}`;
   activeEventSource = new EventSource(streamUrl);
 
@@ -342,8 +355,7 @@ async function submitMessage() {
       const data = JSON.parse(event.data);
       if (data.chunk) {
         fullResponse += data.chunk;
-        assistantBubble.innerHTML = renderMarkdown(fullResponse);
-        scrollViewportToBottom();
+        scheduleRender();
       }
     } catch (e) {}
   };

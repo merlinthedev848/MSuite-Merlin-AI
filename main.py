@@ -155,8 +155,8 @@ def get_v1_model(model_id: str):
     }
 
 @app.post("/v1/chat/completions")
-async def chat_completions(req: OpenAIChatRequest, auth: bool = Depends(verify_api_key)):
-    """Standard OpenAI POST /v1/chat/completions endpoint."""
+async def chat_completions(req: OpenAIChatRequest, request: Request, auth: bool = Depends(verify_api_key)):
+    """Standard OpenAI POST /v1/chat/completions endpoint with async disconnect handling."""
     eng = get_engine()
     model_name = req.model or eng.active_model_name or "merlin-ai"
     messages_dicts = [{"role": m.role, "content": m.content} for m in req.messages]
@@ -165,7 +165,7 @@ async def chat_completions(req: OpenAIChatRequest, auth: bool = Depends(verify_a
         chat_id = f"chatcmpl-{int(time.time()*1000)}"
         created_ts = int(time.time())
 
-        def sse_generator():
+        async def sse_generator():
             try:
                 for delta_chunk in eng.generate_chat_completion_stream(
                     messages_dicts,
@@ -173,6 +173,8 @@ async def chat_completions(req: OpenAIChatRequest, auth: bool = Depends(verify_a
                     max_tokens=req.max_tokens,
                     stop=req.stop
                 ):
+                    if await request.is_disconnected():
+                        break
                     chunk_obj = {
                         "id": chat_id,
                         "object": "chat.completion.chunk",
@@ -194,7 +196,15 @@ async def chat_completions(req: OpenAIChatRequest, auth: bool = Depends(verify_a
             except Exception as e:
                 log_event("v1_stream_error", f"Stream error: {e}", "danger")
 
-        return StreamingResponse(sse_generator(), media_type="text/event-stream")
+        return StreamingResponse(
+            sse_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
     else:
         completion_text = eng.generate_chat_completion(
             messages_dicts,
@@ -229,21 +239,26 @@ async def chat_completions(req: OpenAIChatRequest, auth: bool = Depends(verify_a
 # =====================================================================
 
 @app.get("/api/chat/stream")
-def chat_stream(prompt: str, mode: str = "assistant", session_id: str = "default"):
+async def chat_stream(request: Request, prompt: str, mode: str = "assistant", session_id: str = "default"):
     if not prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
     eng = get_engine()
-    def sse_event_stream():
+    async def sse_event_stream():
         yield ": connected\n\n"
         try:
             for chunk in eng.generate_stream(prompt, session_id=session_id, mode=mode):
+                if await request.is_disconnected():
+                    eng.stop_generation(session_id)
+                    break
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
             yield "data: [DONE]\n\n"
         except (BrokenPipeError, ConnectionResetError):
             eng.stop_generation(session_id)
         except Exception as e:
             log_event("stream_error", f"Stream exception: {e}", "danger")
+        finally:
+            eng.stop_generation(session_id)
 
     return StreamingResponse(
         sse_event_stream(),

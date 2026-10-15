@@ -6,10 +6,12 @@ import urllib.error
 import threading
 import time
 import shutil
+import atexit
 from memory import search_knowledge, get_recent_chat, save_chat_message, log_event, get_context_window
 
 try:
     import requests
+    from requests.adapters import HTTPAdapter
     HAS_REQUESTS = True
 except ImportError:
     HAS_REQUESTS = False
@@ -89,10 +91,30 @@ class InferenceEngine:
         self.llama_cpp_model = None
         self.backend = None
         self.active_model_name = "None"
+        self._server_process = None
+        self._http_session = None
+        if HAS_REQUESTS:
+            self._http_session = requests.Session()
+            adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=1)
+            self._http_session.mount("http://", adapter)
         # Concurrency Lock: Prevents simultaneous access to the CPU inference engine
         self._inference_lock = threading.Lock()
         self._active_abort_events = {} # session_id -> threading.Event()
+        atexit.register(self.cleanup)
         self.refresh_backend()
+
+    def cleanup(self):
+        """Gracefully terminates background llama-server child processes on exit."""
+        if self._server_process:
+            try:
+                self._server_process.terminate()
+                self._server_process.wait(timeout=2.0)
+            except Exception:
+                try:
+                    self._server_process.kill()
+                except Exception:
+                    pass
+            self._server_process = None
 
     def _try_autostart_llama_server(self):
         """Attempts to auto-launch C++ llama-server if binary exists."""
@@ -141,7 +163,7 @@ class InferenceEngine:
 
         try:
             import subprocess
-            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._server_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             for _ in range(8):
                 time.sleep(0.5)
                 try:
@@ -268,38 +290,47 @@ class InferenceEngine:
     def _stream_from_llama_server(self, payload_dict, abort_event, timeout=120):
         """
         Streams SSE tokens from llama-server unbuffered so each token reaches the client immediately.
+        Actively terminates remote generation upon abort event by closing the HTTP stream.
         """
-        if HAS_REQUESTS:
+        if HAS_REQUESTS and self._http_session:
+            r = None
             try:
-                with requests.post(
+                r = self._http_session.post(
                     f"{DEFAULT_LLAMA_SERVER_URL}/v1/chat/completions",
                     json=payload_dict,
                     headers={"Content-Type": "application/json", "User-Agent": "Merlin-AI/1.0"},
                     stream=True,
                     timeout=timeout
-                ) as r:
-                    r.raise_for_status()
-                    for line in r.iter_lines(decode_unicode=True, chunk_size=512):
-                        if abort_event.is_set():
+                )
+                r.raise_for_status()
+                for line in r.iter_lines(decode_unicode=True, chunk_size=1):
+                    if abort_event.is_set():
+                        r.close()
+                        break
+                    if not line:
+                        continue
+                    if line.startswith("data: "):
+                        data_content = line[6:].strip()
+                        if data_content == "[DONE]":
                             break
-                        if not line:
+                        try:
+                            chunk_json = json.loads(data_content)
+                            delta = chunk_json["choices"][0]["delta"].get("content", "")
+                            if delta:
+                                yield delta
+                        except Exception:
                             continue
-                        if line.startswith("data: "):
-                            data_content = line[6:].strip()
-                            if data_content == "[DONE]":
-                                break
-                            try:
-                                chunk_json = json.loads(data_content)
-                                delta = chunk_json["choices"][0]["delta"].get("content", "")
-                                if delta:
-                                    yield delta
-                            except Exception:
-                                continue
                 return
             except Exception as e:
                 if not abort_event.is_set():
                     yield f"[Error querying llama-server via requests: {e}]"
                 return
+            finally:
+                if r is not None:
+                    try:
+                        r.close()
+                    except Exception:
+                        pass
 
         # Fallback to standard library urllib with unbuffered chunk parsing (avoids 8KB buffer delay)
         payload = json.dumps(payload_dict).encode("utf-8")

@@ -60,7 +60,7 @@ else
 fi
 
 echo "[*] Downloading weights to $OUTFILE..."
-curl -L -C - -o "$OUTFILE" "$URL"
+curl -L -C - --retry 3 --retry-delay 2 --progress-bar -o "$OUTFILE" "$URL"
 
 echo ""
 echo "[✓] Model downloaded successfully!"

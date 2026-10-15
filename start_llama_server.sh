@@ -47,6 +47,12 @@ if [ "$N_GPU_LAYERS" == "0" ] && command -v nvidia-smi &> /dev/null; then
     N_GPU_LAYERS=99
 fi
 
+# Check if llama-server is already actively running on port 8080
+if curl -s http://127.0.0.1:8080/health | grep -q "ok" 2>/dev/null; then
+    echo "[*] llama-server is already running on http://127.0.0.1:8080 (healthy)."
+    exit 0
+fi
+
 if [ -z "$SERVER_BIN" ]; then
     echo "[!] llama-server binary not found."
     if [ -d "$DIR/llama.cpp" ]; then
@@ -54,17 +60,22 @@ if [ -z "$SERVER_BIN" ]; then
         git -C "$DIR/llama.cpp" pull --ff-only || true
     else
         echo "    Cloning latest stable llama.cpp..."
-        git clone https://github.com/ggerganov/llama.cpp.git "$DIR/llama.cpp"
+        git clone --depth 1 https://github.com/ggerganov/llama.cpp.git "$DIR/llama.cpp"
     fi
-    echo "    Building llama.cpp from source (native CPU acceleration)..."
+    echo "    Building llama.cpp from source (native CPU SIMD acceleration)..."
     cd "$DIR/llama.cpp"
-    cmake -B build -DGGML_NATIVE=ON
+    ARCH=$(uname -m 2>/dev/null || echo "x86_64")
+    EXTRA_FLAGS=""
+    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+        EXTRA_FLAGS="-DGGML_CPU_AARCH64=ON"
+    fi
+    cmake -B build -DGGML_NATIVE=ON $EXTRA_FLAGS -DCMAKE_BUILD_TYPE=Release
     cmake --build build --config Release -j"$NPROC"
     SERVER_BIN="$DIR/llama.cpp/build/bin/llama-server"
     cd "$DIR"
 fi
 
-echo "[*] Launching C++ llama-server on port 8080 ($THREADS threads, ctx $CTX_SIZE, GPU layers: $N_GPU_LAYERS, Flash-Attn & Q8_0 KV Cache)..."
+echo "[*] Launching C++ llama-server on port 8080 ($THREADS threads, ctx $CTX_SIZE, GPU layers: $N_GPU_LAYERS)..."
 exec "$SERVER_BIN" \
     -m "$MODEL" \
     --host 127.0.0.1 \
@@ -77,4 +88,6 @@ exec "$SERVER_BIN" \
     -ctk q8_0 \
     -ctv q8_0 \
     -ngl "$N_GPU_LAYERS" \
+    --parallel 1 \
+    --ctx-shift \
     --cont-batching
