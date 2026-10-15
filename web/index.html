@@ -448,8 +448,8 @@
       <div id="model-select-wrapper" style="margin-bottom:10px;">
         <label style="font-size:0.78rem; display:block; margin-bottom:4px; color:var(--text-muted);">Teacher Model:</label>
         <select id="sync-model-select" style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
-          <option value="gemini-2.0-flash">gemini-2.0-flash (Recommended: Free, Ultra-Fast & Accurate)</option>
-          <option value="gemini-1.5-flash">gemini-1.5-flash (Free, High Throughput)</option>
+          <option value="gemini-1.5-flash" selected>gemini-1.5-flash (Recommended: Free, Universal & Fast)</option>
+          <option value="gemini-2.0-flash">gemini-2.0-flash (Latest / Experimental)</option>
           <option value="gemini-1.5-pro">gemini-1.5-pro (Free, Deep Reasoning & Complex Code)</option>
         </select>
       </div>
@@ -876,8 +876,8 @@
 
     const TEACHER_MODELS = {
       gemini: [
-        { id: "gemini-2.0-flash", name: "gemini-2.0-flash (Recommended: Free, Ultra-Fast & Accurate)" },
-        { id: "gemini-1.5-flash", name: "gemini-1.5-flash (Free, High Throughput)" },
+        { id: "gemini-1.5-flash", name: "gemini-1.5-flash (Recommended: Free, Universal & Fast)" },
+        { id: "gemini-2.0-flash", name: "gemini-2.0-flash (Latest / Experimental)" },
         { id: "gemini-1.5-pro", name: "gemini-1.5-pro (Free, Deep Reasoning & Architecture)" }
       ],
       groq: [
