@@ -576,11 +576,11 @@
       }
     }
 
-    function appendMessage(role, text) {
+    function appendMessage(role, text, isRawHtml = false) {
       const container = document.getElementById("messages-container");
       const msg = document.createElement("div");
       msg.className = "message " + role;
-      msg.innerHTML = formatContent(text);
+      msg.innerHTML = isRawHtml ? text : formatContent(text);
       container.appendChild(msg);
       container.scrollTop = container.scrollHeight;
       return msg;
@@ -634,7 +634,7 @@
           <span>Merlin is thinking<span class="thinking-seconds"> (0s)</span></span>
           <div class="thinking-dots"><span></span><span></span><span></span></div>
         </div>
-      `);
+      `, true);
 
       const startTime = Date.now();
       clearInterval(thinkingTimer);

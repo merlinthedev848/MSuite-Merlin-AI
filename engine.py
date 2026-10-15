@@ -22,10 +22,11 @@ def get_optimal_threads():
         except ValueError:
             pass
     cpu_cores = os.cpu_count() or 4
-    # On hyperthreaded CPUs, physical cores = cpu_cores // 2.
-    # Setting threads to physical cores avoids L3 cache evictions and thread contention.
-    physical_cores = max(1, cpu_cores // 2) if cpu_cores > 2 else cpu_cores
-    return min(6, max(1, physical_cores))
+    # On systems with <= 4 cores (such as Raspberry Pi 4/5 or quad-core cloud VMs),
+    # use all cores so llama.cpp runs at full hardware capacity.
+    if cpu_cores <= 4:
+        return max(1, cpu_cores)
+    return min(8, max(2, cpu_cores - 1))
 
 class InferenceEngine:
     def __init__(self):
@@ -281,7 +282,7 @@ class InferenceEngine:
         messages.append({"role": "user", "content": prompt})
 
         full_response = ""
-        max_tokens = int(os.getenv("MAX_TOKENS", "1024"))
+        max_tokens = 90 if is_greeting else int(os.getenv("MAX_TOKENS", "1024"))
         stop_tokens = ["<|im_end|>", "<|endoftext|>", "</s>"]
 
         # Acquire lock to ensure only one thread generates on the CPU at a time
