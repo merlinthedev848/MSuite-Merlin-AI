@@ -137,6 +137,45 @@ def resolve_teacher_provider(api_key, endpoint=None, model=None):
         # Default OpenAI or custom
         return ep or os.getenv("TEACHER_ENDPOINT", "https://api.openai.com/v1/chat/completions"), mdl or os.getenv("TEACHER_MODEL", "gpt-4o-mini")
 
+def discover_gemini_models(api_key_clean):
+    """
+    Dynamically queries Google's ListModels API to discover accessible models.
+    Catches 400/403 directly to give the user immediate feedback if the key is invalid or Generative Language API is disabled.
+    """
+    discovered = []
+    working_version = "v1beta"
+    for ver in ["v1beta", "v1"]:
+        url = f"https://generativelanguage.googleapis.com/{ver}/models?key={api_key_clean}"
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "Merlin-AI-Teacher/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for m in data.get("models", []):
+                    methods = m.get("supportedGenerationMethods", [])
+                    if "generateContent" in methods:
+                        m_name = m.get("name", "").replace("models/", "")
+                        if m_name and m_name not in discovered:
+                            discovered.append(m_name)
+                if discovered:
+                    working_version = ver
+                    break
+        except urllib.error.HTTPError as he:
+            err_msg = ""
+            try:
+                err_data = json.loads(he.read().decode("utf-8", errors="replace"))
+                if "error" in err_data:
+                    err_msg = err_data["error"].get("message") or str(err_data["error"])
+            except Exception:
+                pass
+            if he.code in (400, 401, 403):
+                raise RuntimeError(f"Google Gemini Authentication Error ({he.code}): {err_msg or he.reason}")
+        except Exception:
+            pass
+    return discovered, working_version
+
 def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"):
     api_key_clean = (api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("TEACHER_API_KEY") or "").strip().strip("'\"")
     if not api_key_clean:
@@ -152,65 +191,112 @@ def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"
         or (endpoint and "googleapis.com" in endpoint)
     )
 
-    # Strategy 1: For Google Gemini, query official REST API with automatic fallback to universally available models
+    # Strategy 1: For Google Gemini, query official REST API with dynamic model discovery and automatic fallback
     if is_gemini:
         clean_model = model_clean.replace("models/", "")
-        candidate_models = [clean_model]
-        # Include guaranteed fallback models in case the chosen model is experimental or region-restricted
-        for fb in ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-2.0-flash"]:
-            if fb not in candidate_models:
-                candidate_models.append(fb)
+        discovered_models, api_ver = discover_gemini_models(api_key_clean)
+
+        candidate_models = []
+        if clean_model in discovered_models:
+            candidate_models.append(clean_model)
+        else:
+            for m in discovered_models:
+                if clean_model in m:
+                    candidate_models.append(m)
+
+        for m in sorted(discovered_models, key=lambda x: (0 if "flash" in x else 1, 0 if "1.5" in x or "2.0" in x else 1)):
+            if m not in candidate_models:
+                candidate_models.append(m)
+
+        if not candidate_models:
+            candidate_models = [clean_model]
+            for fb in ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-pro"]:
+                if fb not in candidate_models:
+                    candidate_models.append(fb)
 
         last_error = None
         for candidate in candidate_models:
-            native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate}:generateContent?key={api_key_clean}"
-            native_payload = {
-                "system_instruction": {
-                    "parts": [{"text": DEFAULT_SYSTEM_PROMPT}]
-                },
-                "contents": [
-                    {"parts": [{"text": prompt}]}
-                ],
-                "generationConfig": {
-                    "responseMimeType": "application/json",
-                    "temperature": 0.2
+            for ver in [api_ver, "v1beta", "v1"]:
+                native_url = f"https://generativelanguage.googleapis.com/{ver}/models/{candidate}:generateContent?key={api_key_clean}"
+                native_payload = {
+                    "contents": [
+                        {"parts": [{"text": prompt}]}
+                    ],
+                    "generationConfig": {
+                        "temperature": 0.2
+                    }
                 }
+                if ver == "v1beta":
+                    native_payload["system_instruction"] = {
+                        "parts": [{"text": DEFAULT_SYSTEM_PROMPT}]
+                    }
+                    native_payload["generationConfig"]["responseMimeType"] = "application/json"
+                else:
+                    native_payload["contents"][0]["parts"][0]["text"] = f"{DEFAULT_SYSTEM_PROMPT}\n\nTask: {prompt}"
+
+                try:
+                    req = urllib.request.Request(
+                        native_url,
+                        data=json.dumps(native_payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json", "User-Agent": "Merlin-AI-Teacher/1.0"}
+                    )
+                    with urllib.request.urlopen(req, timeout=60) as resp:
+                        res_json = json.loads(resp.read().decode("utf-8"))
+                        candidate_obj = res_json.get("candidates", [{}])[0]
+                        content_obj = candidate_obj.get("content", {})
+                        parts = content_obj.get("parts", [])
+                        raw_content = parts[0].get("text", "") if parts else ""
+                        result = extract_json_from_response(raw_content)
+                        if "code_example" in result:
+                            result["code_example"] = clean_code_snippet(result["code_example"])
+                        return result
+                except urllib.error.HTTPError as he:
+                    err_msg = ""
+                    try:
+                        err_data = json.loads(he.read().decode("utf-8", errors="replace"))
+                        if "error" in err_data:
+                            err_msg = err_data["error"].get("message") or str(err_data["error"])
+                    except Exception:
+                        pass
+                    if he.code == 404:
+                        last_error = f"{candidate} ({ver}): {err_msg or 'Not found'}"
+                        continue
+                    if he.code in (400, 401, 403):
+                        raise RuntimeError(f"Google Gemini Error ({candidate}): {err_msg or f'HTTP {he.code}: {he.reason}'}")
+                    last_error = f"{candidate} ({ver}): HTTP {he.code} {err_msg}"
+                except Exception as e:
+                    last_error = str(e)
+                    continue
+
+        # Strategy 1B: Fallback to Google Gemini OpenAI-compatible completions endpoint
+        try:
+            openai_gemini_url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+            oa_headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "Merlin-AI-Teacher/1.0",
+                "Authorization": f"Bearer {api_key_clean}"
             }
-            try:
-                req = urllib.request.Request(
-                    native_url,
-                    data=json.dumps(native_payload).encode("utf-8"),
-                    headers={"Content-Type": "application/json", "User-Agent": "Merlin-AI-Teacher/1.0"}
-                )
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    res_json = json.loads(resp.read().decode("utf-8"))
-                    candidate_obj = res_json.get("candidates", [{}])[0]
-                    content_obj = candidate_obj.get("content", {})
-                    parts = content_obj.get("parts", [])
-                    raw_content = parts[0].get("text", "") if parts else ""
+            oa_payload = {
+                "model": clean_model,
+                "messages": [
+                    {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.2
+            }
+            req_oa = urllib.request.Request(openai_gemini_url, data=json.dumps(oa_payload).encode("utf-8"), headers=oa_headers)
+            with urllib.request.urlopen(req_oa, timeout=60) as resp_oa:
+                res_json = json.loads(resp_oa.read().decode("utf-8"))
+                if "choices" in res_json and res_json["choices"]:
+                    raw_content = res_json["choices"][0]["message"]["content"]
                     result = extract_json_from_response(raw_content)
                     if "code_example" in result:
                         result["code_example"] = clean_code_snippet(result["code_example"])
                     return result
-            except urllib.error.HTTPError as he:
-                err_msg = ""
-                try:
-                    err_data = json.loads(he.read().decode("utf-8", errors="replace"))
-                    if "error" in err_data:
-                        err_msg = err_data["error"].get("message") or str(err_data["error"])
-                except Exception:
-                    pass
-                if he.code == 404:
-                    # Model not available under this API key / project; try next candidate
-                    last_error = f"Model '{candidate}' not found on this API key"
-                    continue
-                # For non-404 errors (invalid key, quota exceeded), raise immediately
-                raise RuntimeError(f"Google Gemini Error ({candidate}): {err_msg or f'HTTP {he.code}: {he.reason}'}")
-            except Exception as e:
-                last_error = str(e)
-                continue
+        except Exception:
+            pass
 
-        raise RuntimeError(f"Google Gemini Model Error: Could not find accessible model among {candidate_models[:2]}. ({last_error})")
+        raise RuntimeError(f"Google Gemini Model Error: Could not generate content with models {candidate_models[:3]}. ({last_error})")
 
     # Strategy 2: Standard OpenAI-compatible completion endpoint (Groq, OpenRouter, OpenAI)
     target_url = endpoint or "https://api.openai.com/v1/chat/completions"
