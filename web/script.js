@@ -316,13 +316,6 @@ async function submitMessage() {
   // Render User Message
   appendMessageElement("user", promptText);
 
-  // Save to persistent database
-  fetch(`/api/conversations/${activeConversationId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role: "user", content: payloadText })
-  });
-
   // Prepare Assistant UI
   const assistantBubble = appendMessageElement("assistant", "");
   assistantBubble.innerHTML = '<span class="status-thinking" style="color:var(--text-muted);font-size:0.88rem;display:inline-flex;align-items:center;gap:6px;">⚡ Generating response...</span>';

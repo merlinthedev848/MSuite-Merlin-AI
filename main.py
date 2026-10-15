@@ -5,6 +5,7 @@ import re
 import base64
 import struct
 import threading
+import asyncio
 from typing import Optional, List, Dict, Any
 
 from fastapi import FastAPI, Request, HTTPException, Depends, Header, status
@@ -164,8 +165,12 @@ async def chat_completions(req: OpenAIChatRequest, request: Request, auth: bool 
     if req.stream:
         chat_id = f"chatcmpl-{int(time.time()*1000)}"
         created_ts = int(time.time())
+        queue = asyncio.Queue(maxsize=500)
+        loop = asyncio.get_running_loop()
+        stop_sentinel = object()
+        abort_event = threading.Event()
 
-        async def sse_generator():
+        def openai_worker():
             try:
                 for delta_chunk in eng.generate_chat_completion_stream(
                     messages_dicts,
@@ -173,14 +178,37 @@ async def chat_completions(req: OpenAIChatRequest, request: Request, auth: bool 
                     max_tokens=req.max_tokens,
                     stop=req.stop
                 ):
-                    if await request.is_disconnected():
+                    if abort_event.is_set():
                         break
+                    asyncio.run_coroutine_threadsafe(queue.put(delta_chunk), loop).result()
+            except Exception as e:
+                log_event("v1_worker_error", f"OpenAI stream worker error: {e}", "danger")
+            finally:
+                asyncio.run_coroutine_threadsafe(queue.put(stop_sentinel), loop)
+
+        threading.Thread(target=openai_worker, daemon=True).start()
+
+        async def sse_generator():
+            try:
+                while True:
+                    if await request.is_disconnected():
+                        abort_event.set()
+                        break
+
+                    try:
+                        delta = await asyncio.wait_for(queue.get(), timeout=0.08)
+                    except asyncio.TimeoutError:
+                        continue
+
+                    if delta is stop_sentinel:
+                        break
+
                     chunk_obj = {
                         "id": chat_id,
                         "object": "chat.completion.chunk",
                         "created": created_ts,
                         "model": model_name,
-                        "choices": [{"index": 0, "delta": {"content": delta_chunk}, "finish_reason": None}]
+                        "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
                     }
                     yield f"data: {json.dumps(chunk_obj)}\n\n"
 
@@ -195,6 +223,8 @@ async def chat_completions(req: OpenAIChatRequest, request: Request, auth: bool 
                 yield "data: [DONE]\n\n"
             except Exception as e:
                 log_event("v1_stream_error", f"Stream error: {e}", "danger")
+            finally:
+                abort_event.set()
 
         return StreamingResponse(
             sse_generator(),
@@ -244,20 +274,53 @@ async def chat_stream(request: Request, prompt: str, mode: str = "assistant", se
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
     eng = get_engine()
-    async def sse_event_stream():
-        yield ": connected\n\n"
+    queue = asyncio.Queue(maxsize=500)
+    loop = asyncio.get_running_loop()
+    stop_sentinel = object()
+    abort_event = threading.Event()
+
+    def stream_worker():
         try:
             for chunk in eng.generate_stream(prompt, session_id=session_id, mode=mode):
+                if abort_event.is_set():
+                    break
+                asyncio.run_coroutine_threadsafe(queue.put(chunk), loop).result()
+        except Exception as e:
+            log_event("stream_worker_error", f"Stream worker exception: {e}", "danger")
+        finally:
+            asyncio.run_coroutine_threadsafe(queue.put(stop_sentinel), loop)
+
+    t = threading.Thread(target=stream_worker, daemon=True)
+    t.start()
+
+    async def sse_event_stream():
+        # Flush initial comment immediately to establish connection (< 5ms)
+        yield ": connected\n\n"
+        try:
+            while True:
                 if await request.is_disconnected():
+                    abort_event.set()
                     eng.stop_generation(session_id)
                     break
+
+                try:
+                    chunk = await asyncio.wait_for(queue.get(), timeout=0.08)
+                except asyncio.TimeoutError:
+                    continue
+
+                if chunk is stop_sentinel:
+                    break
+
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            
             yield "data: [DONE]\n\n"
         except (BrokenPipeError, ConnectionResetError):
+            abort_event.set()
             eng.stop_generation(session_id)
         except Exception as e:
             log_event("stream_error", f"Stream exception: {e}", "danger")
         finally:
+            abort_event.set()
             eng.stop_generation(session_id)
 
     return StreamingResponse(

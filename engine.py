@@ -93,6 +93,7 @@ class InferenceEngine:
         self.active_model_name = "None"
         self._server_process = None
         self._http_session = None
+        self._last_probe_time = 0.0
         if HAS_REQUESTS:
             self._http_session = requests.Session()
             adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=1)
@@ -101,7 +102,7 @@ class InferenceEngine:
         self._inference_lock = threading.Lock()
         self._active_abort_events = {} # session_id -> threading.Event()
         atexit.register(self.cleanup)
-        self.refresh_backend()
+        self.refresh_backend(fast=False)
 
     def cleanup(self):
         """Gracefully terminates background llama-server child processes on exit."""
@@ -164,11 +165,12 @@ class InferenceEngine:
         try:
             import subprocess
             self._server_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            for _ in range(8):
-                time.sleep(0.5)
+            # Fast, non-blocking startup check (max 1.5s)
+            for _ in range(5):
+                time.sleep(0.3)
                 try:
                     req = urllib.request.Request(f"{DEFAULT_LLAMA_SERVER_URL}/health", headers={"User-Agent": "Merlin-AI/1.0"})
-                    with urllib.request.urlopen(req, timeout=0.5) as res:
+                    with urllib.request.urlopen(req, timeout=0.3) as res:
                         if res.status == 200:
                             return True
                 except Exception:
@@ -177,45 +179,57 @@ class InferenceEngine:
             log_event("autostart_error", f"Could not auto-start llama-server: {e}", "warning")
         return False
 
-    def refresh_backend(self):
-        """Checks for llama-server or local GGUF models."""
-        # 1. Probe C++ llama-server (fastest, unbuffered native binary)
+    def refresh_backend(self, fast: bool = False):
+        """
+        Checks for llama-server or local GGUF models.
+        When fast=True, skips heavy autostart and disk loading if probed recently.
+        """
+        now = time.time()
+        if fast and (now - self._last_probe_time < 5.0):
+            return
+        self._last_probe_time = now
+
+        # 1. Quick probe of C++ llama-server (fastest, unbuffered native binary)
         try:
             req = urllib.request.Request(f"{DEFAULT_LLAMA_SERVER_URL}/health", headers={"User-Agent": "Merlin-AI/1.0"})
-            with urllib.request.urlopen(req, timeout=1.0) as res:
+            with urllib.request.urlopen(req, timeout=0.25) as res:
                 if res.status == 200:
                     self.backend = "llama-server"
                     self.active_model_name = "Qwen2.5-Coder via llama-server"
-                    log_event("engine_init", f"Connected to C++ llama-server at {DEFAULT_LLAMA_SERVER_URL}", "success")
                     return
         except Exception:
             pass
 
-        # 2. If llama-server binary exists on disk, attempt auto-launch
-        if self._try_autostart_llama_server():
-            self.backend = "llama-server"
-            self.active_model_name = "Qwen2.5-Coder via llama-server (autostarted)"
-            log_event("engine_init", "Autostarted native C++ llama-server on port 8080", "success")
+        # If already loaded with llama-cpp-python, no need to re-scan
+        if self.backend == "llama-cpp-python" and self.llama_cpp_model:
             return
 
-        # 3. Fallback: Local GGUF via llama-cpp-python
-        if os.path.exists(MODELS_DIR):
-            models = [f for f in os.listdir(MODELS_DIR) if f.endswith(".gguf")]
-            if models:
-                self.active_model_name = models[0]
-                try:
-                    model_path = os.path.join(MODELS_DIR, models[0])
-                    threads = get_optimal_threads()
-                    n_ctx = int(os.getenv("N_CTX", "4096"))
-                    n_gpu = int(os.getenv("N_GPU_LAYERS", "0"))
-                    self.llama_cpp_model = load_llama_cpp_instance(model_path, threads, n_ctx, n_gpu)
-                    self.backend = "llama-cpp-python"
-                    log_event("engine_init", f"Loaded local model {models[0]} with {threads} threads, ctx {n_ctx} (Flash-Attn enabled)", "success")
-                    return
-                except ImportError:
-                    pass
-                except Exception as e:
-                    log_event("engine_error", f"Failed loading GGUF: {e}", "danger")
+        # 2. Only attempt autostart or full GGUF load if not in fast-probe mode
+        if not fast:
+            if self._try_autostart_llama_server():
+                self.backend = "llama-server"
+                self.active_model_name = "Qwen2.5-Coder via llama-server (autostarted)"
+                log_event("engine_init", "Autostarted native C++ llama-server on port 8080", "success")
+                return
+
+            # 3. Fallback: Local GGUF via llama-cpp-python
+            if os.path.exists(MODELS_DIR):
+                models = [f for f in os.listdir(MODELS_DIR) if f.endswith(".gguf")]
+                if models:
+                    self.active_model_name = models[0]
+                    try:
+                        model_path = os.path.join(MODELS_DIR, models[0])
+                        threads = get_optimal_threads()
+                        n_ctx = int(os.getenv("N_CTX", "4096"))
+                        n_gpu = int(os.getenv("N_GPU_LAYERS", "0"))
+                        self.llama_cpp_model = load_llama_cpp_instance(model_path, threads, n_ctx, n_gpu)
+                        self.backend = "llama-cpp-python"
+                        log_event("engine_init", f"Loaded local model {models[0]} with {threads} threads, ctx {n_ctx} (Flash-Attn enabled)", "success")
+                        return
+                    except ImportError:
+                        pass
+                    except Exception as e:
+                        log_event("engine_error", f"Failed loading GGUF: {e}", "danger")
 
         self.backend = "offline_standby"
         self.active_model_name = "Waiting for model download or llama-server"
@@ -377,11 +391,77 @@ class InferenceEngine:
             if not abort_event.is_set():
                 yield f"[Error querying llama-server: {e}]"
 
+    def _is_conversational_greeting(self, prompt: str) -> bool:
+        """
+        Determines if a prompt is a pure greeting or simple identity check.
+        These are answered in <30ms with instant token streaming, bypassing CPU prefill stalls.
+        """
+        cleaned = re.sub(r"[^\w\s]", "", prompt.strip().lower())
+        words = cleaned.split()
+        if not words:
+            return True
+
+        exact_matches = {
+            "hello", "hi", "hey", "merlin", "hello merlin", "hi merlin", "hey merlin",
+            "good morning", "good afternoon", "good evening", "how are you", "how are you doing",
+            "who are you", "what are you", "what is your name", "who made you", "what can you do",
+            "help", "yo", "sup", "whats up", "ping", "test", "greetings"
+        }
+        if cleaned in exact_matches:
+            return True
+
+        if len(words) <= 3 and any(w in ["hi", "hello", "hey", "merlin", "yo", "sup", "greetings"] for w in words):
+            action_words = {
+                "write", "create", "make", "fix", "code", "run", "install", "how", "why",
+                "what", "where", "python", "script", "explain", "debug", "test", "benchmark", "git"
+            }
+            if not any(w in action_words for w in words):
+                return True
+
+        return False
+
+    def _get_conversational_response(self, prompt: str) -> str:
+        """Generates an immediate, warm Merlin response for common greetings."""
+        cleaned = re.sub(r"[^\w\s]", "", prompt.strip().lower())
+
+        if any(q in cleaned for q in ["who are you", "what are you", "what is your name", "who made you"]):
+            return (
+                "I am **Merlin** (Merlin AI), your autonomous offline Personal Assistant and expert coding companion. "
+                "I run completely locally on your private network, ensuring zero data leaves your server.\n\n"
+                "I can write and debug code, manage Linux services, automate workflows, and maintain persistent memory. "
+                "How can I assist you right now?"
+            )
+
+        if any(q in cleaned for q in ["what can you do", "help", "capabilities"]):
+            return (
+                "Here is what I can do for you 100% offline:\n\n"
+                "- 💻 **Software Engineering & Coding:** Architecture, Python, C/C++, JavaScript, Bash, SQL, and debugging.\n"
+                "- ⚙️ **System Administration:** Linux troubleshooting, systemd services, network diagnostics, and shell tools.\n"
+                "- 🧠 **Persistent Knowledge Engine:** Storing lessons and coding patterns across conversations in SQLite.\n"
+                "- 🔌 **OpenAI Compatible API:** Exposing `/v1/chat/completions` for direct integration into VS Code, Continue, or custom tools.\n\n"
+                "What would you like to build or inspect today?"
+            )
+
+        if any(q in cleaned for q in ["how are you", "how are you doing"]):
+            return (
+                "I'm operating at peak performance and ready to assist! "
+                "All systems are green. What would you like to work on today?"
+            )
+
+        # Dynamic greetings
+        greetings = [
+            "Hello! I'm **Merlin**, your offline AI assistant and coding partner. How can I help you today?",
+            "Hey there! Merlin at your service. What are we building or troubleshooting today?",
+            "Greetings! I'm Merlin, running 100% privately and offline on your local server. What can I do for you?",
+            "Hi! Merlin here, ready to assist with code, server tasks, or anything else you need. What's on your mind?"
+        ]
+        import random
+        return random.choice(greetings)
+
     def generate_stream(self, prompt, session_id="default", mode="assistant"):
         """
         Thread-safe token generator.
-        Injects past learned knowledge and recent history into the prompt.
-        Respects abort signals if user cancels request.
+        Provides sub-second latency on greetings and cached prompt prefill for LLM inference.
         """
         abort_event = threading.Event()
         self._active_abort_events[session_id] = abort_event
@@ -389,44 +469,62 @@ class InferenceEngine:
         # Save user message to persistent history
         save_chat_message(session_id, "user", prompt)
 
-        # Detect greetings and short conversational cues
-        cleaned = prompt.strip().lower()
-        is_greeting = cleaned in {
-            "hello", "hi", "hey", "merlin", "hello merlin", "hi merlin", "hey merlin",
-            "good morning", "good afternoon", "good evening", "how are you", "who are you",
-            "yo", "sup", "what's up", "whats up"
-        } or (len(cleaned.split()) <= 2 and any(w in cleaned for w in ["hi", "hello", "hey", "merlin", "yo", "sup"]))
+        # --- 1. Sub-Second Instant Greeting Circuit ---
+        if self._is_conversational_greeting(prompt):
+            greeting_text = self._get_conversational_response(prompt)
+            accumulated = ""
+            # Stream words with micro-delays for realistic, instantaneous delivery (< 0.2s total)
+            words = greeting_text.split(" ")
+            for i, word in enumerate(words):
+                if abort_event.is_set():
+                    break
+                chunk = word + (" " if i < len(words) - 1 else "")
+                accumulated += chunk
+                yield chunk
+                time.sleep(0.012)
 
-        # Retrieve relevant learned skills from SQLite (skip on greetings to eliminate latency and prefill bloat)
-        learned_context = [] if is_greeting else search_knowledge(prompt, limit=2)
+            self._active_abort_events.pop(session_id, None)
+            if accumulated:
+                save_chat_message(session_id, "assistant", accumulated)
+            return
+
+        # --- 2. Heavy LLM Inference Circuit ---
+        learned_context = search_knowledge(prompt, limit=2)
         memory_prompt = ""
         if learned_context:
-            memory_prompt = "\n[Verified lessons learned from past teacher sessions]:\n"
+            memory_prompt = "[Verified Lessons from Past Teacher Sessions]:\n"
             for k in learned_context:
                 memory_prompt += f"- Topic: {k['topic']}\n  Lesson: {k['lesson']}\n"
-                if k['code_example']:
-                    memory_prompt += f"  Reference Code:\n{k['code_example']}\n"
+                if k.get("code_example"):
+                    memory_prompt += f"  Code:\n{k['code_example']}\n"
 
-        # Assemble conversation context via intelligent sliding-window context manager
-        # Capping context budget on CPU keeps prefill latency snappy (< 1-2s) instead of stalling for minutes
-        context_budget = int(os.getenv("CONTEXT_BUDGET", "1500"))
+        # Static system prompt enables 100% KV-cache prefix hit in llama-server
+        system_content = self.build_system_prompt(mode)
+        messages = [{"role": "system", "content": system_content}]
+
+        # Inject memory context as a separate system turn if available
+        if memory_prompt:
+            messages.append({"role": "system", "content": memory_prompt})
+
+        # Assemble compact context history to avoid CPU prefill stalls
+        context_budget = int(os.getenv("CONTEXT_BUDGET", "1000"))
         context_history = get_context_window(session_id, max_tokens=context_budget)
-        messages = [{"role": "system", "content": self.build_system_prompt(mode) + memory_prompt}]
         for h in context_history[:-1]:
             content = h["content"]
             if h["role"] == "assistant":
                 content = re.sub(r"<think>[\s\S]*?</think>", "", content).strip()
             if content:
                 messages.append({"role": h["role"], "content": content})
+
         safe_prompt = fit_prompt_to_context(prompt)
         messages.append({"role": "user", "content": safe_prompt})
 
         full_response = ""
-        max_tokens = 90 if is_greeting else int(os.getenv("MAX_TOKENS", "1024"))
+        max_tokens = int(os.getenv("MAX_TOKENS", "512"))
         stop_tokens = ["<|im_end|>", "<|endoftext|>", "</s>"]
 
         # Acquire lock to ensure only one thread generates on the CPU at a time
-        acquired = self._inference_lock.acquire(timeout=25.0)
+        acquired = self._inference_lock.acquire(timeout=15.0)
         if not acquired:
             msg = "[Server Busy: Another generation is currently executing. Please wait a moment.]"
             yield msg
@@ -434,9 +532,9 @@ class InferenceEngine:
             return
 
         try:
-            # Re-probe if in standby mode
+            # Fast check if in standby mode
             if self.backend == "offline_standby":
-                self.refresh_backend()
+                self.refresh_backend(fast=True)
 
             if self.backend == "llama-server":
                 payload_dict = {
@@ -474,26 +572,21 @@ class InferenceEngine:
                     yield err
 
             else:
-                if is_greeting:
-                    msg = (
-                        "Hello! I am **Merlin** (Merlin AI), your offline companion and private software assistant.\n\n"
-                        "I am running locally on your private network. Currently, no local GGUF model is loaded into memory.\n\n"
-                        "**To activate local AI generation:**\n"
-                        "1. Run `./download_model.sh` to download Qwen2.5-Coder or DeepSeek-R1.\n"
-                        "2. Start `./start_llama_server.sh` or install `llama-cpp-python`.\n\n"
-                        "Once started, I will automatically detect the model!"
-                    )
-                else:
-                    msg = (
-                        "⚠️ **Offline Intelligence Standby**\n\n"
-                        "The local web dashboard and SQLite memory system are fully active.\n\n"
-                        "**To activate the local AI model:**\n"
-                        "1. Run `./download_model.sh` to download Qwen2.5-Coder (GGUF format).\n"
-                        "2. Start `./start_llama_server.sh` OR install `pip install llama-cpp-python`.\n"
-                        "Once started, the engine automatically detects the model with zero restart needed."
-                    )
+                msg = (
+                    "⚠️ **Offline Intelligence Standby**\n\n"
+                    "The local web dashboard and SQLite memory system are fully active.\n\n"
+                    "**To activate the local AI model:**\n"
+                    "1. Run `./download_model.sh` to download Qwen2.5-Coder (GGUF format).\n"
+                    "2. Start `./start_llama_server.sh` OR install `pip install llama-cpp-python`.\n"
+                    "Once started, the engine automatically detects the model with zero restart needed."
+                )
                 full_response = msg
-                yield msg
+                words = msg.split(" ")
+                for i, word in enumerate(words):
+                    if abort_event.is_set():
+                        break
+                    yield word + (" " if i < len(words) - 1 else "")
+                    time.sleep(0.008)
 
         finally:
             self._inference_lock.release()
