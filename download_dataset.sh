@@ -15,30 +15,99 @@ else
     echo "=========================================================="
     echo "  Merlin AI — Local Hugging Face Dataset Downloader"
     echo "=========================================================="
-    echo "Choose dataset to download and cache locally:"
-    echo "1) openbmb/UltraData-Stack-v3-L2 (Default - High-Yield Data Stack)"
-    echo "2) Anthropic/hh-rlhf             (Helpful & Harmless Alignment)"
-    echo "3) sahil2801/CodeAlpaca-20k       (20k Coding Tasks & Solutions)"
+    echo "--- 💻 CODING & SOFTWARE ENGINEERING ---"
+    echo "1) openbmb/UltraData-Stack-v3-L2 (Default - Curated Code Stack)"
+    echo "2) openbmb/UltraData-SFT-Agent-2609:Code-Agent (Agentic Coding & Tool Use)"
+    echo "3) sahil2801/CodeAlpaca-20k (20k Coding Tasks & Solutions)"
     echo "4) iamtarun/python_code_instructions_18k_alpaca (18k Python Problems)"
-    echo "5) Custom Repository ID"
+    echo ""
+    echo "--- 🤖 PERSONAL ASSISTANT (PA) & TASKS ---"
+    echo "5) databricks/databricks-dolly-15k (Human PA: Scheduling, QA, Brainstorming)"
+    echo "6) teknium/OpenHermes-2.5 (Gold-Standard General Assistant)"
+    echo "7) openbmb/UltraData-SFT-Agent-2609:General-Agent (Multi-Step Task Planning)"
+    echo ""
+    echo "--- 📄 DOCUMENTS, SUMMARIZATION & KNOWLEDGE ---"
+    echo "8) knkarthick/dialogsum (Document, Meeting & Dialogue Summarization)"
+    echo "9) samsum (Notes, Action Items & Message Summarization)"
+    echo "10) openbmb/UltraData-SFT-Agent-2609:Search-Agent (Document Search & Retrieval)"
+    echo ""
+    echo "--- 💬 NATURAL CONVERSATION & ALIGNMENT ---"
+    echo "11) HuggingFaceH4/ultrachat_200k (High-Quality Multi-Turn Conversation)"
+    echo "12) Anthropic/hh-rlhf (Helpful & Harmless Dialogue Alignment)"
+    echo ""
+    echo "--- 🌟 COMPLETE PACKAGES ---"
+    echo "13) All-in-One General AI Starter Pack (Downloads curated samples from all 4 pillars)"
+    echo "14) Custom Hugging Face Repository"
     echo ""
     read -p "Select option (default: 1): " choice
     choice=${choice:-1}
 
     if [ "$choice" == "2" ]; then
-        DATASET="Anthropic/hh-rlhf"
+        DATASET="openbmb/UltraData-SFT-Agent-2609:Code-Agent"
     elif [ "$choice" == "3" ]; then
         DATASET="sahil2801/CodeAlpaca-20k"
     elif [ "$choice" == "4" ]; then
         DATASET="iamtarun/python_code_instructions_18k_alpaca"
     elif [ "$choice" == "5" ]; then
+        DATASET="databricks/databricks-dolly-15k"
+    elif [ "$choice" == "6" ]; then
+        DATASET="teknium/OpenHermes-2.5"
+    elif [ "$choice" == "7" ]; then
+        DATASET="openbmb/UltraData-SFT-Agent-2609:General-Agent"
+    elif [ "$choice" == "8" ]; then
+        DATASET="knkarthick/dialogsum"
+    elif [ "$choice" == "9" ]; then
+        DATASET="samsum"
+    elif [ "$choice" == "10" ]; then
+        DATASET="openbmb/UltraData-SFT-Agent-2609:Search-Agent"
+    elif [ "$choice" == "11" ]; then
+        DATASET="HuggingFaceH4/ultrachat_200k"
+    elif [ "$choice" == "12" ]; then
+        DATASET="Anthropic/hh-rlhf"
+    elif [ "$choice" == "13" ]; then
+        DATASET="all_in_one"
+    elif [ "$choice" == "14" ]; then
         read -p "Enter Hugging Face repo ID: " DATASET
     else
         DATASET="openbmb/UltraData-Stack-v3-L2"
     fi
 
-    read -p "Number of samples to cache locally (default: 200): " SAMPLES
-    SAMPLES=${SAMPLES:-200}
+    if [ "$DATASET" != "all_in_one" ]; then
+        read -p "Number of samples to cache locally (default: 200): " SAMPLES
+        SAMPLES=${SAMPLES:-200}
+    fi
+fi
+
+if [ "$DATASET" == "all_in_one" ]; then
+    echo ""
+    echo "=========================================================="
+    echo "[*] Downloading General AI Starter Pack (Local Cache)..."
+    echo "=========================================================="
+    declare -a PACK=(
+        "openbmb/UltraData-Stack-v3-L2:50"
+        "databricks/databricks-dolly-15k:50"
+        "knkarthick/dialogsum:50"
+        "HuggingFaceH4/ultrachat_200k:50"
+        "openbmb/UltraData-SFT-Agent-2609:Code-Agent:30"
+    )
+    for entry in "${PACK[@]}"; do
+        repo="${entry%%:*}"
+        rest="${entry#*:}"
+        subset=""
+        if [[ "$rest" =~ ^[0-9]+$ ]]; then
+            cnt="$rest"
+        else
+            subset="${rest%%:*}"
+            cnt="${rest#*:}"
+        fi
+        target="$repo"
+        if [ -n "$subset" ]; then target="$repo:$subset"; fi
+        echo "[+] Downloading $cnt samples from $target..."
+        "$PYTHON_BIN" "$DIR/import_dataset.py" "$target" --limit "$cnt" --download-local || true
+    done
+    echo ""
+    echo "[✓] All-in-One General AI Pack downloaded and cached locally!"
+    exit 0
 fi
 
 echo ""

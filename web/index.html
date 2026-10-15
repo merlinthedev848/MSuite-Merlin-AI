@@ -484,16 +484,29 @@
 
       <label style="font-size:0.8rem; display:block; margin-bottom:4px;">Select Dataset:</label>
       <select id="hf-curated-select" onchange="onCuratedDatasetChange()" style="width:100%; margin-bottom:10px; background:var(--bg); color:var(--text); border:1px solid var(--surface-border); padding:8px 10px; border-radius:6px; font-size:0.82rem; outline:none;">
-        <option value="openbmb/UltraData-Stack-v3-L2" selected>openbmb/UltraData-Stack-v3-L2 (Default - Curated High-Yield Data Stack)</option>
-        <option value="openbmb/UltraData-SFT-Agent-2609:Code-Agent">openbmb/UltraData-SFT-Agent-2609 [Code-Agent] (Agentic Coding & Tool Use)</option>
-        <option value="openbmb/UltraData-SFT-Agent-2609:General-Agent">openbmb/UltraData-SFT-Agent-2609 [General-Agent] (Multi-Step Agent Reasoning)</option>
-        <option value="openbmb/UltraData-SFT-Agent-2609:Search-Agent">openbmb/UltraData-SFT-Agent-2609 [Search-Agent] (Web & Retrieval Agent Execution)</option>
-        <option value="Anthropic/hh-rlhf">Anthropic/hh-rlhf (Helpful & Harmless Dialogue Alignment)</option>
-        <option value="sahil2801/CodeAlpaca-20k">sahil2801/CodeAlpaca-20k (20k Coding Tasks & Solutions)</option>
-        <option value="iamtarun/python_code_instructions_18k_alpaca">iamtarun/python_code_instructions_18k_alpaca (18k Python Problems)</option>
-        <option value="HuggingFaceH4/no_robots">HuggingFaceH4/no_robots (High-Quality Human Demonstrations)</option>
-        <option value="tatsu-lab/alpaca">tatsu-lab/alpaca (52k General Knowledge & Tasks)</option>
-        <option value="custom">Custom Hugging Face Repository...</option>
+        <optgroup label="💻 Coding & Software Engineering">
+          <option value="openbmb/UltraData-Stack-v3-L2" selected>openbmb/UltraData-Stack-v3-L2 (Curated High-Yield Code Stack)</option>
+          <option value="openbmb/UltraData-SFT-Agent-2609:Code-Agent">openbmb/UltraData-SFT-Agent-2609 [Code-Agent] (Agentic Coding & Tool Use)</option>
+          <option value="sahil2801/CodeAlpaca-20k">sahil2801/CodeAlpaca-20k (20k Coding Tasks & Solutions)</option>
+          <option value="iamtarun/python_code_instructions_18k_alpaca">iamtarun/python_code_instructions_18k_alpaca (18k Python Problems)</option>
+        </optgroup>
+        <optgroup label="🤖 Personal Assistant (PA) & Tasks">
+          <option value="databricks/databricks-dolly-15k">databricks/databricks-dolly-15k (Human PA: Scheduling, QA, Brainstorming)</option>
+          <option value="teknium/OpenHermes-2.5">teknium/OpenHermes-2.5 (Gold-Standard General Assistant & Reasoning)</option>
+          <option value="openbmb/UltraData-SFT-Agent-2609:General-Agent">openbmb/UltraData-SFT-Agent-2609 [General-Agent] (Multi-Step Task Planning)</option>
+        </optgroup>
+        <optgroup label="📄 Documents, Summarization & Knowledge">
+          <option value="knkarthick/dialogsum">knkarthick/dialogsum (Document, Meeting & Dialogue Summarization)</option>
+          <option value="samsum">samsum (Notes, Action Items & Message Summarization)</option>
+          <option value="openbmb/UltraData-SFT-Agent-2609:Search-Agent">openbmb/UltraData-SFT-Agent-2609 [Search-Agent] (Document Search & Fact Retrieval)</option>
+        </optgroup>
+        <optgroup label="💬 Natural Conversation & Alignment">
+          <option value="HuggingFaceH4/ultrachat_200k">HuggingFaceH4/ultrachat_200k (High-Quality Multi-Turn Conversation)</option>
+          <option value="Anthropic/hh-rlhf">Anthropic/hh-rlhf (Helpful & Harmless Dialogue Alignment)</option>
+        </optgroup>
+        <optgroup label="🌐 Custom">
+          <option value="custom">Custom Hugging Face Repository...</option>
+        </optgroup>
       </select>
 
       <div id="hf-custom-repo-box" style="display:none; margin-bottom:10px;">

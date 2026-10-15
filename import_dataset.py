@@ -21,12 +21,13 @@ import_state = {
 }
 
 POPULAR_DATASETS = [
+    # 💻 CODING & SOFTWARE ENGINEERING
     {
         "id": "openbmb/UltraData-Stack-v3-L2",
         "repo": "openbmb/UltraData-Stack-v3-L2",
         "subset": None,
-        "name": "openbmb/UltraData-Stack-v3-L2 (Default: Filtered High-Yield Data Stack)",
-        "category": "Curated AGI Data Stack",
+        "name": "openbmb/UltraData-Stack-v3-L2 (Default: Filtered High-Yield Code & Data Stack)",
+        "category": "💻 Coding & Tech",
         "default_limit": 50,
         "is_default": True
     },
@@ -35,7 +36,45 @@ POPULAR_DATASETS = [
         "repo": "openbmb/UltraData-SFT-Agent-2609",
         "subset": "Code-Agent",
         "name": "openbmb/UltraData-SFT-Agent-2609 [Code-Agent] (Agentic Coding & Tool Use)",
-        "category": "Agentic Coding & Tool Execution",
+        "category": "💻 Coding & Tech",
+        "default_limit": 50,
+        "is_default": False
+    },
+    {
+        "id": "sahil2801/CodeAlpaca-20k",
+        "repo": "sahil2801/CodeAlpaca-20k",
+        "subset": None,
+        "name": "sahil2801/CodeAlpaca-20k (20k Coding Tasks & Solutions)",
+        "category": "💻 Coding & Tech",
+        "default_limit": 50,
+        "is_default": False
+    },
+    {
+        "id": "iamtarun/python_code_instructions_18k_alpaca",
+        "repo": "iamtarun/python_code_instructions_18k_alpaca",
+        "subset": None,
+        "name": "iamtarun/python_code_instructions_18k_alpaca (18k Python Problems & Functions)",
+        "category": "💻 Coding & Tech",
+        "default_limit": 50,
+        "is_default": False
+    },
+
+    # 🤖 PERSONAL ASSISTANT (PA) & PRODUCTIVITY
+    {
+        "id": "databricks/databricks-dolly-15k",
+        "repo": "databricks/databricks-dolly-15k",
+        "subset": None,
+        "name": "databricks/databricks-dolly-15k (Human PA: Scheduling, Brainstorming, QA & Tasks)",
+        "category": "🤖 Personal Assistant (PA)",
+        "default_limit": 50,
+        "is_default": False
+    },
+    {
+        "id": "teknium/OpenHermes-2.5",
+        "repo": "teknium/OpenHermes-2.5",
+        "subset": None,
+        "name": "teknium/OpenHermes-2.5 (Gold-Standard General Assistant & Reasoning)",
+        "category": "🤖 Personal Assistant (PA)",
         "default_limit": 50,
         "is_default": False
     },
@@ -43,8 +82,28 @@ POPULAR_DATASETS = [
         "id": "openbmb/UltraData-SFT-Agent-2609:General-Agent",
         "repo": "openbmb/UltraData-SFT-Agent-2609",
         "subset": "General-Agent",
-        "name": "openbmb/UltraData-SFT-Agent-2609 [General-Agent] (Multi-Step Agent Reasoning)",
-        "category": "General Agentic Tasks",
+        "name": "openbmb/UltraData-SFT-Agent-2609 [General-Agent] (Multi-Step Task Planning)",
+        "category": "🤖 Personal Assistant (PA)",
+        "default_limit": 50,
+        "is_default": False
+    },
+
+    # 📄 DOCUMENTS, SUMMARIZATION & KNOWLEDGE
+    {
+        "id": "knkarthick/dialogsum",
+        "repo": "knkarthick/dialogsum",
+        "subset": None,
+        "name": "knkarthick/dialogsum (Document, Meeting & Dialogue Summarization)",
+        "category": "📄 Documents & Summaries",
+        "default_limit": 50,
+        "is_default": False
+    },
+    {
+        "id": "samsum",
+        "repo": "samsum",
+        "subset": None,
+        "name": "samsum (Notes, Messaging & Key Takeaway Summarization)",
+        "category": "📄 Documents & Summaries",
         "default_limit": 50,
         "is_default": False
     },
@@ -52,8 +111,19 @@ POPULAR_DATASETS = [
         "id": "openbmb/UltraData-SFT-Agent-2609:Search-Agent",
         "repo": "openbmb/UltraData-SFT-Agent-2609",
         "subset": "Search-Agent",
-        "name": "openbmb/UltraData-SFT-Agent-2609 [Search-Agent] (Web & Retrieval Agent Execution)",
-        "category": "Search & Information Retrieval",
+        "name": "openbmb/UltraData-SFT-Agent-2609 [Search-Agent] (Document Search & Fact Retrieval)",
+        "category": "📄 Documents & Summaries",
+        "default_limit": 50,
+        "is_default": False
+    },
+
+    # 💬 NATURAL CONVERSATION & ALIGNMENT
+    {
+        "id": "HuggingFaceH4/ultrachat_200k",
+        "repo": "HuggingFaceH4/ultrachat_200k",
+        "subset": None,
+        "name": "HuggingFaceH4/ultrachat_200k (High-Quality Multi-Turn Conversation)",
+        "category": "💬 Conversation & Chat",
         "default_limit": 50,
         "is_default": False
     },
@@ -62,43 +132,7 @@ POPULAR_DATASETS = [
         "repo": "Anthropic/hh-rlhf",
         "subset": None,
         "name": "Anthropic/hh-rlhf (Helpful & Harmless Dialogue Alignment)",
-        "category": "Human Alignment & Multi-Turn Dialogue",
-        "default_limit": 50,
-        "is_default": False
-    },
-    {
-        "id": "sahil2801/CodeAlpaca-20k",
-        "repo": "sahil2801/CodeAlpaca-20k",
-        "subset": None,
-        "name": "CodeAlpaca (20k Coding Instructions & Solutions)",
-        "category": "Programming & Algorithms",
-        "default_limit": 50,
-        "is_default": False
-    },
-    {
-        "id": "iamtarun/python_code_instructions_18k_alpaca",
-        "repo": "iamtarun/python_code_instructions_18k_alpaca",
-        "subset": None,
-        "name": "Python Code Instructions (18k Practical Python Tasks)",
-        "category": "Python Mastery",
-        "default_limit": 50,
-        "is_default": False
-    },
-    {
-        "id": "HuggingFaceH4/no_robots",
-        "repo": "HuggingFaceH4/no_robots",
-        "subset": None,
-        "name": "No Robots (High-Quality Human Demonstrations)",
-        "category": "Instruction Following",
-        "default_limit": 30,
-        "is_default": False
-    },
-    {
-        "id": "tatsu-lab/alpaca",
-        "repo": "tatsu-lab/alpaca",
-        "subset": None,
-        "name": "Stanford Alpaca (52k General Knowledge & Tasks)",
-        "category": "General Knowledge",
+        "category": "💬 Conversation & Chat",
         "default_limit": 50,
         "is_default": False
     }
@@ -309,15 +343,30 @@ def parse_record(item):
             if not lesson:
                 lesson = raw_text[:500]
 
-    # Schema 4: Alpaca format (instruction, input, output)
-    elif "instruction" in item and "output" in item:
-        topic = item["instruction"]
-        if item.get("input") and str(item["input"]).strip():
-            topic += " - " + str(item["input"]).strip()
-        raw_output = str(item.get("output", ""))
-        lesson, code = extract_code_and_lesson(raw_output)
+    # Schema 4: Document & Dialogue Summarization (knkarthick/dialogsum, samsum)
+    elif "dialogue" in item and "summary" in item:
+        dialogue = str(item["dialogue"]).strip()
+        summary = str(item["summary"]).strip()
+        topic_preview = str(item.get("topic") or dialogue)[:120].strip()
+        topic = f"Summarize: {topic_preview}"
+        lesson = f"Document / Dialogue Content:\n{dialogue}\n\nSummary / Key Points:\n{summary}"
+        code = ""
+        tags = "document,summarization,notes"
 
-    # Schema 5: QA / Question-Answer
+    # Schema 5: Human PA & Instruction with context (databricks/databricks-dolly-15k, alpaca, openhermes)
+    elif "instruction" in item and ("output" in item or "response" in item):
+        topic = str(item["instruction"]).strip()
+        ctx = item.get("context") or item.get("input")
+        raw_output = str(item.get("output") or item.get("response") or "")
+        if ctx and str(ctx).strip():
+            combined = f"Context:\n{str(ctx).strip()}\n\n{raw_output}"
+        else:
+            combined = raw_output
+        lesson, code = extract_code_and_lesson(combined)
+        cat = item.get("category", "")
+        tags = f"pa,instruction,{cat}" if cat else "pa,instruction"
+
+    # Schema 6: QA / Question-Answer
     elif "question" in item and "answer" in item:
         topic = str(item["question"])
         lesson, code = extract_code_and_lesson(str(item["answer"]))
