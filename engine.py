@@ -136,7 +136,14 @@ class InferenceEngine:
         return False
 
     def build_system_prompt(self, mode="assistant"):
-        if mode == "coder":
+        if mode in ("agent", "antigravity"):
+            return (
+                "You are Merlin (Merlin AI), an autonomous agentic pair-programming assistant inspired by Google DeepMind's Antigravity. "
+                "You reason deeply step-by-step through technical problems, plan carefully before executing, and write clean, modular, production-ready code. "
+                "When addressing tasks: break down complex requirements, think through edge cases and architecture, provide clear terminal commands or diffs, "
+                "and explain your reasoning with precision."
+            )
+        elif mode == "coder":
             return (
                 "You are Merlin (Merlin AI), an expert offline software engineer and coding assistant running locally on a private server. "
                 "Your name is Merlin. You react and respond naturally when addressed as Merlin or Merlin AI. "

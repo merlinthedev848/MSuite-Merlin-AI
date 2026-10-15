@@ -397,6 +397,7 @@
         <div class="mode-toggle">
           <button id="btn-mode-assistant" class="mode-btn active" onclick="setMode('assistant')">🤖 PA Mode</button>
           <button id="btn-mode-coder" class="mode-btn" onclick="setMode('coder')">💻 Coder Mode</button>
+          <button id="btn-mode-agent" class="mode-btn" onclick="setMode('agent')">⚡ Agent Mode</button>
         </div>
         <select id="model-selector" onchange="switchModel(this.value)" style="background:var(--bg); color:var(--accent); border:1px solid var(--surface-border); padding:5px 10px; border-radius:6px; font-size:0.75rem; font-weight:600; outline:none; cursor:pointer;" title="Switch Active Offline Model">
           <option value="">⚡ Model: Auto</option>
@@ -538,6 +539,7 @@
       currentMode = mode;
       document.getElementById("btn-mode-assistant").classList.toggle("active", mode === "assistant");
       document.getElementById("btn-mode-coder").classList.toggle("active", mode === "coder");
+      document.getElementById("btn-mode-agent").classList.toggle("active", mode === "agent");
     }
 
     function switchTab(btnElement, tabId) {
