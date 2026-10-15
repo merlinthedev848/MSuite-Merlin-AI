@@ -26,7 +26,7 @@ POPULAR_DATASETS = [
         "id": "openbmb/UltraData-Stack-v3-L2",
         "repo": "openbmb/UltraData-Stack-v3-L2",
         "subset": None,
-        "name": "openbmb/UltraData-Stack-v3-L2 (Default: Filtered High-Yield Code & Data Stack)",
+        "name": "openbmb/UltraData-Stack-v3-L2 [python] (Default: Filtered High-Yield Code Stack)",
         "category": "💻 Coding & Tech",
         "default_limit": 50,
         "is_default": True
@@ -194,6 +194,9 @@ def load_local_dataset(repo_id=DEFAULT_DATASET, subset=None, split="train", stre
 
     # 2. Load with local cache_dir
     hf_token = token or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
+    if "UltraData-Stack-v3-L2" in repo_id and split == "train":
+        split = "python"
+
     kwargs = {
         "split": split,
         "cache_dir": LOCAL_DATASETS_DIR,
@@ -205,10 +208,25 @@ def load_local_dataset(repo_id=DEFAULT_DATASET, subset=None, split="train", stre
     desc = f"'{repo_id}' [{subset}]" if subset else f"'{repo_id}'"
     print(f"[*] Loading {desc} (cache_dir={LOCAL_DATASETS_DIR}, streaming={streaming})...")
 
-    if subset:
-        return datasets.load_dataset(repo_id, subset, **kwargs)
-    else:
-        return datasets.load_dataset(repo_id, **kwargs)
+    def _safe_load(sp):
+        kw = dict(kwargs)
+        kw["split"] = sp
+        if subset:
+            return datasets.load_dataset(repo_id, subset, **kw)
+        return datasets.load_dataset(repo_id, **kw)
+
+    try:
+        return _safe_load(split)
+    except Exception as e:
+        err_str = str(e)
+        if "Bad split" in err_str and "Available splits:" in err_str:
+            m = re.search(r"Available splits:\s*(\[[^\]]+\])", err_str)
+            if m:
+                avail = ast.literal_eval(m.group(1))
+                fallback_split = "python" if "python" in avail else avail[0]
+                print(f"[*] Re-trying with available split '{fallback_split}'...")
+                return _safe_load(fallback_split)
+        raise e
 
 def download_and_save_locally(repo_id=DEFAULT_DATASET, subset=None, limit=200, split="train", token=None):
     """
@@ -220,6 +238,9 @@ def download_and_save_locally(repo_id=DEFAULT_DATASET, subset=None, limit=200, s
 
     if ":" in repo_id and not subset:
         repo_id, subset = repo_id.split(":", 1)
+
+    if "UltraData-Stack-v3-L2" in repo_id and split == "train":
+        split = "python"
 
     os.makedirs(LOCAL_DATASETS_DIR, exist_ok=True)
     local_path = get_local_repo_path(repo_id, subset)
@@ -236,10 +257,28 @@ def download_and_save_locally(repo_id=DEFAULT_DATASET, subset=None, limit=200, s
     if hf_token:
         kwargs["token"] = hf_token
 
-    if subset:
-        stream_ds = datasets.load_dataset(repo_id, subset, **kwargs)
-    else:
-        stream_ds = datasets.load_dataset(repo_id, **kwargs)
+    def _safe_load_stream(sp):
+        kw = dict(kwargs)
+        kw["split"] = sp
+        if subset:
+            return datasets.load_dataset(repo_id, subset, **kw)
+        return datasets.load_dataset(repo_id, **kw)
+
+    try:
+        stream_ds = _safe_load_stream(split)
+    except Exception as e:
+        err_str = str(e)
+        if "Bad split" in err_str and "Available splits:" in err_str:
+            m = re.search(r"Available splits:\s*(\[[^\]]+\])", err_str)
+            if m:
+                avail = ast.literal_eval(m.group(1))
+                fallback_split = "python" if "python" in avail else avail[0]
+                print(f"[*] Re-trying with available split '{fallback_split}'...")
+                stream_ds = _safe_load_stream(fallback_split)
+            else:
+                raise e
+        else:
+            raise e
 
     samples = []
     for i, item in enumerate(stream_ds):
