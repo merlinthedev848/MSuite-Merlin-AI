@@ -4,6 +4,9 @@ import urllib.parse
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 import threading
 import time
+import base64
+import re
+import struct
 
 from memory import (
     init_db,
@@ -14,15 +17,25 @@ from memory import (
     get_system_telemetry, get_recent_audit_logs, log_event
 )
 from engine import InferenceEngine
-from sync_teacher import run_sync, sync_state
+from sync_teacher import run_sync, sync_state, query_gemini_multimodal
 from import_dataset import import_hf_dataset, import_state, POPULAR_DATASETS
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+UPLOADS_DIR = os.path.join(WEB_DIR, "uploads")
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "5000"))
 
 engine = None
 server_start_time = time.time()
+
+def format_bytes(size):
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024.0:
+            return f"{size:.1f} {unit}" if unit != 'B' else f"{size} B"
+        size /= 1024.0
+    return f"{size:.1f} TB"
 
 class AssistantRequestHandler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -176,9 +189,9 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
         path = parsed.path
         length = int(self.headers.get("Content-Length", 0))
 
-        # Payload safety limit (max 1MB)
-        if length > 1024 * 1024:
-            self.send_json({"error": "Payload exceeds 1MB limit"}, status=413)
+        # Payload safety limit (max 35MB for files/audio/images)
+        if length > 35 * 1024 * 1024:
+            self.send_json({"error": "Payload exceeds 35MB limit"}, status=413)
             return
 
         body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
@@ -187,8 +200,123 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
         except Exception:
             data = {}
 
+        # File Upload (Audio, Images, Code, Documents)
+        if path == "/api/upload":
+            name = safe_str(data.get("name")) or "upload.bin"
+            clean_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', os.path.basename(name))
+            file_ext = os.path.splitext(clean_name)[1].lower()
+            unique_id = f"{int(time.time())}_{clean_name}"
+            file_path = os.path.join(UPLOADS_DIR, unique_id)
+
+            raw_b64 = data.get("data", "")
+            if "," in raw_b64:
+                raw_b64 = raw_b64.split(",", 1)[1]
+            try:
+                file_bytes = base64.b64decode(raw_b64)
+            except Exception as e:
+                self.send_json({"error": f"Invalid base64 payload: {e}"}, status=400)
+                return
+
+            with open(file_path, "wb") as f:
+                f.write(file_bytes)
+
+            text_exts = {
+                ".txt", ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".json",
+                ".csv", ".md", ".sh", ".c", ".cpp", ".h", ".hpp", ".rs", ".go", ".sql",
+                ".yaml", ".yml", ".xml", ".log", ".ini", ".env", ".toml", ".conf"
+            }
+            image_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".bmp"}
+            audio_exts = {".wav", ".mp3", ".ogg", ".m4a", ".webm", ".flac", ".aac"}
+            doc_exts = {".pdf", ".docx", ".doc"}
+
+            category = "other"
+            extracted_text = ""
+            dimensions = None
+
+            if file_ext in text_exts:
+                category = "text"
+                try:
+                    extracted_text = file_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    extracted_text = file_bytes.decode("latin-1", errors="replace")
+            elif file_ext in doc_exts:
+                category = "document"
+                if file_ext == ".pdf":
+                    try:
+                        import pypdf
+                        reader = pypdf.PdfReader(file_path)
+                        extracted_text = "\n".join([page.extract_text() or "" for page in reader.pages])
+                    except Exception:
+                        try:
+                            raw_str = file_bytes.decode("latin-1", errors="ignore")
+                            text_pieces = re.findall(r'\(([^\(\)\\]{2,})\)', raw_str)
+                            if text_pieces:
+                                extracted_text = " ".join(text_pieces[:500])
+                        except Exception:
+                            pass
+            elif file_ext in image_exts:
+                category = "image"
+                try:
+                    if file_bytes.startswith(b'\x89PNG\r\n\x1a\n') and len(file_bytes) >= 24:
+                        w, h = struct.unpack(">II", file_bytes[16:24])
+                        dimensions = f"{w}x{h}"
+                except Exception:
+                    pass
+            elif file_ext in audio_exts:
+                category = "audio"
+
+            log_event("file_upload", f"Uploaded {clean_name} ({category}, {format_bytes(len(file_bytes))})", "info")
+            self.send_json({
+                "success": True,
+                "file": {
+                    "id": unique_id,
+                    "name": clean_name,
+                    "url": f"/uploads/{unique_id}",
+                    "category": category,
+                    "size": len(file_bytes),
+                    "size_str": format_bytes(len(file_bytes)),
+                    "extracted_text": extracted_text[:40000] if extracted_text else "",
+                    "lines": len(extracted_text.splitlines()) if extracted_text else 0,
+                    "dimensions": dimensions
+                }
+            })
+            return
+
+        # Multimodal AI Analysis (Images, Audio, Docs)
+        elif path == "/api/analyze/multimodal":
+            file_id = safe_str(data.get("file_id"))
+            prompt = safe_str(data.get("prompt")) or "Analyze this file thoroughly and describe all details, insights, or text."
+            api_key = safe_str(data.get("api_key")) or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("TEACHER_API_KEY")
+
+            if not api_key:
+                self.send_json({"error": "Google Gemini API key required for deep multimodal vision/audio analysis."}, status=400)
+                return
+
+            file_path = os.path.join(UPLOADS_DIR, file_id)
+            if not os.path.exists(file_path):
+                self.send_json({"error": "File not found"}, status=404)
+                return
+
+            with open(file_path, "rb") as f:
+                raw_data = base64.b64encode(f.read()).decode("utf-8")
+
+            ext = os.path.splitext(file_id)[1].lower()
+            mime_map = {
+                ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".webp": "image/webp", ".gif": "image/gif",
+                ".mp3": "audio/mp3", ".wav": "audio/wav", ".ogg": "audio/ogg", ".m4a": "audio/m4a"
+            }
+            mime_type = mime_map.get(ext, "application/octet-stream")
+
+            try:
+                analysis = query_gemini_multimodal(prompt, raw_data, mime_type, api_key)
+                self.send_json({"success": True, "analysis": analysis})
+            except Exception as e:
+                self.send_json({"error": str(e)}, status=500)
+            return
+
         # Abort streaming generation
-        if path == "/api/chat/stop":
+        elif path == "/api/chat/stop":
             session_id = safe_str(data.get("session_id")) or "default"
             stopped = engine.stop_generation(session_id)
             self.send_json({"success": stopped})

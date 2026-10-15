@@ -454,6 +454,66 @@ def run_sync(api_key, endpoint=None, model=None, topic_to_explore=None):
         sync_state["current_task"] = ""
         _sync_lock.release()
 
+def query_gemini_multimodal(prompt, base64_data, mime_type, api_key):
+    """
+    Direct multimodal query to Gemini (v1beta) supporting images and audio.
+    """
+    api_key_clean = (api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip().strip("'\"")
+    if not api_key_clean:
+        raise ValueError("Google Gemini API key required for multimodal analysis.")
+
+    models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+    last_err = None
+
+    for m in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key_clean}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": base64_data
+                            }
+                        },
+                        {
+                            "text": prompt or "Analyze this file in detail and provide insights, summaries, and code or transcripts where appropriate."
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.2
+            }
+        }
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "Merlin-AI/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                res_json = json.loads(resp.read().decode("utf-8"))
+                candidates = res_json.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts:
+                        return parts[0].get("text", "")
+        except urllib.error.HTTPError as he:
+            err_msg = ""
+            try:
+                err_data = json.loads(he.read().decode("utf-8", errors="replace"))
+                if "error" in err_data:
+                    err_msg = err_data["error"].get("message")
+            except Exception:
+                pass
+            last_err = err_msg or f"HTTP {he.code}: {he.reason}"
+        except Exception as e:
+            last_err = str(e)
+
+    raise RuntimeError(f"Gemini multimodal analysis failed: {last_err}")
+
 if __name__ == "__main__":
     key = (
         os.getenv("GEMINI_API_KEY")

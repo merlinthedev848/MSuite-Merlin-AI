@@ -263,12 +263,68 @@
       cursor: pointer;
     }
 
-    #input-area {
-      padding: 16px 24px;
+    #input-container {
+      padding: 12px 24px 16px 24px;
       background: var(--surface);
       border-top: 1px solid var(--surface-border);
       display: flex;
-      gap: 12px;
+      flex-direction: column;
+      gap: 8px;
+      transition: border-color 0.2s;
+    }
+
+    #attachment-tray {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 4px 0;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    .attachment-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 0.76rem;
+      color: var(--text);
+    }
+    .attachment-pill img {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      object-fit: cover;
+    }
+    .attachment-pill .remove-btn {
+      cursor: pointer;
+      color: var(--text-muted);
+      font-weight: bold;
+      margin-left: 4px;
+      transition: color 0.15s;
+    }
+    .attachment-pill .remove-btn:hover {
+      color: var(--danger);
+    }
+
+    #voice-status-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      color: #ef4444;
+    }
+
+    #input-area {
+      display: flex;
+      gap: 10px;
       align-items: center;
     }
     #chat-input {
@@ -277,6 +333,95 @@
       height: 48px;
       padding: 12px;
       border-radius: 8px;
+    }
+
+    .btn-icon-circle {
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      color: var(--text);
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.15rem;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+      outline: none;
+    }
+    .btn-icon-circle:hover {
+      background: var(--surface-border);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .btn-icon-circle.recording {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: #ef4444;
+      color: #ef4444;
+      animation: micPulse 1.2s infinite ease-in-out;
+    }
+    @keyframes micPulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      50% { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+    }
+
+    /* Attached Media in Chat */
+    .chat-attachments-block {
+      margin-bottom: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .chat-attached-img {
+      max-width: 280px;
+      max-height: 220px;
+      border-radius: 8px;
+      border: 1px solid var(--surface-border);
+      display: block;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .chat-attached-img:hover {
+      transform: scale(1.02);
+    }
+    .chat-attached-file {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--surface-border);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: var(--accent);
+      text-decoration: none;
+      width: fit-content;
+    }
+    .chat-attached-audio {
+      width: 100%;
+      max-width: 320px;
+      height: 36px;
+      margin-top: 4px;
+    }
+    .multimodal-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      cursor: pointer;
+      width: fit-content;
+      margin-top: 4px;
+      transition: background 0.15s;
+    }
+    .multimodal-btn:hover {
+      background: rgba(56, 189, 248, 0.25);
     }
 
     .modal {
@@ -413,10 +558,24 @@
       </div>
     </div>
 
-    <div id="input-area">
-      <textarea id="chat-input" placeholder="Ask a question, request code, or manage a task..." onkeydown="handleKeyDown(event)"></textarea>
-      <button id="btn-send" class="btn-action" onclick="sendMessage()">Send</button>
-      <button id="btn-stop" class="btn-action btn-danger" style="display:none;" onclick="stopMessage()">Stop</button>
+    <div id="input-container">
+      <div id="attachment-tray" style="display:none;"></div>
+      <div id="voice-status-banner">
+        <span>🔴 <b>Listening...</b> Speak clearly into your microphone</span>
+        <button class="btn-action btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="stopVoiceInput()">Stop</button>
+      </div>
+      <div id="input-area">
+        <input type="file" id="file-input" multiple style="display:none;" onchange="handleFileInputChange(event)">
+        <button id="btn-attach" class="btn-icon-circle" title="Upload Audio, Image, Code or Document (or drag & drop / Ctrl+V)" onclick="document.getElementById('file-input').click()">
+          📎
+        </button>
+        <textarea id="chat-input" placeholder="Ask a question, request code, attach files, or speak..." onkeydown="handleKeyDown(event)"></textarea>
+        <button id="btn-mic" class="btn-icon-circle" title="Voice Input / Microphone (Click to speak)" onclick="toggleVoiceInput()">
+          🎙️
+        </button>
+        <button id="btn-send" class="btn-action" onclick="sendMessage()">Send</button>
+        <button id="btn-stop" class="btn-action btn-danger" style="display:none;" onclick="stopMessage()">Stop</button>
+      </div>
     </div>
   </div>
 
@@ -611,23 +770,334 @@
       return escaped.replace(/\n/g, "<br>");
     }
 
+    let activeAttachments = [];
+    let speechRecognition = null;
+    let isRecordingSpeech = false;
+    let mediaRecorder = null;
+    let audioChunks = [];
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function renderAttachmentTray() {
+      const tray = document.getElementById("attachment-tray");
+      if (!activeAttachments.length) {
+        tray.style.display = "none";
+        tray.innerHTML = "";
+        return;
+      }
+      tray.style.display = "flex";
+      tray.innerHTML = "";
+      activeAttachments.forEach((att, idx) => {
+        const pill = document.createElement("div");
+        pill.className = "attachment-pill";
+        let icon = "📄";
+        if (att.category === "image") icon = "🖼️";
+        else if (att.category === "audio") icon = "🎵";
+        else if (att.category === "text") icon = "💻";
+        else if (att.category === "document") icon = "📑";
+
+        pill.innerHTML = `
+          ${att.category === "image" ? `<img src="${att.url}">` : `<span>${icon}</span>`}
+          <span><b>${escapeHtml(att.name)}</b> (${att.size_str})</span>
+          <span class="remove-btn" title="Remove" onclick="removeAttachment(${idx})">✕</span>
+        `;
+        tray.appendChild(pill);
+      });
+    }
+
+    function removeAttachment(index) {
+      activeAttachments.splice(index, 1);
+      renderAttachmentTray();
+    }
+
+    async function uploadSingleFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async function() {
+          try {
+            const res = await fetch("/api/upload", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                data: reader.result
+              })
+            });
+            const data = await res.json();
+            if (data.success && data.file) {
+              resolve(data.file);
+            } else {
+              reject(data.error || "Upload failed");
+            }
+          } catch(e) {
+            reject(e.message || "Network error");
+          }
+        };
+        reader.onerror = () => reject("File read error");
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function handleFiles(files) {
+      if (!files || !files.length) return;
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+          const uploaded = await uploadSingleFile(file);
+          activeAttachments.push(uploaded);
+          renderAttachmentTray();
+        } catch(err) {
+          alert(`Failed uploading ${file.name}: ${err}`);
+        }
+      }
+    }
+
+    function handleFileInputChange(e) {
+      handleFiles(e.target.files);
+      e.target.value = "";
+    }
+
+    // Drag & Drop & Paste Listeners
+    window.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      const container = document.getElementById("input-container");
+      if (container) container.style.borderColor = "var(--accent)";
+    });
+    window.addEventListener("dragleave", (e) => {
+      const container = document.getElementById("input-container");
+      if (container && e.target === document.body) container.style.borderColor = "var(--surface-border)";
+    });
+    window.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const container = document.getElementById("input-container");
+      if (container) container.style.borderColor = "var(--surface-border)";
+      if (e.dataTransfer && e.dataTransfer.files) {
+        handleFiles(e.dataTransfer.files);
+      }
+    });
+    window.addEventListener("paste", (e) => {
+      if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length) {
+        handleFiles(e.clipboardData.files);
+      }
+    });
+
+    // --- Voice Input (Microphone) ---
+    function toggleVoiceInput() {
+      if (isRecordingSpeech) {
+        stopVoiceInput();
+      } else {
+        startVoiceInput();
+      }
+    }
+
+    function startVoiceInput() {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const banner = document.getElementById("voice-status-banner");
+      const micBtn = document.getElementById("btn-mic");
+
+      if (SpeechRec) {
+        try {
+          speechRecognition = new SpeechRec();
+          speechRecognition.continuous = true;
+          speechRecognition.interimResults = true;
+          speechRecognition.lang = "en-US";
+
+          const chatInput = document.getElementById("chat-input");
+          let initialText = chatInput.value ? chatInput.value + " " : "";
+
+          speechRecognition.onresult = (event) => {
+            let interimTranscript = "";
+            let finalTranscript = "";
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+              if (event.results[i].isFinal) {
+                finalTranscript += event.results[i][0].transcript;
+              } else {
+                interimTranscript += event.results[i][0].transcript;
+              }
+            }
+            chatInput.value = initialText + finalTranscript + (interimTranscript ? " (" + interimTranscript + ")" : "");
+            chatInput.scrollTop = chatInput.scrollHeight;
+          };
+
+          speechRecognition.onerror = (event) => {
+            if (event.error !== "no-speech") {
+              console.warn("Speech error:", event.error);
+              stopVoiceInput();
+            }
+          };
+
+          speechRecognition.onend = () => {
+            if (isRecordingSpeech) {
+              try { speechRecognition.start(); } catch(e) { stopVoiceInput(); }
+            }
+          };
+
+          speechRecognition.start();
+          isRecordingSpeech = true;
+          micBtn.classList.add("recording");
+          banner.style.display = "flex";
+          return;
+        } catch(e) {
+          console.warn("Speech recognition init error:", e);
+        }
+      }
+
+      // Audio recorder fallback
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+          mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+            const audioFile = new File([audioBlob], `voice_memo_${Date.now()}.webm`, { type: "audio/webm" });
+            stream.getTracks().forEach(t => t.stop());
+            await handleFiles([audioFile]);
+          };
+          mediaRecorder.start();
+          isRecordingSpeech = true;
+          micBtn.classList.add("recording");
+          banner.style.display = "flex";
+        }).catch(err => {
+          alert("Microphone permission was denied or not supported on this connection.\n\nTip: Connect over localhost or HTTPS, or grant microphone permissions in browser settings.");
+        });
+      } else {
+        alert("Speech Recognition and Microphone not supported in this browser.");
+      }
+    }
+
+    function stopVoiceInput() {
+      isRecordingSpeech = false;
+      const banner = document.getElementById("voice-status-banner");
+      const micBtn = document.getElementById("btn-mic");
+      if (micBtn) micBtn.classList.remove("recording");
+      if (banner) banner.style.display = "none";
+
+      if (speechRecognition) {
+        try { speechRecognition.stop(); } catch(e) {}
+        speechRecognition = null;
+      }
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        try { mediaRecorder.stop(); } catch(e) {}
+        mediaRecorder = null;
+      }
+      const chatInput = document.getElementById("chat-input");
+      if (chatInput) {
+        chatInput.value = chatInput.value.replace(/\s*\([^)]*\)\s*$/, "").trim();
+      }
+    }
+
+    async function analyzeAttachmentWithTeacher(fileId, promptText) {
+      const targetPrompt = promptText || prompt("What would you like the Teacher AI to analyze or extract from this file?", "Analyze this file thoroughly and describe all details, text, and insights.");
+      if (!targetPrompt) return;
+
+      appendMessage("assistant", `
+        <div class="thinking-box">
+          <span>Teacher AI is analyzing file<span class="thinking-seconds">...</span></span>
+          <div class="thinking-dots"><span></span><span></span><span></span></div>
+        </div>
+      `, true);
+
+      try {
+        const res = await fetch("/api/analyze/multimodal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file_id: fileId, prompt: targetPrompt })
+        });
+        const data = await res.json();
+        const container = document.getElementById("messages-container");
+        const lastMsg = container.lastElementChild;
+        if (data.success && data.analysis) {
+          lastMsg.innerHTML = `
+            <div style="font-size:0.75rem; color:var(--accent); font-weight:600; margin-bottom:6px;">⚡ Teacher Multimodal Analysis:</div>
+            ${formatContent(data.analysis)}
+          `;
+        } else {
+          lastMsg.innerHTML = `<span style="color:var(--danger);">⚠️ Analysis failed: ${data.error || 'Unknown error. Verify Gemini key.'}</span>`;
+        }
+      } catch(err) {
+        const container = document.getElementById("messages-container");
+        container.lastElementChild.innerHTML = `<span style="color:var(--danger);">⚠️ Network error: ${err.message}</span>`;
+      }
+    }
+
     let thinkingTimer = null;
 
     async function sendMessage() {
       if (activeEventSource) return;
+      if (isRecordingSpeech) stopVoiceInput();
+
       const input = document.getElementById("chat-input");
       const sendBtn = document.getElementById("btn-send");
       const stopBtn = document.getElementById("btn-stop");
       const text = input.value.trim();
-      if (!text) return;
+
+      if (!text && activeAttachments.length === 0) return;
+
+      const sentAttachments = [...activeAttachments];
+      activeAttachments = [];
+      renderAttachmentTray();
 
       input.value = "";
-      // NEVER disable input box: user can freely continue typing while Merlin responds
       input.disabled = false;
       sendBtn.style.display = "none";
       stopBtn.style.display = "block";
 
-      appendMessage("user", text);
+      // Build User Message HTML
+      let userHtml = "";
+      if (sentAttachments.length > 0) {
+        userHtml += '<div class="chat-attachments-block">';
+        sentAttachments.forEach(att => {
+          if (att.category === "image") {
+            userHtml += `
+              <div>
+                <a href="${att.url}" target="_blank"><img class="chat-attached-img" src="${att.url}" alt="${escapeHtml(att.name)}"></a>
+                <button class="multimodal-btn" onclick="analyzeAttachmentWithTeacher('${att.id}', 'Analyze this image and explain everything it shows')">⚡ Teacher Vision Analysis</button>
+              </div>`;
+          } else if (att.category === "audio") {
+            userHtml += `
+              <div>
+                <audio class="chat-attached-audio" controls src="${att.url}"></audio>
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">🎵 ${escapeHtml(att.name)} (${att.size_str})</div>
+                <button class="multimodal-btn" onclick="analyzeAttachmentWithTeacher('${att.id}', 'Transcribe and analyze this audio clip')">⚡ Teacher Audio Analysis</button>
+              </div>`;
+          } else {
+            userHtml += `
+              <div>
+                <a class="chat-attached-file" href="${att.url}" target="_blank" download="${escapeHtml(att.name)}">
+                  📎 ${escapeHtml(att.name)} <small style="opacity:0.7">(${att.size_str})</small>
+                </a>
+              </div>`;
+          }
+        });
+        userHtml += '</div>';
+      }
+      if (text) {
+        userHtml += formatContent(text);
+      }
+      appendMessage("user", userHtml, true);
+
+      // Build Prompt With File Context for Offline Inference Engine
+      let promptWithContext = text || "Please inspect and summarize the attached file.";
+      if (sentAttachments.length > 0) {
+        let attachmentContext = "";
+        sentAttachments.forEach(att => {
+          if (att.category === "text" || att.category === "document") {
+            attachmentContext += `\n\n--- [ATTACHED FILE: ${att.name} (${att.lines} lines, ${att.size_str})] ---\n${att.extracted_text}\n--- [END OF ${att.name}] ---\n`;
+          } else if (att.category === "image") {
+            attachmentContext += `\n\n[Attached Image: ${att.name} (${att.dimensions || 'image'}, ${att.size_str}). Image displayed in chat.]\n`;
+          } else if (att.category === "audio") {
+            attachmentContext += `\n\n[Attached Audio File: ${att.name} (${att.size_str}). Audio player active in chat.]\n`;
+          }
+        });
+        promptWithContext = `${attachmentContext}\nUser Request: ${text || "Please analyze the attached content."}`;
+      }
+
       currentFullText = "";
       currentAssistantMsg = appendMessage("assistant", `
         <div class="thinking-box">
@@ -646,7 +1116,7 @@
         }
       }, 1000);
 
-      const url = `/api/chat/stream?prompt=${encodeURIComponent(text)}&mode=${currentMode}&session_id=${sessionId}`;
+      const url = `/api/chat/stream?prompt=${encodeURIComponent(promptWithContext)}&mode=${currentMode}&session_id=${sessionId}`;
       activeEventSource = new EventSource(url);
 
       // Watchdog: If no token arrives within 35s, give helpful status feedback without freezing
