@@ -159,6 +159,19 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        try:
+            self._handle_post()
+        except Exception as e:
+            log_event("server_post_error", f"Unhandled error in do_POST: {e}", "danger")
+            try:
+                self.send_json({"error": f"Internal Server Error: {e}"}, status=500)
+            except Exception:
+                pass
+
+    def _handle_post(self):
+        def safe_str(val):
+            return str(val).strip() if val is not None else ""
+
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         length = int(self.headers.get("Content-Length", 0))
@@ -176,14 +189,14 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
 
         # Abort streaming generation
         if path == "/api/chat/stop":
-            session_id = data.get("session_id", "default")
+            session_id = safe_str(data.get("session_id")) or "default"
             stopped = engine.stop_generation(session_id)
             self.send_json({"success": stopped})
             return
 
         # Switch Active Model
         elif path == "/api/models/active":
-            model_name = data.get("model", "").strip()
+            model_name = safe_str(data.get("model"))
             if not model_name:
                 self.send_json({"error": "Model filename required"}, status=400)
                 return
@@ -193,8 +206,8 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
 
         # To-Dos CRUD
         elif path == "/api/todos":
-            task = data.get("task", "").strip()
-            priority = data.get("priority", "normal")
+            task = safe_str(data.get("task"))
+            priority = safe_str(data.get("priority")) or "normal"
             if task:
                 tid = add_todo(task, priority)
                 self.send_json({"success": True, "id": tid})
@@ -222,9 +235,9 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
 
         # Notes CRUD
         elif path == "/api/notes":
-            title = data.get("title", "").strip()
-            content = data.get("content", "").strip()
-            tags = data.get("tags", "").strip()
+            title = safe_str(data.get("title"))
+            content = safe_str(data.get("content"))
+            tags = safe_str(data.get("tags"))
             if content:
                 nid = add_note(title or "Untitled Note", content, tags)
                 self.send_json({"success": True, "id": nid})
@@ -234,9 +247,9 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
 
         elif path == "/api/notes/update":
             nid = data.get("id")
-            title = data.get("title", "").strip()
-            content = data.get("content", "").strip()
-            tags = data.get("tags", "").strip()
+            title = safe_str(data.get("title"))
+            content = safe_str(data.get("content"))
+            tags = safe_str(data.get("tags"))
             if nid and content:
                 update_note(nid, title or "Untitled Note", content, tags)
                 self.send_json({"success": True})
@@ -265,8 +278,8 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
 
         # Gaps CRUD
         elif path == "/api/gaps":
-            question = data.get("question", "").strip()
-            context = data.get("context", "").strip()
+            question = safe_str(data.get("question"))
+            context = safe_str(data.get("context"))
             if question:
                 gid = add_gap(question, context)
                 self.send_json({"success": True, "id": gid})
@@ -286,16 +299,16 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
         # Trigger Teacher Sync
         elif path == "/api/sync":
             api_key = (
-                data.get("api_key", "").strip()
+                safe_str(data.get("api_key"))
                 or os.getenv("GEMINI_API_KEY", "")
                 or os.getenv("GOOGLE_API_KEY", "")
                 or os.getenv("TEACHER_API_KEY", "")
                 or os.getenv("GROQ_API_KEY", "")
                 or os.getenv("OPENAI_API_KEY", "")
             )
-            topic = data.get("topic", "").strip()
-            endpoint = data.get("endpoint", "").strip() or None
-            model = data.get("model", "").strip() or None
+            topic = safe_str(data.get("topic"))
+            endpoint = safe_str(data.get("endpoint")) or None
+            model = safe_str(data.get("model")) or None
             if not api_key:
                 self.send_json({"error": "API Key is required to communicate with the teacher AI. Enter your Gemini API key or set GEMINI_API_KEY."}, status=400)
                 return
@@ -314,11 +327,11 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
 
         # Trigger Hugging Face Dataset Import
         elif path == "/api/dataset/import":
-            repo_id = data.get("dataset", "").strip() or "openbmb/UltraData-Stack-v3-L2"
-            subset = data.get("subset", "").strip() or None
-            limit = int(data.get("limit", 50))
+            repo_id = safe_str(data.get("dataset")) or "openbmb/UltraData-Stack-v3-L2"
+            subset = safe_str(data.get("subset")) or None
+            limit = int(data.get("limit") or 50)
             save_local = bool(data.get("save_local", True))
-            token = data.get("token", "").strip() or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN") or None
+            token = safe_str(data.get("token")) or os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN") or None
 
             if import_state.get("is_importing"):
                 self.send_json({"error": "Another dataset import is already in progress"}, status=409)
