@@ -40,7 +40,7 @@ if [ -z "$THREADS" ]; then
         THREADS=$NPROC
     fi
 fi
-CTX_SIZE=${CTX_SIZE:-2048}
+CTX_SIZE=${CTX_SIZE:-8192}
 N_GPU_LAYERS=${N_GPU_LAYERS:-0}
 
 if [ "$N_GPU_LAYERS" == "0" ] && command -v nvidia-smi &> /dev/null; then

@@ -28,6 +28,35 @@ def get_optimal_threads():
         return max(1, cpu_cores)
     return min(8, max(2, cpu_cores - 1))
 
+def fit_prompt_to_context(prompt, max_chars=16000):
+    """
+    Prevents '[Inference error: Requested tokens exceed context window]'
+    when large documents or files are attached by safely trimming large attachments
+    while keeping instructions and code intact.
+    """
+    if not prompt or len(prompt) <= max_chars:
+        return prompt
+
+    if "--- [ATTACHED FILE:" in prompt and "--- [END OF" in prompt:
+        try:
+            prefix, rest = prompt.split("--- [ATTACHED FILE:", 1)
+            file_header, rest2 = rest.split("] ---", 1)
+            file_body, suffix = rest2.split("--- [END OF", 1)
+            suffix = "--- [END OF" + suffix
+
+            half_keep = max_chars // 2
+            trimmed_body = (
+                file_body[:half_keep]
+                + f"\n\n... [Note: Truncated {len(file_body) - max_chars} characters to fit local memory context] ...\n\n"
+                + file_body[-(max_chars // 4):]
+            )
+            return prefix + "--- [ATTACHED FILE:" + file_header + "] ---" + trimmed_body + suffix
+        except Exception:
+            pass
+
+    half = max_chars // 2
+    return prompt[:half] + f"\n\n... [Prompt trimmed to fit local context buffer] ...\n\n" + prompt[-half:]
+
 class InferenceEngine:
     def __init__(self):
         self.llama_cpp_model = None
@@ -61,7 +90,7 @@ class InferenceEngine:
                     from llama_cpp import Llama
                     model_path = os.path.join(MODELS_DIR, models[0])
                     threads = get_optimal_threads()
-                    n_ctx = int(os.getenv("N_CTX", "2048"))
+                    n_ctx = int(os.getenv("N_CTX", "8192"))
                     n_gpu = int(os.getenv("N_GPU_LAYERS", "0"))
                     self.llama_cpp_model = Llama(
                         model_path=model_path,
@@ -109,7 +138,7 @@ class InferenceEngine:
             try:
                 from llama_cpp import Llama
                 threads = get_optimal_threads()
-                n_ctx = int(os.getenv("N_CTX", "2048"))
+                n_ctx = int(os.getenv("N_CTX", "8192"))
                 n_gpu = int(os.getenv("N_GPU_LAYERS", "0"))
                 self.llama_cpp_model = None
                 self.llama_cpp_model = Llama(
@@ -279,7 +308,8 @@ class InferenceEngine:
                 content = re.sub(r"<think>[\s\S]*?</think>", "", content).strip()
             if content:
                 messages.append({"role": h["role"], "content": content})
-        messages.append({"role": "user", "content": prompt})
+        safe_prompt = fit_prompt_to_context(prompt)
+        messages.append({"role": "user", "content": safe_prompt})
 
         full_response = ""
         max_tokens = 90 if is_greeting else int(os.getenv("MAX_TOKENS", "1024"))
