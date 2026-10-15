@@ -593,7 +593,7 @@
         .replace(/>/g, "&gt;");
 
       escaped = escaped.replace(/```([\s\S]*?)```/g, function(match, code) {
-        return `<pre><button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextSibling.innerText)">Copy</button><code>${code.trim()}</code></pre>`;
+        return `<pre><button class="copy-btn" onclick="navigator.clipboard.writeText((this.nextElementSibling||this.nextSibling).innerText); this.innerText='Copied!'; setTimeout(()=>this.innerText='Copy', 1500)">Copy</button><code>${code.trim()}</code></pre>`;
       });
 
       escaped = escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -1095,6 +1095,11 @@
           } else {
             clearInterval(datasetPollInterval);
             banner.style.display = "none";
+            if (state.last_result && state.last_result.startsWith("failed")) {
+              alert("Dataset Import Error:\n" + state.last_result);
+            } else if (state.last_result === "completed") {
+              alert("✅ Dataset Assimilation Complete!\n" + (state.progress || state.total) + " records have been assimilated into Merlin's offline memory.");
+            }
             loadKnowledge();
           }
         } catch (e) {

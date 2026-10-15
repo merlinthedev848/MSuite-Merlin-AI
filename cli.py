@@ -74,9 +74,12 @@ def main():
                 if not key:
                     print("Teacher sync cancelled: API key required.")
                     continue
-                print(f"[*] Distilling knowledge via Gemini Teacher...")
+                print(f"[*] Distilling knowledge via Teacher AI...")
                 from sync_teacher import run_sync
                 res = run_sync(key, topic_to_explore=topic or None)
+                print(f"[✓] Result: {res.get('message', 'Completed')}")
+                continue
+
             elif user_input.startswith(":dataset"):
                 parts = user_input[8:].strip().split()
                 repo_id = parts[0] if parts else "openbmb/UltraData-Stack-v3-L2"
@@ -87,9 +90,11 @@ def main():
                 print(f"[✓] Result: {res.get('message', 'Done')}")
                 continue
 
-            elif user_input.lower() == ":toggle":
-                mode = "assistant" if mode == "coder" else "coder"
-                print(f"Switched mode to: {mode}")
+            elif user_input.lower() in [":toggle", ":mode"]:
+                modes = ["assistant", "coder", "agent"]
+                curr_idx = modes.index(mode) if mode in modes else 0
+                mode = modes[(curr_idx + 1) % len(modes)]
+                print(f"Switched mode to: {mode.upper()} ({'Antigravity Agent' if mode == 'agent' else mode})")
                 continue
 
             # Standard chat/coding generation
