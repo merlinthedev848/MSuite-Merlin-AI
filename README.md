@@ -52,7 +52,7 @@ An air-gapped, ultra-lightweight AI Personal Assistant (PA) and coding assistant
 Run this single command on your server to install dependencies, clone the repo, download the coding model, and start the systemd daemon automatically:
 
 ```bash
-sudo apt update && sudo apt install -y git curl build-essential cmake python3 python3-pip python3-venv && git clone https://github.com/merlinthedev848/merlin-ai.git && cd merlin-ai && chmod +x install.sh download_model.sh start_llama_server.sh cron_worker.py && ./install.sh && ./download_model.sh && sudo sed -i "s|User=pi|User=$USER|g; s|/home/pi/offline-ai-assistant|$PWD|g" offline-assistant.service && sudo cp offline-assistant.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now offline-assistant.service && echo -e "\n\n[SUCCESS] Merlin AI is running! Access it at: http://$(hostname -I | awk '{print $1}'):5000\n"
+cd ~ && sudo apt update && sudo apt install -y git curl build-essential cmake python3 python3-pip python3-venv && ([ -d "$HOME/merlin-ai/.git" ] && (cd "$HOME/merlin-ai" && git pull) || git clone https://github.com/merlinthedev848/merlin-ai.git "$HOME/merlin-ai") && cd "$HOME/merlin-ai" && chmod +x *.sh cron_worker.py && ./install.sh && ./download_model.sh && sudo sed -i "s|User=pi|User=$USER|g; s|/home/pi/offline-ai-assistant|$PWD|g" offline-assistant.service && sudo cp offline-assistant.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now offline-assistant.service && echo -e "\n\n[SUCCESS] Merlin AI is running! Access it at: http://$(hostname -I | awk '{print $1}'):5000\n"
 ```
 
 ---
