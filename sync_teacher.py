@@ -132,7 +132,7 @@ def resolve_teacher_provider(api_key, endpoint=None, model=None):
         return ep or "https://api.groq.com/openai/v1/chat/completions", mdl or "llama-3.3-70b-versatile"
     elif key.startswith("sk-or-"):
         # OpenRouter (Free models available)
-        return ep or "https://openrouter.ai/api/v1/chat/completions", mdl or "meta-llama/llama-3.3-70b-instruct:free"
+        return ep or "https://openrouter.ai/api/v1/chat/completions", mdl or "google/gemini-2.0-flash-exp:free"
     else:
         # Default OpenAI or custom
         return ep or os.getenv("TEACHER_ENDPOINT", "https://api.openai.com/v1/chat/completions"), mdl or os.getenv("TEACHER_MODEL", "gpt-4o-mini")
@@ -250,6 +250,21 @@ def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"
                 err_msg = err_data["error"].get("message") or str(err_data["error"])
         except Exception:
             pass
+        if "unavailable for free" in err_msg.lower() or ("not found" in err_msg.lower() and ":free" in model_clean):
+            for fb_model in ["google/gemini-2.0-flash-exp:free", "deepseek/deepseek-r1:free", "meta-llama/llama-3.2-3b-instruct:free"]:
+                if fb_model != model_clean:
+                    payload_data["model"] = fb_model
+                    try:
+                        req_fb = urllib.request.Request(target_url, data=json.dumps(payload_data).encode("utf-8"), headers=headers)
+                        with urllib.request.urlopen(req_fb, timeout=60) as resp_fb:
+                            res_json = json.loads(resp_fb.read().decode("utf-8"))
+                            raw_content = res_json["choices"][0]["message"]["content"] if "choices" in res_json and res_json["choices"] else str(res_json)
+                            result = extract_json_from_response(raw_content)
+                            if "code_example" in result:
+                                result["code_example"] = clean_code_snippet(result["code_example"])
+                            return result
+                    except Exception:
+                        continue
         if not err_msg:
             err_msg = f"HTTP {he.code}: {he.reason}"
         raise RuntimeError(f"Teacher API Error ({model_clean}): {err_msg}")
