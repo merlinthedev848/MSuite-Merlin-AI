@@ -142,6 +142,9 @@ def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"
     if not api_key_clean:
         raise ValueError("Gemini / Teacher API key is required. Enter your key in the Sync dialog or set GEMINI_API_KEY.")
 
+    if " " in api_key_clean or api_key_clean.startswith(("cd ", "sudo ", "git ", "./", "rm ")):
+        raise ValueError("Invalid API key: It looks like a terminal command was pasted into the API key field. Please enter a valid Gemini API key (starts with 'AIzaSy...').")
+
     model_clean = (model or "gemini-1.5-flash").strip()
     is_gemini = (
         api_key_clean.startswith("AIza")

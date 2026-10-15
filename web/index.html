@@ -942,6 +942,11 @@
         return;
       }
 
+      if (apiKey.includes(" ") || apiKey.startsWith("cd ") || apiKey.startsWith("sudo ") || apiKey.startsWith("git ") || apiKey.startsWith("./")) {
+        alert("Oops! It looks like you pasted a terminal bash command into the API Key box:\n\n\"" + apiKey + "\"\n\n👉 Run that command in your server's SSH terminal, not here.\n👉 Here in this box, paste your Google Gemini API key (starts with AIzaSy...).");
+        return;
+      }
+
       if (!topic) {
         topic = "Building resilient offline architecture, socket networking, and data processing in Python";
       }
