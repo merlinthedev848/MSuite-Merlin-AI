@@ -46,7 +46,7 @@ engine: Optional[InferenceEngine] = None
 # FastAPI Application
 app = FastAPI(
     title="Merlin AI",
-    description="High-performance, offline AI Assistant & Coder with Gemini-style UX and OpenAI-compatible API.",
+    description="High-performance, offline AI Assistant & Coder with modern reactive UX and OpenAI-compatible API.",
     version="2.0.0"
 )
 
@@ -616,7 +616,7 @@ def analyze_multimodal(data: dict):
     api_key = str(data.get("api_key", "")).strip() or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("TEACHER_API_KEY")
 
     if not api_key:
-        raise HTTPException(status_code=400, detail="Google Gemini API key required for multimodal vision/audio analysis.")
+        raise HTTPException(status_code=400, detail="Teacher API key required for multimodal vision/audio analysis.")
 
     file_path = os.path.join(UPLOADS_DIR, file_id)
     if not os.path.exists(file_path):

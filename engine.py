@@ -278,27 +278,84 @@ class InferenceEngine:
             return True
         return False
 
-    def build_system_prompt(self, mode="assistant"):
-        if mode in ("agent", "antigravity"):
+    def detect_conversation_intent(self, prompt: str) -> str:
+        """
+        Automatically classifies the conversation domain (coder, reasoning, assistant)
+        so the single text window automatically provides the optimal persona and model behavior.
+        """
+        text = prompt.lower()
+        
+        # Coding & Software Engineering Signals
+        code_signals = [
+            "def ", "function", "class ", "import ", "const ", "let ", "var ",
+            "```", "python", "javascript", "typescript", "c++", "rust", "bash", "sql",
+            "regex", "docker", "git", "api", "json", "endpoint", "bug", "error",
+            "refactor", "compile", "script", "linux", "systemd", "algorithm",
+            "write code", "how to code", "unit test", "stack trace", "curl", "ssh",
+            "select * from", "html", "css", "npm", "pip", "gcc", "cmake", "make"
+        ]
+        if any(sig in text for sig in code_signals):
+            return "coder"
+
+        # Complex Reasoning & Architectural Signals
+        reasoning_signals = [
+            "step by step", "architecture", "tradeoffs", "design pattern", "analyze",
+            "compare", "optimize", "benchmark", "pros and cons", "deep dive", "proof"
+        ]
+        if any(sig in text for sig in reasoning_signals):
+            return "reasoning"
+
+        return "assistant"
+
+    def auto_select_optimal_model(self, intent: str):
+        """
+        Automatically ensures the optimal available local model is active
+        without requiring the user to manually switch models.
+        """
+        if not os.path.exists(MODELS_DIR):
+            return
+        models = [f for f in os.listdir(MODELS_DIR) if f.endswith(".gguf")]
+        if len(models) <= 1:
+            return
+
+        target_keyword = "coder" if intent == "coder" else ("r1" if intent == "reasoning" else "")
+        best_candidate = None
+
+        if target_keyword:
+            for m in models:
+                if target_keyword in m.lower():
+                    best_candidate = m
+                    break
+
+        if not best_candidate:
+            best_candidate = models[0]
+
+        if best_candidate and best_candidate != self.active_model_name:
+            self.set_active_model(best_candidate)
+
+    def build_system_prompt(self, mode="auto", detected_intent="assistant"):
+        intent = mode if mode in ("coder", "reasoning", "assistant") else detected_intent
+
+        if intent in ("reasoning", "agent"):
             return (
-                "You are Merlin (Merlin AI), an autonomous agentic pair-programming assistant inspired by Google DeepMind's Antigravity. "
-                "You reason deeply step-by-step through technical problems, plan carefully before executing, and write clean, modular, production-ready code. "
-                "When addressing tasks: break down complex requirements, think through edge cases and architecture, provide clear terminal commands or diffs, "
-                "and explain your reasoning with precision."
+                "You are Merlin (Merlin AI), an elite autonomous software engineering partner and systems architect. "
+                "You reason deeply step-by-step through technical challenges, plan thoroughly before execution, and construct clean, modular, production-grade solutions. "
+                "When addressing tasks: break down complex requirements, consider edge cases, provide precise shell commands or code diffs, "
+                "and explain your design decisions clearly."
             )
-        elif mode == "coder":
+        elif intent == "coder":
             return (
                 "You are Merlin (Merlin AI), an expert offline software engineer and coding assistant running locally on a private server. "
                 "Your name is Merlin. You react and respond naturally when addressed as Merlin or Merlin AI. "
-                "Provide clean, efficient, production-ready code. Always consider memory limits, edge cases, and algorithmic complexity. "
-                "Keep prose explanations concise and accurate."
+                "Provide clean, efficient, idiomatic, production-ready code. Always consider memory limits, edge cases, and algorithmic complexity. "
+                "Keep prose concise and focused on the code."
             )
         else:
             return (
-                "You are Merlin (Merlin AI), an intelligent offline Personal Assistant (PA) and coding companion running locally on the user's private network. "
+                "You are Merlin (Merlin AI), an intelligent offline Personal Assistant and software companion running locally on the user's private network. "
                 "Your name is Merlin. You react and respond naturally when addressed as Merlin or Merlin AI. "
-                "You assist with daily tasks, server diagnostics, scheduling, and programming questions. "
-                "Be helpful, direct, and concise."
+                "You assist with daily tasks, server diagnostics, Linux administration, scheduling, and programming questions. "
+                "Be direct, helpful, and concise."
             )
 
     def _stream_from_llama_server(self, payload_dict, abort_event, timeout=120):
@@ -488,7 +545,10 @@ class InferenceEngine:
                 save_chat_message(session_id, "assistant", accumulated)
             return
 
-        # --- 2. Heavy LLM Inference Circuit ---
+        # --- 2. Heavy LLM Inference Circuit (Automated Intent & Model Routing) ---
+        intent = self.detect_conversation_intent(prompt) if mode in ("auto", "assistant", "") else mode
+        self.auto_select_optimal_model(intent)
+
         learned_context = search_knowledge(prompt, limit=2)
         memory_prompt = ""
         if learned_context:
@@ -499,7 +559,7 @@ class InferenceEngine:
                     memory_prompt += f"  Code:\n{k['code_example']}\n"
 
         # Static system prompt enables 100% KV-cache prefix hit in llama-server
-        system_content = self.build_system_prompt(mode)
+        system_content = self.build_system_prompt(mode=mode, detected_intent=intent)
         messages = [{"role": "system", "content": system_content}]
 
         # Inject memory context as a separate system turn if available
@@ -522,6 +582,7 @@ class InferenceEngine:
         full_response = ""
         max_tokens = int(os.getenv("MAX_TOKENS", "512"))
         stop_tokens = ["<|im_end|>", "<|endoftext|>", "</s>"]
+        temperature = 0.2 if intent in ("coder", "reasoning") else 0.7
 
         # Acquire lock to ensure only one thread generates on the CPU at a time
         acquired = self._inference_lock.acquire(timeout=15.0)
@@ -539,7 +600,7 @@ class InferenceEngine:
             if self.backend == "llama-server":
                 payload_dict = {
                     "messages": messages,
-                    "temperature": 0.2 if mode == "coder" else 0.7,
+                    "temperature": temperature,
                     "stream": True,
                     "max_tokens": max_tokens,
                     "stop": stop_tokens
@@ -554,7 +615,7 @@ class InferenceEngine:
                 try:
                     stream = self.llama_cpp_model.create_chat_completion(
                         messages=messages,
-                        temperature=0.2 if mode == "coder" else 0.7,
+                        temperature=temperature,
                         max_tokens=max_tokens,
                         stream=True,
                         stop=stop_tokens

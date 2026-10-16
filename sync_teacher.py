@@ -238,12 +238,12 @@ def fetch_live_models_for_provider(provider, api_key):
     return []
 
 def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"):
-    api_key_clean = (api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("TEACHER_API_KEY") or "").strip().strip("'\"")
+    api_key_clean = (api_key or os.getenv("TEACHER_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip().strip("'\"")
     if not api_key_clean:
-        raise ValueError("Gemini / Teacher API key is required. Enter your key in the Sync dialog or set GEMINI_API_KEY.")
+        raise ValueError("Teacher API key is required. Enter your key in the Sync dialog or set TEACHER_API_KEY.")
 
     if " " in api_key_clean or api_key_clean.startswith(("cd ", "sudo ", "git ", "./", "rm ")):
-        raise ValueError("Invalid API key: It looks like a terminal command was pasted into the API key field. Please enter a valid Gemini API key (starts with 'AIzaSy...').")
+        raise ValueError("Invalid API key: It looks like a terminal command was pasted into the API key field. Please enter a valid API key.")
 
     model_clean = (model or "gemini-1.5-flash").strip()
     is_gemini = (
@@ -586,7 +586,7 @@ if __name__ == "__main__":
     if not key and len(sys.argv) > 1 and not sys.argv[1].startswith("--"):
         key = sys.argv[1]
     if not key:
-        key = input("Enter Teacher API Key (Gemini / Groq / OpenRouter / OpenAI): ").strip()
+        key = input("Enter Teacher API Key (OpenRouter / Groq / OpenAI): ").strip()
     
     if not key:
         print("[!] Error: API key required to connect with teacher AI.")

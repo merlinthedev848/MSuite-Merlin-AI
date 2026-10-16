@@ -6,7 +6,7 @@ An air-gapped, ultra-lightweight AI Personal Assistant (PA) and coding assistant
 - **Minimal Footprint**: Operates on CPU (ARM NEON / AVX2) using ~1.0 GB to 1.5 GB RAM.
 - **Local Network Access**: Connect from any device on your Wi-Fi/LAN (phone, tablet, laptop) via a fast, self-contained web app.
 - **Personal Assistant (PA)**: Persistent To-Dos, quick technical notes, and live hardware health diagnostics (temperature, CPU load, memory).
-- **Self-Learning Distillation Engine**: When connected to the internet, it interviews a commercial "Teacher" AI (OpenAI, Gemini, OpenRouter) to answer questions it struggled with, validates the code, and permanently indexes the lessons in its local SQLite database.
+- **Self-Learning Distillation Engine**: When connected to the internet, it interviews a commercial "Teacher" AI (OpenRouter, Groq, OpenAI) to answer questions it struggled with, validates the code, and permanently indexes the lessons in its local SQLite database.
 
 ---
 
@@ -38,10 +38,10 @@ An air-gapped, ultra-lightweight AI Personal Assistant (PA) and coding assistant
  │   │ - Knowledge Gaps     │       │                       │   │
  │   │ - To-Dos & Notes     │       │ Only when plugged into│   │
  │   └──────────────────────┘       │ Commercial AI API key │   │
- └──────────────────────────────────┴───────────┬───────────┘   │
+ │  └──────────────────────────────────┴───────────┬───────────┘   │
                                                 │               │
  ┌──────────────────────────────────────────────┴───────────────┐
- │ COMMERCIAL AI TEACHER (OpenAI / Claude / Gemini / OpenRouter)│
+ │ COMMERCIAL AI TEACHER (OpenRouter / Groq / OpenAI)           │
  └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -192,18 +192,16 @@ sudo systemctl enable --now offline-cron.timer
 1. **Daily Offline Use**:
    - While coding or asking questions, if you notice the assistant lacks a concept, click **"Record a Knowledge Gap"** in the sidebar (or type `:gap <question>` in CLI).
    - The gap is recorded in `assistant_memory.db`.
-2. **Teaching Merlin with Google Gemini (Free Tier)**:
-   - Obtain a free API key from Google AI Studio: [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+2. **Teaching Merlin with an External AI (OpenRouter, Groq, OpenAI)**:
+   - Obtain an API key from your preferred provider (e.g. OpenRouter, Groq, or OpenAI).
    - **Via Web Dashboard**:
-     - Click **"⚡ Sync Teacher"** in the Memory tab.
-     - Select **Google Gemini** as Provider.
-     - Choose your model (`gemini-2.0-flash` [Recommended], `gemini-1.5-flash`, or `gemini-1.5-pro`).
-     - Paste your `AIza...` key (or leave empty if `GEMINI_API_KEY` is exported).
+     - Click **"Teacher Distillation"** in the sidebar.
+     - Paste your API key (or export `TEACHER_API_KEY`).
      - Enter an optional topic to distill immediately, or let it resolve all pending knowledge gaps.
      - Click **"Start Distillation"**.
    - **Via Terminal / CLI**:
      ```bash
-     export GEMINI_API_KEY="AIzaSyYourGeminiApiKeyHere"
+     export TEACHER_API_KEY="your-api-key-here"
      python sync_teacher.py --topic "Building an async WebSocket server in Python"
      ```
      Or interactively in CLI mode:
@@ -255,7 +253,7 @@ For SSH terminal sessions without a browser:
 ./venv/bin/python cli.py
 ```
 Commands:
-- `:teach <topic>` — Distill a topic directly from the Gemini Teacher
+- `:teach <topic>` — Distill a topic directly from the Teacher AI
 - `:dataset <repo> [N]` — Stream and assimilate Hugging Face datasets
 - `:tasks` — View active to-do list
 - `:addtask <task>` — Add a new task

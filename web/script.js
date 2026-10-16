@@ -1,9 +1,9 @@
 /* ==========================================================================
-   MERLIN AI — GEMINI UI CLIENT ENGINE & STREAMING LOGIC
+   MERLIN AI — UI CLIENT ENGINE & STREAMING LOGIC
    ========================================================================== */
 
 let activeConversationId = null;
-let currentMode = "assistant";
+let currentMode = "auto";
 let activeEventSource = null;
 let attachedFile = null;
 let recognition = null;
@@ -32,18 +32,20 @@ function setTheme(theme) {
   }
 }
 
-// Collapsible Sidebar
+// Collapsible Sidebar with Mobile Backdrop Support
 function toggleSidebar() {
   const sb = document.getElementById("sidebar");
-  if (sb) sb.classList.toggle("collapsed");
-}
-
-// Mode Selection
-function setMode(mode) {
-  currentMode = mode;
-  document.querySelectorAll(".mode-pill").forEach(p => p.classList.remove("active"));
-  const target = document.getElementById(`pill-${mode}`);
-  if (target) target.classList.add("active");
+  const backdrop = document.getElementById("sidebar-backdrop");
+  if (sb) {
+    sb.classList.toggle("collapsed");
+    if (backdrop) {
+      if (window.innerWidth <= 768 && !sb.classList.contains("collapsed")) {
+        backdrop.style.display = "block";
+      } else {
+        backdrop.style.display = "none";
+      }
+    }
+  }
 }
 
 // Auto-Expanding Textarea
@@ -191,7 +193,7 @@ async function createNewChat() {
   const res = await fetch("/api/conversations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title: "New Chat", mode: currentMode })
+    body: JSON.stringify({ title: "New Chat", mode: "auto" })
   });
   const conv = await res.json();
   activeConversationId = conv.id;
@@ -205,7 +207,6 @@ async function switchConversation(convId) {
   const res = await fetch(`/api/conversations/${convId}`);
   const data = await res.json();
   if (data.conversation) {
-    setMode(data.conversation.mode || "assistant");
     showConversationMessages(convId, data.messages || []);
   }
 }
@@ -336,7 +337,7 @@ async function submitMessage() {
     }
   }
 
-  const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=${currentMode}&session_id=${activeConversationId}`;
+  const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=auto&session_id=${activeConversationId}`;
   activeEventSource = new EventSource(streamUrl);
 
   activeEventSource.onmessage = function(event) {
@@ -479,32 +480,20 @@ async function loadTelemetry() {
 
 async function loadModels() {
   try {
-    const res = await fetch("/api/models");
-    const models = await res.json();
-    const sel = document.getElementById("model-select");
-    sel.innerHTML = "";
-    if (!models.length) {
-      sel.innerHTML = '<option value="">No local .gguf models found</option>';
-      return;
+    const res = await fetch("/api/status");
+    const d = await res.json();
+    const display = document.getElementById("active-model-display");
+    if (display) {
+      if (d.model && d.model !== "None" && !d.model.includes("Waiting")) {
+        display.innerText = `${d.model} (${d.backend})`;
+      } else {
+        display.innerText = "Offline Standby (Auto-Detect Active)";
+      }
     }
-    models.forEach(m => {
-      const opt = document.createElement("option");
-      opt.value = m.filename;
-      opt.innerText = `${m.name} (${m.size_mb} MB) ${m.is_active ? '✓ Active' : ''}`;
-      if (m.is_active) opt.selected = true;
-      sel.appendChild(opt);
-    });
-  } catch (e) {}
-}
-
-async function switchModel(val) {
-  if (!val) return;
-  await fetch("/api/models/active", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: val })
-  });
-  loadModels();
+  } catch (e) {
+    const display = document.getElementById("active-model-display");
+    if (display) display.innerText = "Offline Engine (Active)";
+  }
 }
 
 // Teacher Sync & Hugging Face Datasets
@@ -537,4 +526,11 @@ async function startDatasetImport() {
 window.addEventListener("DOMContentLoaded", () => {
   initTheme();
   loadConversations();
+
+  // Close modals when clicking outside modal box
+  window.addEventListener("click", (e) => {
+    if (e.target.classList.contains("modal-backdrop")) {
+      e.target.style.display = "none";
+    }
+  });
 });

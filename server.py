@@ -707,7 +707,7 @@ def run():
     engine = InferenceEngine()
     server = ThreadingHTTPServer((HOST, PORT), AssistantRequestHandler)
     print("=" * 66)
-    print("  MERLIN AI — GEMINI-GRADE ASSISTANT & CODER (PRODUCTION READY)")
+    print("  MERLIN AI — OFFLINE ASSISTANT & CODER (PRODUCTION READY)")
     print(f"  Web UI:            http://localhost:{PORT}")
     print(f"  OpenAI REST API:   http://localhost:{PORT}/v1/chat/completions")
     print(f"  Network Access:    http://0.0.0.0:{PORT} (Accessible across LAN)")

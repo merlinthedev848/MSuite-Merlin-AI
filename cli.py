@@ -70,7 +70,7 @@ def main():
                     or os.getenv("OPENAI_API_KEY")
                 )
                 if not key:
-                    key = input("Enter Gemini API Key: ").strip()
+                    key = input("Enter Teacher API Key: ").strip()
                 if not key:
                     print("Teacher sync cancelled: API key required.")
                     continue
@@ -94,7 +94,7 @@ def main():
                 modes = ["assistant", "coder", "agent"]
                 curr_idx = modes.index(mode) if mode in modes else 0
                 mode = modes[(curr_idx + 1) % len(modes)]
-                print(f"Switched mode to: {mode.upper()} ({'Antigravity Agent' if mode == 'agent' else mode})")
+                print(f"Switched mode to: {mode.upper()} ({'Autonomous Architect' if mode == 'agent' else mode})")
                 continue
 
             # Standard chat/coding generation

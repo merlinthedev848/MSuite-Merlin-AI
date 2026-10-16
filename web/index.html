@@ -61,9 +61,10 @@
       </div>
 
       <div class="navbar-center">
-        <button class="mode-pill active" id="pill-assistant" onclick="setMode('assistant')">🤖 Assistant</button>
-        <button class="mode-pill" id="pill-coder" onclick="setMode('coder')">💻 Coder</button>
-        <button class="mode-pill" id="pill-agent" onclick="setMode('agent')">🚀 Antigravity</button>
+        <span class="engine-status-pill" title="Merlin automatically selects the best offline model and parameters for your conversation">
+          <span class="status-dot"></span>
+          Auto-Engine Active
+        </span>
       </div>
 
       <div class="navbar-right">
@@ -106,7 +107,7 @@
       <div class="conversation-container" id="messages-list" style="display:none;"></div>
     </div>
 
-    <!-- Floating Gemini-Style Input Dock -->
+    <!-- Floating Input Dock -->
     <div id="input-dock">
       <div class="input-dock-container">
         <!-- Attachment Tray -->
@@ -142,6 +143,7 @@
         <div class="dock-disclaimer">Merlin AI operates 100% locally on your hardware. Completely air-gapped, zero telemetry.</div>
       </div>
     </div>
+    <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar()"></div>
   </main>
 
   <!-- ========================================================================
@@ -155,10 +157,15 @@
       </div>
 
       <div class="form-group">
-        <label>Active Local AI Model</label>
-        <select class="form-select" id="model-select" onchange="switchModel(this.value)">
-          <option value="">Loading models...</option>
-        </select>
+        <label>Local AI Engine</label>
+        <div class="auto-model-badge">
+          <span class="auto-badge-icon">⚡</span>
+          <span id="active-model-display">Auto-Detected Model</span>
+          <span class="auto-badge-tag">AUTO-OPTIMIZED</span>
+        </div>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;">
+          Merlin dynamically tunes generation parameters and routes technical tasks to the best offline model automatically.
+        </p>
       </div>
 
       <div class="sidebar-section-title" style="padding-left:0;">Hardware Telemetry</div>
@@ -192,12 +199,12 @@ Body: { "model": "merlin-ai", "messages": [{"role":"user","content":"Hello"}] }<
         <button class="icon-btn" onclick="closeModal('sync-modal')">✕</button>
       </div>
       <p style="font-size:0.84rem; color:var(--text-muted); margin-bottom:14px;">
-        Interview an external AI (Google Gemini, OpenRouter, Groq, OpenAI) to resolve knowledge gaps and permanently index new skills into local SQLite memory.
+        Interview an external AI (OpenRouter, Groq, OpenAI) to resolve knowledge gaps and permanently index new skills into local SQLite memory.
       </p>
       
       <div class="form-group">
         <label>Commercial Provider API Key</label>
-        <input type="password" class="form-input" id="teacher-api-key" placeholder="AIzaSy... / sk-...">
+        <input type="password" class="form-input" id="teacher-api-key" placeholder="sk-... / API Key">
       </div>
 
       <div class="form-group">
