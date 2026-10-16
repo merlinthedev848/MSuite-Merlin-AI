@@ -151,7 +151,7 @@ def ensure_datasets_installed():
         import subprocess
         try:
             subprocess.check_call([
-                sys.executable, "-m", "pip", "install", "datasets>=3.0.0", "huggingface-hub>=0.28.0"
+                sys.executable, "-m", "pip", "install", "datasets>=5.1.0", "huggingface-hub>=2.2.0"
             ])
             import datasets
             print("[✓] Successfully installed Hugging Face datasets.")

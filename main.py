@@ -6,6 +6,7 @@ import base64
 import struct
 import threading
 import asyncio
+from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
 
 from fastapi import FastAPI, Request, HTTPException, Depends, Header, status
@@ -22,12 +23,12 @@ from database import (
     save_message, get_session_messages, clear_session_messages,
     add_todo, get_todos, toggle_todo, delete_todo,
     add_note, get_notes, update_note, delete_note,
-    get_all_knowledge, add_knowledge, delete_knowledge,
+    get_all_knowledge, add_knowledge, update_knowledge, delete_knowledge, search_knowledge,
     get_unresolved_gaps, add_gap, delete_gap,
     get_system_telemetry, get_recent_audit_logs, log_event
 )
 from engine import InferenceEngine
-from sync_teacher import run_sync, sync_state, query_gemini_multimodal, fetch_live_models_for_provider
+from sync_teacher import run_sync, sync_state, query_gemini_multimodal, fetch_live_models_for_provider, query_gemini_argon
 from import_dataset import import_hf_dataset, import_state, POPULAR_DATASETS
 
 # Path configurations
@@ -43,11 +44,33 @@ API_KEY_SECRET = os.getenv("MERLIN_API_KEY") or os.getenv("API_KEY")
 server_start_time = time.time()
 engine: Optional[InferenceEngine] = None
 
+def get_engine() -> InferenceEngine:
+    global engine
+    if engine is None:
+        init_db()
+        engine = InferenceEngine()
+    return engine
+
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
+    eng = get_engine()
+    print("=" * 66)
+    print("  MERLIN AI — FASTAPI CORE RUNTIME (PRODUCTION READY)")
+    print(f"  Web Dashboard:     http://localhost:{PORT}")
+    print(f"  OpenAI REST API:   http://localhost:{PORT}/v1/chat/completions")
+    print(f"  Network Host:      http://{HOST}:{PORT}")
+    print(f"  Model Engine:      {eng.backend} ({eng.active_model_name})")
+    print("=" * 66)
+    yield
+    if engine is not None:
+        engine.cleanup()
+
 # FastAPI Application
 app = FastAPI(
     title="Merlin AI",
     description="High-performance, offline AI Assistant & Coder with modern reactive UX and OpenAI-compatible API.",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # Standard CORS Middleware for third-party tools & extensions
@@ -82,25 +105,6 @@ def verify_api_key(authorization: Optional[str] = Header(None)):
             detail={"message": "Invalid API key provided", "type": "invalid_request_error"}
         )
     return True
-
-def get_engine() -> InferenceEngine:
-    global engine
-    if engine is None:
-        init_db()
-        engine = InferenceEngine()
-    return engine
-
-# --- Lifecycle Events ---
-@app.on_event("startup")
-def startup_event():
-    eng = get_engine()
-    print("=" * 66)
-    print("  MERLIN AI — FASTAPI CORE RUNTIME (PRODUCTION READY)")
-    print(f"  Web Dashboard:     http://localhost:{PORT}")
-    print(f"  OpenAI REST API:   http://localhost:{PORT}/v1/chat/completions")
-    print(f"  Network Host:      http://{HOST}:{PORT}")
-    print(f"  Model Engine:      {eng.backend} ({eng.active_model_name})")
-    print("=" * 66)
 
 # =====================================================================
 # OpenAI-Compatible REST API Layer
@@ -392,12 +396,25 @@ def append_conversation_message(conv_id: str, data: dict):
     role = str(data.get("role", "user")).strip()
     content = str(data.get("content", ""))
     metadata = data.get("metadata", {})
+    existing_msgs = get_session_messages(conv_id, limit=200)
+    if existing_msgs and existing_msgs[-1]["role"] == role and existing_msgs[-1]["content"] == content:
+        return {"success": True, "id": existing_msgs[-1]["id"], "deduplicated": True}
     mid = save_message(conv_id, role, content, metadata=metadata)
     return {"success": True, "id": mid}
 
 # =====================================================================
 # Status, Telemetry & Diagnostics
 # =====================================================================
+
+@app.get("/health")
+@app.get("/api/health")
+def health_check():
+    eng = get_engine()
+    return {
+        "status": "ok",
+        "backend": eng.backend,
+        "model": eng.active_model_name or "None"
+    }
 
 @app.get("/api/status")
 def get_status():
@@ -503,6 +520,35 @@ def delete_note_route(data: dict):
 @app.get("/api/knowledge")
 def list_knowledge():
     return get_all_knowledge()
+
+@app.get("/api/knowledge/search")
+def search_knowledge_route(q: str = "", limit: int = 10):
+    if not q.strip():
+        return get_all_knowledge(limit=limit)
+    return search_knowledge(q, limit=limit)
+
+@app.post("/api/knowledge")
+def create_knowledge_route(data: dict):
+    topic = str(data.get("topic", "")).strip()
+    lesson = str(data.get("lesson", "")).strip()
+    code_example = str(data.get("code_example", "")).strip()
+    tags = str(data.get("tags", "")).strip()
+    source = str(data.get("source", "manual")).strip() or "manual"
+    if not topic or not lesson:
+        raise HTTPException(status_code=400, detail="Topic and lesson are required")
+    kid = add_knowledge(topic, lesson, code_example=code_example, tags=tags, source=source)
+    return {"success": True, "id": kid}
+
+@app.post("/api/knowledge/update")
+def update_knowledge_route(data: dict):
+    kid = data.get("id")
+    topic = str(data.get("topic", "")).strip()
+    lesson = str(data.get("lesson", "")).strip()
+    code_example = str(data.get("code_example", "")).strip()
+    tags = str(data.get("tags", "")).strip()
+    if not kid or not topic or not lesson:
+        raise HTTPException(status_code=400, detail="ID, topic, and lesson are required")
+    return {"success": update_knowledge(int(kid), topic, lesson, code_example=code_example, tags=tags)}
 
 @app.post("/api/knowledge/delete")
 def delete_knowledge_route(data: dict):
@@ -611,12 +657,15 @@ def upload_file(data: dict):
 
 @app.post("/api/analyze/multimodal")
 def analyze_multimodal(data: dict):
-    file_id = str(data.get("file_id", "")).strip()
+    file_id = os.path.basename(str(data.get("file_id", "")).strip())
     prompt = str(data.get("prompt", "Analyze this file thoroughly and describe all details.")).strip()
     api_key = str(data.get("api_key", "")).strip() or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("TEACHER_API_KEY")
 
     if not api_key:
         raise HTTPException(status_code=400, detail="Teacher API key required for multimodal vision/audio analysis.")
+
+    if not file_id:
+        raise HTTPException(status_code=400, detail="file_id is required")
 
     file_path = os.path.join(UPLOADS_DIR, file_id)
     if not os.path.exists(file_path):
@@ -677,6 +726,45 @@ def start_teacher_sync(data: dict):
 def get_teacher_models(provider: str = "gemini", api_key: str = ""):
     models = fetch_live_models_for_provider(provider, api_key)
     return {"provider": provider, "models": models}
+
+@app.post("/api/teacher/argon/query")
+def argon_query_route(data: dict):
+    prompt = str(data.get("prompt", "")).strip()
+    api_key = str(data.get("api_key", "")).strip() or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("TEACHER_API_KEY")
+    model = str(data.get("model", "gemini-4-argon")).strip() or "gemini-4-argon"
+    reasoning_effort = str(data.get("reasoning_effort", "high")).strip()
+    thinking_budget = int(data.get("thinking_budget") or 2048)
+    system_instruction = str(data.get("system_instruction", "")).strip() or None
+
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required for Gemini 4 Argon reasoning query.")
+
+    try:
+        result = query_gemini_argon(
+            prompt=prompt,
+            api_key=api_key,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            thinking_budget=thinking_budget,
+            system_instruction=system_instruction
+        )
+        log_event("argon_query", f"Gemini 4 Argon reasoning completed via {result.get('model', model)}", "info")
+        return result
+    except Exception as e:
+        log_event("argon_error", f"Gemini 4 Argon query failed: {e}", "danger")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/teacher/argon/assimilate")
+def argon_assimilate_route(data: dict):
+    topic = str(data.get("topic", "")).strip()
+    lesson = str(data.get("lesson", "")).strip()
+    code_example = str(data.get("code_example", "")).strip()
+    tags = str(data.get("tags", "gemini-4-argon,reasoning,distilled")).strip()
+    if not topic or not lesson:
+        raise HTTPException(status_code=400, detail="Topic and lesson are required for assimilation.")
+    kid = add_knowledge(topic, lesson, code_example=code_example, tags=tags, source="gemini-4-argon")
+    log_event("argon_assimilate", f"Assimilated reasoning lesson #{kid}: {topic}", "success")
+    return {"success": True, "id": kid, "message": f"Successfully assimilated '{topic}' into local SQLite memory."}
 
 @app.get("/api/dataset/status")
 def get_dataset_status():

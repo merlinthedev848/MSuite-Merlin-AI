@@ -5,6 +5,6 @@ After=network.target
 [Service]
 Type=oneshot
 User=pi
-WorkingDirectory=/home/pi/offline-ai-assistant
-ExecStart=/home/pi/offline-ai-assistant/venv/bin/python cron_worker.py
+WorkingDirectory=/home/pi/merlin-ai
+ExecStart=/home/pi/merlin-ai/venv/bin/python cron_worker.py
 Environment=TEACHER_API_KEY=

@@ -158,6 +158,14 @@ def init_db():
                 VALUES('delete', old.id, old.topic, old.lesson, old.tags, old.code_example);
             END;
             """)
+            c.execute("""
+            CREATE TRIGGER IF NOT EXISTS trg_knowledge_au AFTER UPDATE ON knowledge BEGIN
+                INSERT INTO knowledge_fts(knowledge_fts, rowid, topic, lesson, tags, code_example)
+                VALUES('delete', old.id, old.topic, old.lesson, old.tags, old.code_example);
+                INSERT INTO knowledge_fts(rowid, topic, lesson, tags, code_example)
+                VALUES (new.id, new.topic, new.lesson, new.tags, new.code_example);
+            END;
+            """)
         except Exception:
             pass
 
@@ -235,19 +243,38 @@ def init_db():
 
 # --- Sessions / Conversations Management ---
 
-def create_session(title: str = "New Chat", mode: str = "assistant", session_id: str = None) -> dict:
-    sid = session_id or str(uuid.uuid4())[:8]
+def _derive_session_title(content: str) -> str:
+    """Derives a clean, concise conversation title from a user prompt."""
+    if not content:
+        return "New Chat"
+    cleaned = content
+    if "--- [ATTACHED FILE:" in cleaned and "--- [END OF" in cleaned:
+        parts = re.split(r"---\s*\[END OF[^\]]*\]\s*---", cleaned, maxsplit=1)
+        tail = parts[1].strip() if len(parts) > 1 else ""
+        if tail:
+            cleaned = tail
+        else:
+            m = re.search(r"---\s*\[ATTACHED FILE:\s*([^\]]+)\]", cleaned)
+            cleaned = f"File: {m.group(1).strip()}" if m else "Attached File"
+    cleaned = cleaned.replace("\n", " ").strip()
+    if not cleaned:
+        return "New Chat"
+    return (cleaned[:36] + "...") if len(cleaned) > 36 else cleaned
+
+def create_session(title: str = "New Chat", mode: str = "assistant", session_id: str = None, conv_id: str = None) -> dict:
+    sid = session_id or conv_id or str(uuid.uuid4())[:8]
+    clean_title = (title or "New Chat").strip() or "New Chat"
     now = datetime.datetime.now().isoformat()
     with get_db() as conn:
         conn.execute("""
-            INSERT INTO sessions (id, title, mode, pinned, created_at, updated_at)
+            INSERT OR REPLACE INTO sessions (id, title, mode, pinned, created_at, updated_at)
             VALUES (?, ?, ?, 0, ?, ?)
-        """, (sid, title.strip() or "New Chat", mode, now, now))
+        """, (sid, clean_title, mode, now, now))
         conn.execute("""
             INSERT OR REPLACE INTO conversations (id, title, mode, pinned, created_at, updated_at)
             VALUES (?, ?, ?, 0, ?, ?)
-        """, (sid, title.strip() or "New Chat", mode, now, now))
-    return {"id": sid, "title": title, "mode": mode, "pinned": 0, "created_at": now, "updated_at": now}
+        """, (sid, clean_title, mode, now, now))
+    return {"id": sid, "title": clean_title, "mode": mode, "pinned": 0, "created_at": now, "updated_at": now}
 
 def get_sessions(limit: int = 100) -> list:
     with get_db() as conn:
@@ -338,25 +365,32 @@ def save_message(session_id: str, role: str, content: str, metadata: dict = None
     
     with get_db() as conn:
         c = conn.cursor()
-        # Auto-create session if not present
-        c.execute("SELECT id FROM sessions WHERE id = ?", (session_id,))
-        if not c.fetchone():
-            c.execute("SELECT id FROM conversations WHERE id = ?", (session_id,))
-            if not c.fetchone():
-                title = content[:32] + "..." if len(content) > 32 else content
-                title = title.replace("\n", " ").strip() or "New Chat"
-                now = datetime.datetime.now().isoformat()
-                c.execute("""
-                    INSERT INTO sessions (id, title, mode, pinned, created_at, updated_at)
-                    VALUES (?, ?, 'assistant', 0, ?, ?)
-                """, (session_id, title, now, now))
-                c.execute("""
-                    INSERT INTO conversations (id, title, mode, pinned, created_at, updated_at)
-                    VALUES (?, ?, 'assistant', 0, ?, ?)
-                """, (session_id, title, now, now))
+        # Auto-create session if not present, or auto-title if still "New Chat"
+        c.execute("SELECT id, title FROM sessions WHERE id = ?", (session_id,))
+        existing_row = c.fetchone()
+        if not existing_row:
+            c.execute("SELECT id, title FROM conversations WHERE id = ?", (session_id,))
+            existing_row = c.fetchone()
+
+        if not existing_row:
+            title = _derive_session_title(content) if role == "user" else "New Chat"
+            now = datetime.datetime.now().isoformat()
+            c.execute("""
+                INSERT INTO sessions (id, title, mode, pinned, created_at, updated_at)
+                VALUES (?, ?, 'assistant', 0, ?, ?)
+            """, (session_id, title, now, now))
+            c.execute("""
+                INSERT INTO conversations (id, title, mode, pinned, created_at, updated_at)
+                VALUES (?, ?, 'assistant', 0, ?, ?)
+            """, (session_id, title, now, now))
         else:
-            c.execute("UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (session_id,))
-            c.execute("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (session_id,))
+            if role == "user" and (existing_row["title"] in ("New Chat", "", None)):
+                new_title = _derive_session_title(content)
+                c.execute("UPDATE sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_title, session_id))
+                c.execute("UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_title, session_id))
+            else:
+                c.execute("UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (session_id,))
+                c.execute("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (session_id,))
 
         c.execute("""
             INSERT INTO messages (session_id, conversation_id, role, content, token_count, metadata, created_at)
@@ -484,6 +518,16 @@ def add_knowledge(topic: str, lesson: str, code_example: str = "", tags: str = "
         """, (topic.strip(), lesson.strip(), code_example.strip() if code_example else "", tags.strip(), source))
         log_event("knowledge_added", f"Assimilated: {topic}", "success")
         return c.lastrowid
+
+def update_knowledge(knowledge_id: int, topic: str, lesson: str, code_example: str = "", tags: str = "") -> bool:
+    with get_db() as conn:
+        conn.execute("""
+            UPDATE knowledge
+            SET topic = ?, lesson = ?, code_example = ?, tags = ?
+            WHERE id = ?
+        """, (topic.strip(), lesson.strip(), (code_example or "").strip(), (tags or "").strip(), knowledge_id))
+        log_event("knowledge_updated", f"Updated knowledge ID: {knowledge_id} ({topic})", "info")
+        return True
 
 def delete_knowledge(knowledge_id: int) -> bool:
     with get_db() as conn:
@@ -646,13 +690,13 @@ def get_system_telemetry() -> dict:
         "os": f"{platform.system()} {platform.release()}",
         "arch": platform.machine(),
         "temperature": "N/A",
-        "cpu_usage": "N/A",
+        "cpu_usage": f"{os.cpu_count() or 1} Cores Active",
         "memory": "N/A",
         "disk": "N/A",
         "uptime": "N/A"
     }
 
-    # Pi 5 / Linux Temperature Sensor
+    # 1. Pi 5 / Linux Temperature Sensor
     for zone in ["/sys/class/thermal/thermal_zone0/temp", "/sys/devices/virtual/thermal/thermal_zone0/temp"]:
         if os.path.exists(zone):
             try:
@@ -663,7 +707,7 @@ def get_system_telemetry() -> dict:
             except Exception:
                 pass
 
-    # Linux /proc/loadavg
+    # 2. Linux /proc/loadavg
     if os.path.exists("/proc/loadavg"):
         try:
             with open("/proc/loadavg", "r") as f:
@@ -672,7 +716,7 @@ def get_system_telemetry() -> dict:
         except Exception:
             pass
 
-    # Linux /proc/meminfo
+    # 3. Linux /proc/meminfo
     if os.path.exists("/proc/meminfo"):
         try:
             mem = {}
@@ -689,7 +733,7 @@ def get_system_telemetry() -> dict:
         except Exception:
             pass
 
-    # Linux /proc/uptime
+    # 4. Linux /proc/uptime
     if os.path.exists("/proc/uptime"):
         try:
             with open("/proc/uptime", "r") as f:
@@ -701,7 +745,70 @@ def get_system_telemetry() -> dict:
         except Exception:
             pass
 
-    # Disk usage
+    # 5. Cross-platform psutil enrichment (when installed)
+    try:
+        import psutil
+        if stats["cpu_usage"].endswith("Cores Active"):
+            cpu_pct = psutil.cpu_percent(interval=None)
+            stats["cpu_usage"] = f"{cpu_pct:.1f}% ({os.cpu_count() or 1} cores)"
+        if stats["memory"] == "N/A":
+            vm = psutil.virtual_memory()
+            total_mb = vm.total // (1024 * 1024)
+            used_mb = (vm.total - vm.available) // (1024 * 1024)
+            stats["memory"] = f"{used_mb}MB / {total_mb}MB ({int(vm.percent)}%)"
+        if stats["uptime"] == "N/A":
+            uptime_sec = max(0.0, time.time() - psutil.boot_time())
+            days = int(uptime_sec // 86400)
+            hours = int((uptime_sec % 86400) // 3600)
+            mins = int((uptime_sec % 3600) // 60)
+            stats["uptime"] = f"{days}d {hours}h {mins}m"
+        if stats["temperature"] == "N/A" and hasattr(psutil, "sensors_temperatures"):
+            temps = psutil.sensors_temperatures() or {}
+            for entries in temps.values():
+                if entries and getattr(entries[0], "current", None):
+                    stats["temperature"] = f"{entries[0].current:.1f}°C"
+                    break
+    except Exception:
+        pass
+
+    # 6. Zero-dependency Windows native kernel32 fallback (when psutil is not installed)
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            if stats["memory"] == "N/A":
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+                mem_status = MEMORYSTATUSEX()
+                mem_status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+                if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem_status)):
+                    total_mb = int(mem_status.ullTotalPhys // (1024 * 1024))
+                    avail_mb = int(mem_status.ullAvailPhys // (1024 * 1024))
+                    used_mb = total_mb - avail_mb
+                    stats["memory"] = f"{used_mb}MB / {total_mb}MB ({mem_status.dwMemoryLoad}%)"
+            if stats["uptime"] == "N/A":
+                tick_ms = ctypes.windll.kernel32.GetTickCount64()
+                uptime_sec = tick_ms / 1000.0
+                days = int(uptime_sec // 86400)
+                hours = int((uptime_sec % 86400) // 3600)
+                mins = int((uptime_sec % 3600) // 60)
+                stats["uptime"] = f"{days}d {hours}h {mins}m"
+        except Exception:
+            pass
+
+    if stats["temperature"] == "N/A":
+        stats["temperature"] = "Nominal ( Passive )"
+
+    # 7. Disk usage
     try:
         root_dir = (os.path.splitdrive(os.path.abspath(__file__))[0] + "\\") if platform.system() == "Windows" else "/"
         total, used, free = shutil.disk_usage(root_dir)
@@ -716,3 +823,4 @@ def get_system_telemetry() -> dict:
 
 # Initialize on import
 init_db()
+

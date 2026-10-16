@@ -1,9 +1,10 @@
 # Merlin AI — Core Runtime Dependencies
-fastapi>=0.110.0
-uvicorn[standard]>=0.28.0
-pydantic>=2.6.0
-requests>=2.32.0
-llama-cpp-python>=0.3.0
-datasets>=3.0.0
-huggingface-hub>=0.28.0
-pypdf>=4.0.0
+fastapi>=0.143.2
+uvicorn[standard]>=0.54.0
+pydantic>=2.14.1
+requests>=2.34.2
+llama-cpp-python>=0.3.36
+datasets>=5.1.0
+huggingface-hub>=2.2.0
+pypdf>=6.21.0
+psutil>=7.2.2

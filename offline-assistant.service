@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/offline-ai-assistant
-ExecStart=/home/pi/offline-ai-assistant/venv/bin/python main.py
+WorkingDirectory=/home/pi/merlin-ai
+ExecStart=/home/pi/merlin-ai/venv/bin/python main.py
 Restart=always
 RestartSec=5
 Environment=HOST=0.0.0.0

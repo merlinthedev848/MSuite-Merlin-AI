@@ -60,7 +60,7 @@ if [ -z "$SERVER_BIN" ]; then
         git -C "$DIR/llama.cpp" pull --ff-only || true
     else
         echo "    Cloning latest stable llama.cpp..."
-        git clone --depth 1 https://github.com/ggerganov/llama.cpp.git "$DIR/llama.cpp"
+        git clone --depth 1 https://github.com/ggml-org/llama.cpp.git "$DIR/llama.cpp"
     fi
     echo "    Building llama.cpp from source (native CPU SIMD acceleration)..."
     cd "$DIR/llama.cpp"

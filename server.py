@@ -14,12 +14,12 @@ from memory import (
     save_message, get_conversation_messages, clear_conversation_messages,
     add_todo, get_todos, toggle_todo, delete_todo,
     add_note, get_notes, update_note, delete_note,
-    get_all_knowledge, add_knowledge, delete_knowledge,
+    get_all_knowledge, add_knowledge, update_knowledge, delete_knowledge, search_knowledge,
     get_unresolved_gaps, add_gap, delete_gap,
     get_system_telemetry, get_recent_audit_logs, log_event
 )
 from engine import InferenceEngine
-from sync_teacher import run_sync, sync_state, query_gemini_multimodal, fetch_live_models_for_provider
+from sync_teacher import run_sync, sync_state, query_gemini_multimodal, fetch_live_models_for_provider, query_gemini_argon
 from import_dataset import import_hf_dataset, import_state, POPULAR_DATASETS
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
@@ -118,14 +118,15 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
             return
 
         # -------------------------------------------------------------
-        # Conversational State Engine: GET /api/conversations
+        # Conversational State Engine: GET /api/conversations & /api/sessions
         # -------------------------------------------------------------
-        elif path == "/api/conversations":
+        elif path in ("/api/conversations", "/api/sessions"):
             self.send_json(get_conversations())
             return
 
-        elif path.startswith("/api/conversations/"):
-            conv_id = path.split("/api/conversations/")[1].strip().split("/")[0]
+        elif path.startswith("/api/conversations/") or path.startswith("/api/sessions/"):
+            prefix = "/api/conversations/" if path.startswith("/api/conversations/") else "/api/sessions/"
+            conv_id = path.split(prefix)[1].strip().split("/")[0]
             conv = get_conversation(conv_id)
             if not conv:
                 self.send_json({"error": "Conversation not found"}, status=404)
@@ -178,6 +179,14 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
         # -------------------------------------------------------------
         # Status, System & Knowledge Endpoints
         # -------------------------------------------------------------
+        elif path in ("/health", "/api/health"):
+            self.send_json({
+                "status": "ok",
+                "backend": engine.backend,
+                "model": engine.active_model_name or "None"
+            })
+            return
+
         elif path == "/api/status":
             uptime_sec = int(time.time() - server_start_time)
             status_data = {
@@ -204,6 +213,16 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
 
         elif path == "/api/knowledge":
             self.send_json(get_all_knowledge())
+            return
+
+        elif path == "/api/knowledge/search":
+            query = urllib.parse.parse_qs(parsed.query)
+            q = query.get("q", [""])[0]
+            limit = int(query.get("limit", ["10"])[0])
+            if not q.strip():
+                self.send_json(get_all_knowledge(limit=limit))
+            else:
+                self.send_json(search_knowledge(q, limit=limit))
             return
 
         elif path == "/api/gaps":
@@ -256,8 +275,9 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
     def do_DELETE(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
-        if path.startswith("/api/conversations/"):
-            conv_id = path.split("/api/conversations/")[1].strip().split("/")[0]
+        if path.startswith("/api/conversations/") or path.startswith("/api/sessions/"):
+            prefix = "/api/conversations/" if path.startswith("/api/conversations/") else "/api/sessions/"
+            conv_id = path.split(prefix)[1].strip().split("/")[0]
             success = delete_conversation(conv_id)
             self.send_json({"success": success})
             return
@@ -382,39 +402,48 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
                 return
 
         # -------------------------------------------------------------
-        # Conversational State Engine: POST /api/conversations
         # -------------------------------------------------------------
-        elif path == "/api/conversations":
+        # Conversational State Engine: POST /api/conversations & /api/sessions
+        # -------------------------------------------------------------
+        elif path in ("/api/conversations", "/api/sessions"):
             title = safe_str(data.get("title")) or "New Chat"
             mode = safe_str(data.get("mode")) or "assistant"
             conv_id = safe_str(data.get("id")) or None
-            conv = create_conversation(title=title, mode=mode, conv_id=conv_id)
+            conv = create_conversation(title=title, mode=mode, session_id=conv_id)
             self.send_json(conv)
             return
 
-        elif path.startswith("/api/conversations/") and path.endswith("/clear"):
-            conv_id = path.split("/api/conversations/")[1].split("/clear")[0].strip()
+        elif (path.startswith("/api/conversations/") or path.startswith("/api/sessions/")) and path.endswith("/clear"):
+            prefix = "/api/conversations/" if path.startswith("/api/conversations/") else "/api/sessions/"
+            conv_id = path.split(prefix)[1].split("/clear")[0].strip()
             clear_conversation_messages(conv_id)
             self.send_json({"success": True})
             return
 
-        elif path.startswith("/api/conversations/") and path.endswith("/delete"):
-            conv_id = path.split("/api/conversations/")[1].split("/delete")[0].strip()
+        elif (path.startswith("/api/conversations/") or path.startswith("/api/sessions/")) and path.endswith("/delete"):
+            prefix = "/api/conversations/" if path.startswith("/api/conversations/") else "/api/sessions/"
+            conv_id = path.split(prefix)[1].split("/delete")[0].strip()
             success = delete_conversation(conv_id)
             self.send_json({"success": success})
             return
 
-        elif path.startswith("/api/conversations/") and path.endswith("/messages"):
-            conv_id = path.split("/api/conversations/")[1].split("/messages")[0].strip()
+        elif (path.startswith("/api/conversations/") or path.startswith("/api/sessions/")) and path.endswith("/messages"):
+            prefix = "/api/conversations/" if path.startswith("/api/conversations/") else "/api/sessions/"
+            conv_id = path.split(prefix)[1].split("/messages")[0].strip()
             role = safe_str(data.get("role")) or "user"
             content = safe_str(data.get("content"))
             meta = data.get("metadata", {})
+            existing_msgs = get_conversation_messages(conv_id, limit=200)
+            if existing_msgs and existing_msgs[-1]["role"] == role and existing_msgs[-1]["content"] == content:
+                self.send_json({"success": True, "id": existing_msgs[-1]["id"], "deduplicated": True})
+                return
             mid = save_message(conv_id, role, content, metadata=meta)
             self.send_json({"success": True, "id": mid})
             return
 
-        elif path.startswith("/api/conversations/"):
-            conv_id = path.split("/api/conversations/")[1].strip()
+        elif path.startswith("/api/conversations/") or path.startswith("/api/sessions/"):
+            prefix = "/api/conversations/" if path.startswith("/api/conversations/") else "/api/sessions/"
+            conv_id = path.split(prefix)[1].strip()
             title = data.get("title")
             mode = data.get("mode")
             pinned = data.get("pinned")
@@ -510,12 +539,16 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
         # Multimodal AI Analysis (Images, Audio, Docs)
         # -------------------------------------------------------------
         elif path == "/api/analyze/multimodal":
-            file_id = safe_str(data.get("file_id"))
+            file_id = os.path.basename(safe_str(data.get("file_id")))
             prompt = safe_str(data.get("prompt")) or "Analyze this file thoroughly and describe all details, insights, or text."
             api_key = safe_str(data.get("api_key")) or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("TEACHER_API_KEY")
 
             if not api_key:
                 self.send_json({"error": "Google Gemini API key required for deep multimodal vision/audio analysis."}, status=400)
+                return
+
+            if not file_id:
+                self.send_json({"error": "file_id is required"}, status=400)
                 return
 
             file_path = os.path.join(UPLOADS_DIR, file_id)
@@ -621,6 +654,32 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
             return
 
         # Knowledge CRUD
+        elif path == "/api/knowledge":
+            topic = safe_str(data.get("topic"))
+            lesson = safe_str(data.get("lesson"))
+            code_example = safe_str(data.get("code_example"))
+            tags = safe_str(data.get("tags"))
+            source = safe_str(data.get("source")) or "manual"
+            if topic and lesson:
+                kid = add_knowledge(topic, lesson, code_example=code_example, tags=tags, source=source)
+                self.send_json({"success": True, "id": kid})
+            else:
+                self.send_json({"error": "Topic and lesson are required"}, status=400)
+            return
+
+        elif path == "/api/knowledge/update":
+            kid = data.get("id")
+            topic = safe_str(data.get("topic"))
+            lesson = safe_str(data.get("lesson"))
+            code_example = safe_str(data.get("code_example"))
+            tags = safe_str(data.get("tags"))
+            if kid and topic and lesson:
+                update_knowledge(int(kid), topic, lesson, code_example=code_example, tags=tags)
+                self.send_json({"success": True})
+            else:
+                self.send_json({"error": "ID, topic, and lesson are required"}, status=400)
+            return
+
         elif path == "/api/knowledge/delete":
             kid = data.get("id")
             if kid:
@@ -677,6 +736,51 @@ class AssistantRequestHandler(SimpleHTTPRequestHandler):
             t = threading.Thread(target=bg_sync, daemon=True)
             t.start()
             self.send_json({"success": True, "message": "Teacher synchronization started."})
+            return
+
+        # Gemini 4 Argon Frontier Reasoning Query
+        elif path == "/api/teacher/argon/query":
+            prompt = safe_str(data.get("prompt"))
+            api_key = safe_str(data.get("api_key")) or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("TEACHER_API_KEY")
+            model = safe_str(data.get("model")) or "gemini-4-argon"
+            reasoning_effort = safe_str(data.get("reasoning_effort")) or "high"
+            thinking_budget = int(data.get("thinking_budget") or 2048)
+            system_instruction = safe_str(data.get("system_instruction")) or None
+
+            if not prompt:
+                self.send_json({"error": "Prompt is required for Gemini 4 Argon reasoning query."}, status=400)
+                return
+
+            try:
+                res = query_gemini_argon(
+                    prompt=prompt,
+                    api_key=api_key,
+                    model=model,
+                    reasoning_effort=reasoning_effort,
+                    thinking_budget=thinking_budget,
+                    system_instruction=system_instruction
+                )
+                log_event("argon_query", f"Gemini 4 Argon reasoning completed via {res.get('model', model)}", "info")
+                self.send_json(res)
+            except Exception as e:
+                log_event("argon_error", f"Gemini 4 Argon query failed: {e}", "danger")
+                self.send_json({"error": str(e)}, status=500)
+            return
+
+        # Assimilate Argon Reasoning into Local SQLite Memory
+        elif path == "/api/teacher/argon/assimilate":
+            topic = safe_str(data.get("topic"))
+            lesson = safe_str(data.get("lesson"))
+            code_example = safe_str(data.get("code_example"))
+            tags = safe_str(data.get("tags")) or "gemini-4-argon,reasoning,distilled"
+
+            if not topic or not lesson:
+                self.send_json({"error": "Topic and lesson are required for assimilation."}, status=400)
+                return
+
+            kid = add_knowledge(topic, lesson, code_example=code_example, tags=tags, source="gemini-4-argon")
+            log_event("argon_assimilate", f"Assimilated reasoning lesson #{kid}: {topic}", "success")
+            self.send_json({"success": True, "id": kid, "message": f"Successfully assimilated '{topic}' into local SQLite memory."})
             return
 
         # Trigger Hugging Face Dataset Import

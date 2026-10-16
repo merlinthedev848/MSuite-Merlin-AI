@@ -575,6 +575,192 @@ def query_gemini_multimodal(prompt, base64_data, mime_type, api_key):
 
     raise RuntimeError(f"Gemini multimodal analysis failed: {last_err}")
 
+def query_gemini_argon(prompt, api_key=None, model="gemini-4-argon", reasoning_effort="high", thinking_budget=2048, system_instruction=None):
+    """
+    Direct frontier reasoning copilot query powered by Gemini 4 Argon / Gemini 2.5 Pro / Flash Thinking.
+    Configures extended chain-of-thought (thinkingConfig / thinkingBudget) and parses both
+    the deep internal reasoning trace and synthesized final output.
+    """
+    api_key_clean = (
+        api_key
+        or os.getenv("GEMINI_API_KEY")
+        or os.getenv("GOOGLE_API_KEY")
+        or os.getenv("TEACHER_API_KEY")
+        or os.getenv("GROQ_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or ""
+    ).strip().strip("'\"")
+
+    if not api_key_clean:
+        raise ValueError("API key is required to query Gemini 4 Argon. Enter your key in the Argon Copilot modal.")
+
+    req_model = (model or "gemini-4-argon").strip()
+    clean_model = req_model.replace("models/", "")
+
+    is_gemini = (
+        api_key_clean.startswith("AIza")
+        or "gemini" in clean_model.lower()
+        or clean_model in ("gemini-4-argon", "gemini-argon", "argon")
+    )
+
+    if is_gemini:
+        # Build candidate models fallback chain
+        if clean_model in ("gemini-4-argon", "gemini-argon", "argon"):
+            candidate_models = [
+                "gemini-4-argon",
+                "gemini-2.5-pro",
+                "gemini-2.5-flash",
+                "gemini-2.0-flash-thinking-exp-01-21",
+                "gemini-2.0-flash-thinking-exp",
+                "gemini-2.0-flash",
+                "gemini-1.5-pro",
+            ]
+        else:
+            candidate_models = [clean_model, "gemini-2.5-pro", "gemini-2.0-flash-thinking-exp", "gemini-2.0-flash", "gemini-1.5-pro"]
+
+        last_error = None
+        for candidate in candidate_models:
+            for use_thinking in [True, False]:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate}:generateContent?key={api_key_clean}"
+                gen_cfg = {
+                    "temperature": 0.4 if reasoning_effort == "high" else 0.7
+                }
+                if use_thinking and thinking_budget and int(thinking_budget) > 0:
+                    gen_cfg["thinkingConfig"] = {
+                        "thinkingBudget": int(thinking_budget)
+                    }
+
+                payload = {
+                    "contents": [
+                        {
+                            "role": "user",
+                            "parts": [{"text": prompt}]
+                        }
+                    ],
+                    "generationConfig": gen_cfg
+                }
+                if system_instruction:
+                    payload["system_instruction"] = {
+                        "parts": [{"text": system_instruction}]
+                    }
+
+                try:
+                    req = urllib.request.Request(
+                        url,
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json", "User-Agent": "Merlin-AI-Argon/1.0"}
+                    )
+                    with urllib.request.urlopen(req, timeout=90) as resp:
+                        res_json = json.loads(resp.read().decode("utf-8"))
+                        candidate_obj = res_json.get("candidates", [{}])[0]
+                        content_obj = candidate_obj.get("content", {})
+                        parts = content_obj.get("parts", [])
+
+                        thinking_parts = []
+                        response_parts = []
+
+                        for p in parts:
+                            if p.get("thought") is True or "thought" in p:
+                                thinking_parts.append(p.get("text", "") or p.get("thought", ""))
+                            else:
+                                txt = p.get("text", "")
+                                if txt:
+                                    response_parts.append(txt)
+
+                        final_response = "\n".join(response_parts).strip()
+                        final_thinking = "\n".join(thinking_parts).strip()
+
+                        # Check for inline <thought> or <thinking> tags if not separated by API parts
+                        if not final_thinking and final_response:
+                            tag_match = re.search(r"<(?:thought|thinking)>([\s\S]*?)</(?:thought|thinking)>", final_response, re.IGNORECASE)
+                            if tag_match:
+                                final_thinking = tag_match.group(1).strip()
+                                final_response = re.sub(r"<(?:thought|thinking)>[\s\S]*?</(?:thought|thinking)>", "", final_response, flags=re.IGNORECASE).strip()
+
+                        usage_meta = res_json.get("usageMetadata", {})
+
+                        return {
+                            "success": True,
+                            "model": candidate,
+                            "thinking": final_thinking,
+                            "response": final_response,
+                            "reasoning_effort": reasoning_effort,
+                            "thinking_budget": thinking_budget if use_thinking else 0,
+                            "usage": usage_meta
+                        }
+
+                except urllib.error.HTTPError as he:
+                    err_msg = ""
+                    try:
+                        err_data = json.loads(he.read().decode("utf-8", errors="replace"))
+                        if "error" in err_data:
+                            err_msg = err_data["error"].get("message")
+                    except Exception:
+                        pass
+                    last_error = err_msg or f"HTTP {he.code}: {he.reason}"
+                    if he.code in (400, 403) and ("API_KEY_INVALID" in err_msg or "key not valid" in err_msg.lower()):
+                        raise RuntimeError(f"Google Gemini Authentication Error: {last_error}")
+                    if he.code == 404:
+                        break
+                    continue
+                except Exception as e:
+                    last_error = str(e)
+                    continue
+
+        raise RuntimeError(f"Gemini 4 Argon reasoning query failed across models {candidate_models[:3]}: {last_error}")
+
+    # Fallback for OpenAI / OpenRouter / Groq reasoning models (e.g. o3-mini, deepseek-r1)
+    ep, mdl = resolve_teacher_provider(api_key_clean, model=clean_model)
+    target_url = ep or "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Merlin-AI-Argon/1.0",
+        "Authorization": f"Bearer {api_key_clean}"
+    }
+    if "openrouter.ai" in target_url:
+        headers["HTTP-Referer"] = "http://localhost:5000"
+        headers["X-Title"] = "Merlin AI Argon Copilot"
+
+    messages = []
+    if system_instruction:
+        messages.append({"role": "system", "content": system_instruction})
+    messages.append({"role": "user", "content": prompt})
+
+    payload_data = {
+        "model": mdl,
+        "messages": messages,
+    }
+    if "o1" in mdl or "o3" in mdl:
+        payload_data["reasoning_effort"] = reasoning_effort
+    else:
+        payload_data["temperature"] = 0.4
+
+    req_oa = urllib.request.Request(target_url, data=json.dumps(payload_data).encode("utf-8"), headers=headers)
+    with urllib.request.urlopen(req_oa, timeout=90) as resp_oa:
+        res_json = json.loads(resp_oa.read().decode("utf-8"))
+        choices = res_json.get("choices", [])
+        if choices:
+            msg = choices[0].get("message", {})
+            reasoning = msg.get("reasoning_content") or ""
+            content = msg.get("content") or ""
+            if not reasoning and content:
+                tag_match = re.search(r"<(?:thought|thinking)>([\s\S]*?)</(?:thought|thinking)>", content, re.IGNORECASE)
+                if tag_match:
+                    reasoning = tag_match.group(1).strip()
+                    content = re.sub(r"<(?:thought|thinking)>[\s\S]*?</(?:thought|thinking)>", "", content, flags=re.IGNORECASE).strip()
+
+            return {
+                "success": True,
+                "model": mdl,
+                "thinking": reasoning,
+                "response": content,
+                "reasoning_effort": reasoning_effort,
+                "thinking_budget": thinking_budget,
+                "usage": res_json.get("usage", {})
+            }
+    raise RuntimeError("No response received from reasoning provider.")
+
+
 if __name__ == "__main__":
     key = (
         os.getenv("GEMINI_API_KEY")

@@ -29,6 +29,7 @@ from database import (
     log_event,
     get_recent_audit_logs,
     add_knowledge,
+    update_knowledge,
     delete_knowledge,
     search_knowledge,
     get_all_knowledge,

@@ -105,7 +105,13 @@ class InferenceEngine:
         self.refresh_backend(fast=False)
 
     def cleanup(self):
-        """Gracefully terminates background llama-server child processes on exit."""
+        """Gracefully terminates background llama-server child processes and HTTP sessions on exit."""
+        if self._http_session:
+            try:
+                self._http_session.close()
+            except Exception:
+                pass
+            self._http_session = None
         if self._server_process:
             try:
                 self._server_process.terminate()
@@ -284,17 +290,22 @@ class InferenceEngine:
         so the single text window automatically provides the optimal persona and model behavior.
         """
         text = prompt.lower()
-        
-        # Coding & Software Engineering Signals
-        code_signals = [
-            "def ", "function", "class ", "import ", "const ", "let ", "var ",
-            "```", "python", "javascript", "typescript", "c++", "rust", "bash", "sql",
-            "regex", "docker", "git", "api", "json", "endpoint", "bug", "error",
-            "refactor", "compile", "script", "linux", "systemd", "algorithm",
-            "write code", "how to code", "unit test", "stack trace", "curl", "ssh",
-            "select * from", "html", "css", "npm", "pip", "gcc", "cmake", "make"
+
+        # Exact code phrases & symbols
+        code_phrases = [
+            "def ", "class ", "import ", "const ", "```", "c++",
+            "write code", "how to code", "unit test", "stack trace", "select * from"
         ]
-        if any(sig in text for sig in code_signals):
+        if any(phrase in text for phrase in code_phrases):
+            return "coder"
+
+        # Word-boundary technical keywords (prevents 'api' matching 'capital' or 'git' matching 'digital')
+        code_words = (
+            r"\b(?:function|python|javascript|typescript|rust|bash|sql|regex|docker|git|"
+            r"api|json|endpoint|bug|error|refactor|compile|script|linux|systemd|algorithm|"
+            r"curl|ssh|html|css|npm|pip|gcc|cmake|dockerfile|pytest|fastapi|sqlite)\b"
+        )
+        if re.search(code_words, text):
             return "coder"
 
         # Complex Reasoning & Architectural Signals
