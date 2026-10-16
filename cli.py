@@ -1,6 +1,6 @@
 import os
 import sys
-from memory import init_db, add_todo, get_todos, get_all_knowledge, add_gap, get_system_telemetry
+from database import init_db, add_todo, get_todos, get_all_knowledge, add_gap, get_system_telemetry
 from engine import InferenceEngine
 
 def main():
@@ -12,7 +12,7 @@ def main():
 
     engine = InferenceEngine()
     session_id = "cli_session"
-    mode = "coder"
+    mode = "auto"
 
     while True:
         try:

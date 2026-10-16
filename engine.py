@@ -655,6 +655,9 @@ class InferenceEngine:
             if full_response:
                 save_chat_message(session_id, "assistant", full_response)
 
+    # Dual alias for chat_stream / generate_stream compatibility
+    chat_stream = generate_stream
+
     def generate_chat_completion_stream(self, messages, temperature=0.7, max_tokens=1024, stop=None):
         """
         OpenAI-compatible streaming generator for /v1/chat/completions.
