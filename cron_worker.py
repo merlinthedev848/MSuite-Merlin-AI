@@ -4,7 +4,7 @@ import sys
 import time
 import socket
 import urllib.request
-from memory import (
+from database import (
     init_db,
     get_system_telemetry,
     log_event,
@@ -69,17 +69,47 @@ def check_internet_connectivity(host="8.8.8.8", port=53, timeout=3):
     except socket.error:
         return False
 
-def purge_stale_history(retention_days=30):
-    """Cleans up old chat records to keep database footprint minimal."""
+def purge_stale_history(retention_days=14):
+    """
+    Cleans up old chat records to keep database footprint minimal.
+    Cascades across messages, chat_history, and removes orphaned empty sessions.
+    """
     with get_db() as conn:
         c = conn.cursor()
+        # 1. Purge older messages
+        c.execute("""
+            DELETE FROM messages 
+            WHERE created_at < datetime('now', '-' || ? || ' days')
+        """, (retention_days,))
+        deleted_msgs = c.rowcount
+
+        # 2. Purge legacy chat_history
         c.execute("""
             DELETE FROM chat_history 
             WHERE created_at < datetime('now', '-' || ? || ' days')
         """, (retention_days,))
-        deleted = c.rowcount
-        if deleted > 0:
-            log_event("cron_cleanup", f"Purged {deleted} chat records older than {retention_days} days", "info")
+
+        # 3. Purge orphaned unpinned sessions with no remaining messages
+        c.execute("""
+            DELETE FROM sessions 
+            WHERE pinned = 0 
+              AND id NOT IN (SELECT DISTINCT session_id FROM messages WHERE session_id IS NOT NULL)
+              AND id NOT IN (SELECT DISTINCT conversation_id FROM messages WHERE conversation_id IS NOT NULL)
+        """)
+        deleted_sessions = c.rowcount
+
+        c.execute("""
+            DELETE FROM conversations 
+            WHERE pinned = 0 
+              AND id NOT IN (SELECT DISTINCT session_id FROM messages WHERE session_id IS NOT NULL)
+              AND id NOT IN (SELECT DISTINCT conversation_id FROM messages WHERE conversation_id IS NOT NULL)
+        """)
+
+        # 4. Optimize query planner with current database statistics
+        c.execute("PRAGMA optimize;")
+
+        if deleted_msgs > 0 or deleted_sessions > 0:
+            log_event("cron_cleanup", f"Purged {deleted_msgs} stale messages and {deleted_sessions} empty unpinned sessions (older than {retention_days} days)", "info")
 
 def run_cron_cycle():
     start_time = time.time()
