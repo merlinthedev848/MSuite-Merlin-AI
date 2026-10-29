@@ -420,8 +420,8 @@ def append_conversation_message(conv_id: str, data: dict):
 # Status, Telemetry & Diagnostics
 # =====================================================================
 
-@app.get("/health")
-@app.get("/api/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health_check():
     eng = get_engine()
     return {
@@ -430,7 +430,7 @@ def health_check():
         "model": eng.active_model_name or "None"
     }
 
-@app.get("/api/status")
+@app.api_route("/api/status", methods=["GET", "HEAD"])
 def get_status():
     uptime_sec = int(time.time() - server_start_time)
     eng = get_engine()
