@@ -1215,9 +1215,12 @@ async function loadPopularDatasets() {
     const select = document.getElementById("hf-dataset-select");
     if (!select || !Array.isArray(datasets) || !datasets.length) return;
 
-    select.innerHTML = datasets.map(ds =>
-      `<option value="${escapeHtml(ds.id)}" ${ds.is_default ? 'selected' : ''}>${escapeHtml(ds.category)} — ${escapeHtml(ds.name)}</option>`
-    ).join("") + '<option value="__custom__">Custom Hugging Face Repository...</option>';
+    select.innerHTML =
+      '<option value="__all__" selected>🚀 ALL Curated Datasets (Install Every Dataset Below)</option>' +
+      datasets.map(ds =>
+        `<option value="${escapeHtml(ds.id)}">${escapeHtml(ds.category)} — ${escapeHtml(ds.name)}</option>`
+      ).join("") +
+      '<option value="__custom__">Custom Hugging Face Repository...</option>';
     popularDatasetsLoaded = true;
   } catch (e) {}
 }
@@ -1234,7 +1237,8 @@ async function startDatasetImport() {
   const selectVal = document.getElementById("hf-dataset-select").value;
   const customVal = document.getElementById("hf-custom-repo")?.value?.trim() || "";
   const dataset = selectVal === "__custom__" ? customVal : selectVal;
-  const limit = parseInt(document.getElementById("hf-limit").value, 10) || 50;
+  const rawLimit = parseInt(document.getElementById("hf-limit").value, 10);
+  const limit = Number.isNaN(rawLimit) ? 0 : rawLimit;
   const token = document.getElementById("hf-token")?.value?.trim() || "";
   const save_local = Boolean(document.getElementById("hf-save-local")?.checked);
 
@@ -1250,7 +1254,8 @@ async function startDatasetImport() {
   });
   const d = await res.json();
   if (d.success) {
-    showToast(`Started streaming import for ${dataset}`, "success");
+    const label = dataset === "__all__" ? "ALL Curated Datasets" : dataset;
+    showToast(`Started streaming import for ${label}`, "success");
     checkDatasetStatus();
   } else {
     showToast(d.error || d.detail || "Could not start dataset import.", "danger");
@@ -1269,9 +1274,10 @@ async function checkDatasetStatus() {
     if (st.is_importing) {
       if (box) box.style.display = "block";
       if (btn) btn.disabled = true;
-      const pct = st.total > 0 ? Math.round((st.progress / st.total) * 100) : 25;
+      const pct = st.total > 0 ? Math.min(100, Math.round((st.progress / st.total) * 100)) : 100;
       if (fill) fill.style.width = `${pct}%`;
-      if (text) text.innerText = `Assimilating ${st.current_dataset}: ${st.progress} / ${st.total} samples...`;
+      const totalLabel = st.total > 0 ? `${st.progress} / ${st.total}` : `${st.progress} (unlimited)`;
+      if (text) text.innerText = `Assimilating ${st.current_dataset}: ${totalLabel} samples...`;
       clearTimeout(datasetPollTimer);
       datasetPollTimer = setTimeout(checkDatasetStatus, 1000);
     } else {

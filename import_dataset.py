@@ -434,11 +434,43 @@ def parse_record(item):
         "tags": tags
     }
 
-def import_hf_dataset(repo_id=DEFAULT_DATASET, subset=None, limit=50, split="train", save_local=False, token=None):
+def import_all_popular_datasets(limit=0, save_local=True, token=None):
+    """
+    Sequentially imports and assimilates ALL curated datasets in POPULAR_DATASETS
+    into Merlin's local SQLite FTS5 memory and data/datasets/ offline storage.
+    limit=0 means unlimited (entire dataset).
+    """
+    total_imported = 0
+    results = []
+    for ds_meta in POPULAR_DATASETS:
+        res = import_hf_dataset(
+            repo_id=ds_meta["id"],
+            subset=ds_meta.get("subset"),
+            limit=limit,
+            save_local=save_local,
+            token=token,
+        )
+        results.append(res)
+        total_imported += int(res.get("imported_count", 0))
+    return {
+        "status": "success",
+        "imported_count": total_imported,
+        "dataset": "ALL_CURATED_DATASETS",
+        "message": f"Successfully imported {total_imported} total samples across {len(POPULAR_DATASETS)} datasets.",
+        "details": results,
+    }
+
+
+def import_hf_dataset(repo_id=DEFAULT_DATASET, subset=None, limit=0, split="train", save_local=False, token=None):
     """
     Streams and assimilates a dataset from Hugging Face into Merlin's offline memory.
+    If repo_id == '__all__', imports all curated datasets sequentially.
+    If limit <= 0, imports the entire dataset with no artificial cap.
     If save_local is True, also saves the samples locally to data/datasets.
     """
+    if repo_id == "__all__":
+        return import_all_popular_datasets(limit=limit, save_local=save_local, token=token)
+
     if not _import_lock.acquire(blocking=False):
         return {"status": "error", "message": "Another dataset import is already in progress."}
 
@@ -451,16 +483,22 @@ def import_hf_dataset(repo_id=DEFAULT_DATASET, subset=None, limit=50, split="tra
         repo_id, subset = repo_id.split(":", 1)
 
     repo_id = (repo_id or DEFAULT_DATASET).strip()
-    limit = max(1, min(int(limit), 2000))
+    try:
+        limit = int(limit)
+    except (ValueError, TypeError):
+        limit = 0
+    # limit <= 0 means unlimited (import all available samples in the dataset)
+    unlimited = limit <= 0
     display_name = f"{repo_id}:{subset}" if subset else repo_id
 
     try:
         import_state["is_importing"] = True
         import_state["progress"] = 0
-        import_state["total"] = limit
+        import_state["total"] = 0 if unlimited else limit
         import_state["current_dataset"] = display_name
         import_state["last_result"] = "running"
-        log_event("dataset_import_started", f"Importing {limit} records from {display_name}", "info")
+        limit_desc = "ALL" if unlimited else str(limit)
+        log_event("dataset_import_started", f"Importing {limit_desc} records from {display_name}", "info")
 
         # Load local or remote dataset
         ds = load_local_dataset(repo_id=repo_id, subset=subset, split=split, streaming=True, token=token)
@@ -468,7 +506,7 @@ def import_hf_dataset(repo_id=DEFAULT_DATASET, subset=None, limit=50, split="tra
         raw_samples = []
 
         for item in ds:
-            if count >= limit:
+            if not unlimited and count >= limit:
                 break
 
             parsed = parse_record(item)
@@ -529,16 +567,19 @@ def import_hf_dataset(repo_id=DEFAULT_DATASET, subset=None, limit=50, split="tra
         _import_lock.release()
 
 if __name__ == "__main__":
-    repo = DEFAULT_DATASET
+    repo = "__all__"
     subset = None
-    lim = 50
-    save_to_local_disk = False
+    lim = 0
+    save_to_local_disk = True
     token = os.getenv("HF_TOKEN") or os.getenv("HUGGING_FACE_HUB_TOKEN")
 
     args = sys.argv[1:]
     if "--download-local" in args:
         save_to_local_disk = True
         args.remove("--download-local")
+    if "--all" in args:
+        repo = "__all__"
+        args.remove("--all")
 
     if "--token" in args:
         try:

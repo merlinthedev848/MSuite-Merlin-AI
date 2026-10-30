@@ -1056,12 +1056,12 @@ def get_dataset_popular():
 
 @app.post("/api/dataset/import")
 def start_dataset_import_route(data: DatasetImportRequest):
-    repo_id = data.dataset.strip() or "openbmb/UltraData-Stack-v3-L2"
+    repo_id = data.dataset.strip() or "__all__"
     subset = (data.subset or "").strip() or None
     try:
-        limit = max(1, min(int(data.limit or 50), 2000))
+        limit = int(data.limit) if data.limit is not None and str(data.limit).strip() != "" else 0
     except (ValueError, TypeError):
-        limit = 50
+        limit = 0
     save_local = bool(data.save_local)
     token = (data.token or "").strip() or os.getenv("HF_TOKEN") or None
 
@@ -1072,7 +1072,8 @@ def start_dataset_import_route(data: DatasetImportRequest):
         import_hf_dataset(repo_id, subset=subset, limit=limit, save_local=save_local, token=token)
 
     threading.Thread(target=bg_import, daemon=True).start()
-    return {"success": True, "message": f"Started streaming import from Hugging Face: {repo_id}"}
+    target_label = "ALL Curated Datasets" if repo_id == "__all__" else repo_id
+    return {"success": True, "message": f"Started streaming import from Hugging Face: {target_label}"}
 
 
 # =====================================================================

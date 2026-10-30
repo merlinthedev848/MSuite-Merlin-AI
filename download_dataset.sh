@@ -73,40 +73,19 @@ else
     fi
 
     if [ "$DATASET" != "all_in_one" ]; then
-        read -p "Number of samples to cache locally (default: 200): " SAMPLES
-        SAMPLES=${SAMPLES:-200}
+        read -p "Number of samples to cache locally (0 = Unlimited / Full Dataset, default: 0): " SAMPLES
+        SAMPLES=${SAMPLES:-0}
     fi
 fi
 
-if [ "$DATASET" == "all_in_one" ]; then
+if [ "$DATASET" == "all_in_one" ] || [ "$DATASET" == "__all__" ] || [ "$DATASET" == "all" ]; then
     echo ""
     echo "=========================================================="
-    echo "[*] Downloading General AI Starter Pack (Local Cache)..."
+    echo "[*] Downloading & Assimilating ALL Curated Datasets..."
     echo "=========================================================="
-    declare -a PACK=(
-        "openbmb/UltraData-Stack-v3-L2:50"
-        "databricks/databricks-dolly-15k:50"
-        "knkarthick/dialogsum:50"
-        "HuggingFaceH4/ultrachat_200k:50"
-        "openbmb/UltraData-SFT-Agent-2609:Code-Agent:30"
-    )
-    for entry in "${PACK[@]}"; do
-        repo="${entry%%:*}"
-        rest="${entry#*:}"
-        subset=""
-        if [[ "$rest" =~ ^[0-9]+$ ]]; then
-            cnt="$rest"
-        else
-            subset="${rest%%:*}"
-            cnt="${rest#*:}"
-        fi
-        target="$repo"
-        if [ -n "$subset" ]; then target="$repo:$subset"; fi
-        echo "[+] Downloading $cnt samples from $target..."
-        "$PYTHON_BIN" "$DIR/import_dataset.py" "$target" --limit "$cnt" --download-local || true
-    done
+    "$PYTHON_BIN" "$DIR/import_dataset.py" "__all__" --limit "${SAMPLES:-0}" --download-local
     echo ""
-    echo "[✓] All-in-One General AI Pack downloaded and cached locally!"
+    echo "[✓] All Curated Datasets downloaded and indexed into SQLite memory!"
     exit 0
 fi
 

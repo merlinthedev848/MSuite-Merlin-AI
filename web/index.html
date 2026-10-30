@@ -420,7 +420,8 @@ Content-Type: application/json
       <div class="form-group">
         <label>Select Curated Dataset</label>
         <select class="form-select" id="hf-dataset-select" onchange="onDatasetSelectChange()">
-          <option value="openbmb/UltraData-Stack-v3-L2">openbmb/UltraData-Stack-v3-L2 (Default: Curated Code Stack)</option>
+          <option value="__all__" selected>🚀 ALL Curated Datasets (Install Every Dataset Below)</option>
+          <option value="openbmb/UltraData-Stack-v3-L2">openbmb/UltraData-Stack-v3-L2 (Curated Code Stack)</option>
           <option value="openbmb/UltraData-SFT-Agent-2609:Code-Agent">openbmb/UltraData-SFT-Agent-2609 [Code-Agent]</option>
           <option value="sahil2801/CodeAlpaca-20k">sahil2801/CodeAlpaca-20k (20k Coding Tasks)</option>
           <option value="iamtarun/python_code_instructions_18k_alpaca">iamtarun/python_code_instructions_18k_alpaca</option>
@@ -434,8 +435,8 @@ Content-Type: application/json
       </div>
 
       <div class="form-group">
-        <label>Sample Limit (Number of examples to index)</label>
-        <input type="number" class="form-input" id="hf-limit" value="50" min="1" max="2000">
+        <label>Sample Limit per Dataset (0 = Unlimited / Full Dataset, or enter any number)</label>
+        <input type="number" class="form-input" id="hf-limit" value="0" min="0" step="100">
       </div>
 
       <div class="form-group">
