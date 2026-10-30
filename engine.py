@@ -880,6 +880,9 @@ class InferenceEngine:
                     stream = self.llama_cpp_model.create_chat_completion(
                         messages=messages,
                         temperature=temperature,
+                        top_p=0.9,
+                        top_k=40,
+                        repeat_penalty=1.15,
                         max_tokens=max_tokens,
                         stream=True,
                         stop=stop_tokens,
@@ -976,6 +979,9 @@ class InferenceEngine:
                 res = self.llama_cpp_model.create_chat_completion(
                     messages=messages,
                     temperature=temperature,
+                    top_p=0.9,
+                    top_k=40,
+                    repeat_penalty=1.15,
                     max_tokens=max_tokens,
                     stream=True,
                     stop=stop_tokens,
