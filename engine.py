@@ -286,8 +286,14 @@ class InferenceEngine:
             self.backend = "ollama"
             if ollama_models:
                 if self.active_model_name not in ollama_models:
-                    preferred = [m for m in ollama_models if "coder" in m.lower() or "qwen" in m.lower()]
-                    self.active_model_name = preferred[0] if preferred else ollama_models[0]
+                    preferred_15b = [m for m in ollama_models if "1.5b" in m.lower() or "7b" in m.lower() or "3b" in m.lower()]
+                    preferred_coder = [m for m in ollama_models if "coder" in m.lower() or "qwen" in m.lower()]
+                    if preferred_15b:
+                        self.active_model_name = preferred_15b[0]
+                    elif preferred_coder:
+                        self.active_model_name = preferred_coder[0]
+                    else:
+                        self.active_model_name = ollama_models[0]
             else:
                 self.active_model_name = "ollama (no models installed - run 'ollama pull qwen2.5-coder:1.5b')"
             return
@@ -707,28 +713,11 @@ class InferenceEngine:
 
         exact_matches = {
             "hello", "hi", "hey", "merlin", "hello merlin", "hi merlin", "hey merlin",
-            "good morning", "good afternoon", "good evening", "how are you", "how are you today",
-            "how are you doing", "how are you doing today", "how is it going", "hows it going",
-            "who are you", "what are you", "what is your name", "who made you", "what can you do",
-            "tell me about yourself", "about yourself", "introduce yourself", "what have you been up to",
-            "help", "yo", "sup", "whats up", "ping", "test", "greetings", "thanks", "thank you",
+            "good morning", "good afternoon", "good evening",
+            "yo", "sup", "ping", "test", "greetings",
         }
         if cleaned in exact_matches:
             return True
-
-        if any(cleaned.startswith(p) for p in (
-            "how are you", "how is it going", "hows it going", "good morning",
-            "good afternoon", "good evening", "tell me about yourself", "who are you",
-        )) and len(words) <= 7:
-            return True
-
-        if len(words) <= 3 and any(w in ("hi", "hello", "hey", "merlin", "yo", "sup", "greetings") for w in words):
-            action_words = {
-                "write", "create", "make", "fix", "code", "run", "install", "how", "why",
-                "what", "where", "python", "script", "explain", "debug", "test", "benchmark", "git",
-            }
-            if not any(w in action_words for w in words):
-                return True
 
         return False
 
