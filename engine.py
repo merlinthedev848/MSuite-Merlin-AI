@@ -1,7 +1,6 @@
 import atexit
 import json
 import os
-import random
 import re
 import shutil
 import threading
@@ -705,89 +704,19 @@ class InferenceEngine:
             if not abort_event.is_set():
                 yield f"[Error querying llama-server: {e}]"
 
-    def _is_conversational_greeting(self, prompt: str) -> bool:
-        cleaned = _NON_WORD_RE.sub("", prompt.strip().lower())
-        words = cleaned.split()
-        if not words:
-            return True
-
-        exact_matches = {
-            "hello", "hi", "hey", "merlin", "hello merlin", "hi merlin", "hey merlin",
-            "good morning", "good afternoon", "good evening",
-            "yo", "sup", "ping", "test", "greetings",
-        }
-        if cleaned in exact_matches:
-            return True
-
-        return False
-
-    def _get_conversational_response(self, prompt: str) -> str:
-        cleaned = _NON_WORD_RE.sub("", prompt.strip().lower())
-
-        if any(q in cleaned for q in ("who are you", "what are you", "what is your name", "who made you", "tell me about yourself", "about yourself", "introduce yourself")):
-            return (
-                "I am **Merlin** (Merlin AI), your autonomous offline Personal Assistant and expert coding companion. "
-                "I run completely locally on your private network, ensuring zero data leaves your server.\n\n"
-                "I can write and debug code, manage Linux services, automate workflows, and maintain persistent memory. "
-                "How can I assist you right now?"
-            )
-
-        if any(q in cleaned for q in ("what can you do", "help", "capabilities")):
-            return (
-                "Here is what I can do for you 100% offline:\n\n"
-                "- 💻 **Software Engineering & Coding:** Architecture, Python, C/C++, JavaScript, Bash, SQL, and debugging.\n"
-                "- ⚙️ **System Administration:** Linux troubleshooting, systemd services, network diagnostics, and shell tools.\n"
-                "- 🧠 **Persistent Knowledge Engine:** Storing lessons and coding patterns across conversations in SQLite.\n"
-                "- 🔌 **OpenAI Compatible API:** Exposing `/v1/chat/completions` for direct integration into VS Code, Continue, or custom tools.\n\n"
-                "What would you like to build or inspect today?"
-            )
-
-        if any(q in cleaned for q in ("how are you", "how are you doing")):
-            return (
-                "I'm operating at peak performance and ready to assist! "
-                "All systems are green. What would you like to work on today?"
-            )
-
-        greetings = [
-            "Hello! I'm **Merlin**, your offline AI assistant and coding partner. How can I help you today?",
-            "Hey there! Merlin at your service. What are we building or troubleshooting today?",
-            "Greetings! I'm Merlin, running 100% privately and offline on your local server. What can I do for you?",
-            "Hi! Merlin here, ready to assist with code, server tasks, or anything else you need. What's on your mind?",
-        ]
-        return random.choice(greetings)
-
     def generate_stream(self, prompt: str, session_id: str = "default", mode: str = "assistant") -> Iterator[str]:
         """
-        Thread-safe token generator.
-        Provides sub-second latency on greetings and efficient cached prefill for LLM inference.
+        Thread-safe live LLM token generator.
+        Every prompt goes directly to the active AI inference backend (zero static/canned responses).
         """
         abort_event = self._register_abort_event(session_id)
         save_chat_message(session_id, "user", prompt)
-
-        # --- 1. Sub-Second Instant Greeting Circuit ---
-        if self._is_conversational_greeting(prompt):
-            greeting_text = self._get_conversational_response(prompt)
-            buffer: list[str] = []
-            try:
-                words = greeting_text.split(" ")
-                for i, word in enumerate(words):
-                    if abort_event.is_set():
-                        break
-                    chunk = word + (" " if i < len(words) - 1 else "")
-                    buffer.append(chunk)
-                    yield chunk
-                    time.sleep(0.012)
-            finally:
-                self._unregister_abort_event(session_id, abort_event)
-                if buffer:
-                    save_chat_message(session_id, "assistant", "".join(buffer))
-            return
 
         # Wait if lazy background model initialization is still in progress
         if not self._init_done_event.is_set():
             self._init_done_event.wait(timeout=30.0)
 
-        # --- 2. Heavy LLM Inference Circuit ---
+        # --- Live LLM Inference ---
         intent = self.detect_conversation_intent(prompt) if mode in ("auto", "assistant", "") else mode
         self.auto_select_optimal_model(intent)
 
