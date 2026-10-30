@@ -1,32 +1,33 @@
 #!/usr/bin/env python3
 import os
+import socket
 import sys
 import time
-import socket
-import urllib.request
+
 from database import (
-    init_db,
+    get_db,
     get_system_telemetry,
-    log_event,
     get_unresolved_gaps,
-    get_db
+    init_db,
+    log_event,
 )
 from sync_teacher import run_sync
 
 LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cron.lock")
+
 
 class ProcessLock:
     """
     Cross-platform file lock mechanism to prevent overlapping cron worker runs.
     Uses fcntl on Unix/Linux/Pi and msvcrt on Windows.
     """
-    def __init__(self, lockfile):
+    def __init__(self, lockfile: str):
         self.lockfile = lockfile
         self.handle = None
 
-    def acquire(self):
+    def acquire(self) -> bool:
         try:
-            self.handle = open(self.lockfile, "w")
+            self.handle = open(self.lockfile, "w", encoding="utf-8")
             if os.name == "nt":
                 import msvcrt
                 msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
@@ -36,86 +37,94 @@ class ProcessLock:
             self.handle.write(str(os.getpid()))
             self.handle.flush()
             return True
-        except (IOError, OSError):
+        except OSError:
+            if self.handle is not None:
+                try:
+                    self.handle.close()
+                except OSError:
+                    pass
+                self.handle = None
             return False
 
-    def release(self):
+    def release(self) -> None:
         try:
             if self.handle:
                 if os.name == "nt":
                     import msvcrt
                     try:
                         msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
-                    except Exception:
+                    except OSError:
                         pass
                 else:
                     import fcntl
                     try:
                         fcntl.flock(self.handle, fcntl.LOCK_UN)
-                    except Exception:
+                    except OSError:
                         pass
                 self.handle.close()
+                self.handle = None
                 if os.path.exists(self.lockfile):
                     os.remove(self.lockfile)
-        except Exception:
+        except OSError:
             pass
 
-def check_internet_connectivity(host="8.8.8.8", port=53, timeout=3):
-    """Verifies whether the host currently has outbound internet connectivity."""
+
+def check_internet_connectivity(host: str = "8.8.8.8", port: int = 53, timeout: float = 3.0) -> bool:
+    """Verifies outbound internet connectivity without mutating global socket.setdefaulttimeout or leaking sockets."""
     try:
-        socket.setdefaulttimeout(timeout)
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
-        return True
-    except socket.error:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
         return False
 
-def purge_stale_history(retention_days=14):
+
+def purge_stale_history(retention_days: int = 14) -> None:
     """
     Cleans up old chat records to keep database footprint minimal.
     Cascades across messages, chat_history, and removes orphaned empty sessions.
     """
     with get_db() as conn:
         c = conn.cursor()
-        # 1. Purge older messages
         c.execute("""
-            DELETE FROM messages 
+            DELETE FROM messages
             WHERE created_at < datetime('now', '-' || ? || ' days')
         """, (retention_days,))
         deleted_msgs = c.rowcount
 
-        # 2. Purge legacy chat_history
         c.execute("""
-            DELETE FROM chat_history 
+            DELETE FROM chat_history
             WHERE created_at < datetime('now', '-' || ? || ' days')
         """, (retention_days,))
 
-        # 3. Purge orphaned unpinned sessions with no remaining messages
         c.execute("""
-            DELETE FROM sessions 
-            WHERE pinned = 0 
+            DELETE FROM sessions
+            WHERE pinned = 0
               AND id NOT IN (SELECT DISTINCT session_id FROM messages WHERE session_id IS NOT NULL)
               AND id NOT IN (SELECT DISTINCT conversation_id FROM messages WHERE conversation_id IS NOT NULL)
         """)
         deleted_sessions = c.rowcount
 
         c.execute("""
-            DELETE FROM conversations 
-            WHERE pinned = 0 
+            DELETE FROM conversations
+            WHERE pinned = 0
               AND id NOT IN (SELECT DISTINCT session_id FROM messages WHERE session_id IS NOT NULL)
               AND id NOT IN (SELECT DISTINCT conversation_id FROM messages WHERE conversation_id IS NOT NULL)
         """)
 
-        # 4. Optimize query planner with current database statistics
         c.execute("PRAGMA optimize;")
 
         if deleted_msgs > 0 or deleted_sessions > 0:
-            log_event("cron_cleanup", f"Purged {deleted_msgs} stale messages and {deleted_sessions} empty unpinned sessions (older than {retention_days} days)", "info")
+            log_event(
+                "cron_cleanup",
+                f"Purged {deleted_msgs} stale messages and {deleted_sessions} empty unpinned sessions (older than {retention_days} days)",
+                "info",
+            )
 
-def run_cron_cycle():
+
+def run_cron_cycle() -> None:
     start_time = time.time()
     init_db()
 
-    # Step 1: Concurrency Lock Acquisition
     lock = ProcessLock(LOCK_FILE)
     if not lock.acquire():
         print("[!] Cron overlapping detected: Another worker is already executing. Exiting cleanly.")
@@ -124,14 +133,11 @@ def run_cron_cycle():
     try:
         log_event("cron_start", f"Cron worker started (PID: {os.getpid()})", "info")
 
-        # Step 2: System Health & Telemetry Audit
         telemetry = get_system_telemetry()
         log_event("telemetry_heartbeat", f"Temp: {telemetry['temperature']} | Mem: {telemetry['memory']} | Disk: {telemetry['disk']}", "info")
 
-        # Step 3: Database Housekeeping
         purge_stale_history(retention_days=14)
 
-        # Step 4: Connectivity & Autonomous Distillation Check
         is_online = check_internet_connectivity()
         api_key = os.getenv("TEACHER_API_KEY")
 
@@ -158,8 +164,8 @@ def run_cron_cycle():
         sys.exit(1)
 
     finally:
-        # Step 5: Teardown & Lock Release
         lock.release()
+
 
 if __name__ == "__main__":
     run_cron_cycle()

@@ -1,17 +1,18 @@
-import os
-import sys
-import json
-import re
 import ast
-import urllib.request
-import urllib.error
+import json
+import os
+import re
+import sys
 import threading
-from memory import (
-    init_db,
-    get_unresolved_gaps,
-    set_gap_status,
+import urllib.error
+import urllib.request
+
+from database import (
     add_knowledge,
-    log_event
+    get_unresolved_gaps,
+    init_db,
+    log_event,
+    set_gap_status,
 )
 
 DATASET_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "training_dataset.jsonl")
@@ -47,7 +48,7 @@ def extract_json_from_response(raw_text):
     # Try direct parse
     try:
         return json.loads(cleaned)
-    except Exception:
+    except (json.JSONDecodeError, TypeError, ValueError):
         pass
 
     # Strip code block fences
@@ -55,7 +56,7 @@ def extract_json_from_response(raw_text):
     if fence_match:
         try:
             return json.loads(fence_match.group(1).strip())
-        except Exception:
+        except (json.JSONDecodeError, TypeError, ValueError):
             pass
 
     # Greedy search for the outer-most balanced curly braces
@@ -63,7 +64,7 @@ def extract_json_from_response(raw_text):
     if brace_match:
         try:
             return json.loads(brace_match.group(1).strip())
-        except Exception:
+        except (json.JSONDecodeError, TypeError, ValueError):
             pass
 
     raise ValueError(f"Could not parse valid JSON from model response: {cleaned[:200]}...")
@@ -171,7 +172,7 @@ def discover_gemini_models(api_key_clean):
             except Exception:
                 pass
             if he.code in (400, 401, 403):
-                raise RuntimeError(f"Google Gemini Authentication Error ({he.code}): {err_msg or he.reason}")
+                raise RuntimeError(f"Google Gemini Authentication Error ({he.code}): {err_msg or he.reason}") from he
         except Exception:
             pass
     return discovered, working_version
@@ -323,7 +324,7 @@ def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"
                         last_error = f"{candidate} ({ver}): {err_msg or 'Not found'}"
                         continue
                     if he.code in (400, 401, 403):
-                        raise RuntimeError(f"Google Gemini Error ({candidate}): {err_msg or f'HTTP {he.code}: {he.reason}'}")
+                        raise RuntimeError(f"Google Gemini Error ({candidate}): {err_msg or f'HTTP {he.code}: {he.reason}'}") from he
                     last_error = f"{candidate} ({ver}): HTTP {he.code} {err_msg}"
                 except Exception as e:
                     last_error = str(e)
@@ -348,7 +349,7 @@ def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"
             req_oa = urllib.request.Request(openai_gemini_url, data=json.dumps(oa_payload).encode("utf-8"), headers=oa_headers)
             with urllib.request.urlopen(req_oa, timeout=60) as resp_oa:
                 res_json = json.loads(resp_oa.read().decode("utf-8"))
-                if "choices" in res_json and res_json["choices"]:
+                if res_json.get("choices"):
                     raw_content = res_json["choices"][0]["message"]["content"]
                     result = extract_json_from_response(raw_content)
                     if "code_example" in result:
@@ -384,10 +385,7 @@ def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"
     try:
         with urllib.request.urlopen(req, timeout=90) as resp:
             res_json = json.loads(resp.read().decode("utf-8"))
-            if "choices" in res_json and res_json["choices"]:
-                raw_content = res_json["choices"][0]["message"]["content"]
-            else:
-                raw_content = str(res_json)
+            raw_content = res_json["choices"][0]["message"]["content"] if res_json.get("choices") else str(res_json)
             result = extract_json_from_response(raw_content)
             if "code_example" in result:
                 result["code_example"] = clean_code_snippet(result["code_example"])
@@ -408,7 +406,7 @@ def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"
                         req_fb = urllib.request.Request(target_url, data=json.dumps(payload_data).encode("utf-8"), headers=headers)
                         with urllib.request.urlopen(req_fb, timeout=60) as resp_fb:
                             res_json = json.loads(resp_fb.read().decode("utf-8"))
-                            raw_content = res_json["choices"][0]["message"]["content"] if "choices" in res_json and res_json["choices"] else str(res_json)
+                            raw_content = res_json["choices"][0]["message"]["content"] if res_json.get("choices") else str(res_json)
                             result = extract_json_from_response(raw_content)
                             if "code_example" in result:
                                 result["code_example"] = clean_code_snippet(result["code_example"])
@@ -417,15 +415,14 @@ def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"
                         continue
         if not err_msg:
             err_msg = f"HTTP {he.code}: {he.reason}"
-        raise RuntimeError(f"Teacher API Error ({model_clean}): {err_msg}")
+        raise RuntimeError(f"Teacher API Error ({model_clean}): {err_msg}") from he
     except Exception as e:
-        raise RuntimeError(f"Teacher Connection Error ({model_clean}): {e}")
+        raise RuntimeError(f"Teacher Connection Error ({model_clean}): {e}") from e
 
 def run_sync(api_key, endpoint=None, model=None, topic_to_explore=None):
     """
     Thread-safe synchronization pipeline with gap state transitions.
     """
-    global sync_state
     if not _sync_lock.acquire(blocking=False):
         log_event("sync_aborted", "Sync already in progress; skipped concurrent trigger", "warning")
         return {"status": "error", "message": "Synchronization is already running."}
@@ -699,7 +696,7 @@ def query_gemini_argon(prompt, api_key=None, model="gemini-4-argon", reasoning_e
                         pass
                     last_error = err_msg or f"HTTP {he.code}: {he.reason}"
                     if he.code in (400, 403) and ("API_KEY_INVALID" in err_msg or "key not valid" in err_msg.lower()):
-                        raise RuntimeError(f"Google Gemini Authentication Error: {last_error}")
+                        raise RuntimeError(f"Google Gemini Authentication Error: {last_error}") from he
                     if he.code == 404:
                         break
                     continue
@@ -773,7 +770,7 @@ if __name__ == "__main__":
         key = sys.argv[1]
     if not key:
         key = input("Enter Teacher API Key (OpenRouter / Groq / OpenAI): ").strip()
-    
+
     if not key:
         print("[!] Error: API key required to connect with teacher AI.")
         sys.exit(1)

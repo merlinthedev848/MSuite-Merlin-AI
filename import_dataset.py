@@ -1,10 +1,11 @@
-import os
-import sys
-import json
-import re
 import ast
+import json
+import os
+import re
+import sys
 import threading
-from memory import init_db, add_knowledge, log_event
+
+from database import add_knowledge, init_db, log_event
 
 DEFAULT_DATASET = "openbmb/UltraData-Stack-v3-L2"
 DATASET_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "training_dataset.jsonl")
@@ -143,22 +144,20 @@ def ensure_datasets_installed():
     Ensures the Hugging Face 'datasets' library is available.
     Automatically installs via pip if missing.
     """
-    try:
-        import datasets
+    import importlib.util
+    if importlib.util.find_spec("datasets") is not None:
         return True
-    except ImportError:
-        print("[*] Hugging Face 'datasets' library not found. Installing automatically via pip...")
-        import subprocess
-        try:
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", "datasets>=5.1.0", "huggingface-hub>=2.2.0"
-            ])
-            import datasets
-            print("[✓] Successfully installed Hugging Face datasets.")
-            return True
-        except Exception as e:
-            print(f"[!] Failed to auto-install datasets: {e}")
-            return False
+    print("[*] Hugging Face 'datasets' library not found. Installing automatically via pip...")
+    import subprocess
+    try:
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", "datasets>=5.1.0", "huggingface-hub>=2.2.0"
+        ])
+        print("[✓] Successfully installed Hugging Face datasets.")
+        return True
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"[!] Failed to auto-install datasets: {e}")
+        return False
 
 def get_local_repo_path(repo_id=DEFAULT_DATASET, subset=None):
     """Returns local disk storage path for a given dataset repository and optional subset."""
@@ -226,7 +225,7 @@ def load_local_dataset(repo_id=DEFAULT_DATASET, subset=None, split="train", stre
                 fallback_split = "python" if "python" in avail else avail[0]
                 print(f"[*] Re-trying with available split '{fallback_split}'...")
                 return _safe_load(fallback_split)
-        raise e
+        raise
 
 def download_and_save_locally(repo_id=DEFAULT_DATASET, subset=None, limit=200, split="train", token=None):
     """
@@ -276,9 +275,9 @@ def download_and_save_locally(repo_id=DEFAULT_DATASET, subset=None, limit=200, s
                 print(f"[*] Re-trying with available split '{fallback_split}'...")
                 stream_ds = _safe_load_stream(fallback_split)
             else:
-                raise e
+                raise
         else:
-            raise e
+            raise
 
     samples = []
     for i, item in enumerate(stream_ds):
@@ -310,7 +309,7 @@ def validate_code(code):
         try:
             ast.parse(code)
             return True
-        except Exception:
+        except (SyntaxError, ValueError, TypeError):
             return False
     return True
 
@@ -346,7 +345,7 @@ def parse_record(item):
         tags = "agent,sft,tool_use,action"
 
     # Schema 2: Anthropic HH-RLHF (chosen / rejected dialogue turns)
-    elif "chosen" in item and item["chosen"]:
+    elif item.get("chosen"):
         chosen_dialogue = str(item["chosen"]).strip()
         if "\n\nAssistant:" in chosen_dialogue:
             parts = chosen_dialogue.rsplit("\n\nAssistant:", 1)
@@ -364,18 +363,18 @@ def parse_record(item):
             tags = "anthropic,rlhf"
 
     # Schema 3: openbmb/UltraData-Stack-v3-L2 and pretraining corpuses (text, content, markdown)
-    elif "text" in item and item["text"]:
+    elif item.get("text"):
         raw_text = str(item["text"]).strip()
-        lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
+        lines = [ln.strip() for ln in raw_text.split("\n") if ln.strip()]
         if lines:
             topic = lines[0][:150].lstrip("#").strip()
             lesson, code = extract_code_and_lesson(raw_text)
             if not lesson:
                 lesson = raw_text[:500]
 
-    elif "content" in item and item["content"]:
+    elif item.get("content"):
         raw_text = str(item["content"]).strip()
-        lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
+        lines = [ln.strip() for ln in raw_text.split("\n") if ln.strip()]
         if lines:
             topic = lines[0][:150].lstrip("#").strip()
             lesson, code = extract_code_and_lesson(raw_text)
@@ -397,10 +396,7 @@ def parse_record(item):
         topic = str(item["instruction"]).strip()
         ctx = item.get("context") or item.get("input")
         raw_output = str(item.get("output") or item.get("response") or "")
-        if ctx and str(ctx).strip():
-            combined = f"Context:\n{str(ctx).strip()}\n\n{raw_output}"
-        else:
-            combined = raw_output
+        combined = f"Context:\n{str(ctx).strip()}\n\n{raw_output}" if ctx and str(ctx).strip() else raw_output
         lesson, code = extract_code_and_lesson(combined)
         cat = item.get("category", "")
         tags = f"pa,instruction,{cat}" if cat else "pa,instruction"
@@ -443,8 +439,6 @@ def import_hf_dataset(repo_id=DEFAULT_DATASET, subset=None, limit=50, split="tra
     Streams and assimilates a dataset from Hugging Face into Merlin's offline memory.
     If save_local is True, also saves the samples locally to data/datasets.
     """
-    global import_state
-
     if not _import_lock.acquire(blocking=False):
         return {"status": "error", "message": "Another dataset import is already in progress."}
 
@@ -552,7 +546,7 @@ if __name__ == "__main__":
             token = args[t_idx + 1]
             args.pop(t_idx + 1)
             args.pop(t_idx)
-        except Exception:
+        except (ValueError, IndexError):
             pass
 
     if "--limit" in args:
@@ -561,7 +555,7 @@ if __name__ == "__main__":
             lim = int(args[idx + 1])
             args.pop(idx + 1)
             args.pop(idx)
-        except Exception:
+        except (ValueError, IndexError):
             pass
 
     if "--subset" in args:
@@ -570,7 +564,7 @@ if __name__ == "__main__":
             subset = args[s_idx + 1]
             args.pop(s_idx + 1)
             args.pop(s_idx)
-        except Exception:
+        except (ValueError, IndexError):
             pass
 
     if args and not args[0].startswith("--"):
@@ -579,14 +573,14 @@ if __name__ == "__main__":
             repo, subset = repo.split(":", 1)
 
     print("==========================================================")
-    print(f"  Merlin AI — Hugging Face Dataset Assimilator")
+    print("  Merlin AI — Hugging Face Dataset Assimilator")
     print(f"  Target Dataset: {repo}")
     if subset:
         print(f"  Subset / Config:{subset}")
     print(f"  Sample Limit:   {lim}")
     print(f"  Save Local:     {save_to_local_disk}")
     if token:
-        print(f"  Auth Token:     [Configured]")
+        print("  Auth Token:     [Configured]")
     print("==========================================================")
     res = import_hf_dataset(repo, subset=subset, limit=lim, save_local=save_to_local_disk, token=token)
     print(f"[✓] {res.get('message', res)}")

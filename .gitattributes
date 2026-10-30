@@ -1,0 +1,8 @@
+# Force LF everywhere: this project deploys to Linux (Raspberry Pi / Proxmox VMs).
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+*.gguf binary
+*.db binary

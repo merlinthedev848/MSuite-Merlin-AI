@@ -26,3 +26,9 @@ build/
 
 # Uploads directory
 web/uploads/
+
+# Test & Linter Cache
+.venv-dev/
+.pytest_cache/
+.ruff_cache/
+
