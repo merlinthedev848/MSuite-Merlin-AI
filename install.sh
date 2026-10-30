@@ -57,17 +57,16 @@ if ! command -v ollama &> /dev/null; then
     curl -fsSL https://ollama.com/install.sh | sh
 fi
 
-# Configure Ollama systemd override to enable Intel iGPU Vulkan acceleration and keep model warm in memory
+# Configure Ollama systemd override to keep model warm in memory without experimental Vulkan shader hangs
 $SUDO mkdir -p /etc/systemd/system/ollama.service.d
-cat << 'EOF' | $SUDO tee /etc/systemd/system/ollama.service.d/intel-gpu.conf > /dev/null
+cat << 'EOF' | $SUDO tee /etc/systemd/system/ollama.service.d/merlin-tuning.conf > /dev/null
 [Service]
 Environment="OLLAMA_HOST=127.0.0.1:11434"
-Environment="OLLAMA_VULKAN=1"
 Environment="OLLAMA_KEEP_ALIVE=24h"
-Environment="OLLAMA_NUM_PARALLEL=2"
-Environment="OLLAMA_FLASH_ATTENTION=1"
+Environment="OLLAMA_NUM_PARALLEL=1"
 SupplementaryGroups=video render
 EOF
+$SUDO rm -f /etc/systemd/system/ollama.service.d/intel-gpu.conf
 
 $SUDO systemctl daemon-reload
 $SUDO systemctl enable ollama

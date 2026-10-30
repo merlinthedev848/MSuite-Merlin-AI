@@ -520,6 +520,7 @@ class InferenceEngine:
                 "temperature": temperature,
                 "num_predict": max_tokens,
                 "num_ctx": num_ctx,
+                "num_thread": get_optimal_threads(),
                 "stop": stop_list,
             },
             "keep_alive": keep_alive,
@@ -709,12 +710,16 @@ class InferenceEngine:
             "good morning", "good afternoon", "good evening", "how are you", "how are you today",
             "how are you doing", "how are you doing today", "how is it going", "hows it going",
             "who are you", "what are you", "what is your name", "who made you", "what can you do",
+            "tell me about yourself", "about yourself", "introduce yourself", "what have you been up to",
             "help", "yo", "sup", "whats up", "ping", "test", "greetings", "thanks", "thank you",
         }
         if cleaned in exact_matches:
             return True
 
-        if any(cleaned.startswith(p) for p in ("how are you", "how is it going", "hows it going", "good morning", "good afternoon", "good evening")) and len(words) <= 6:
+        if any(cleaned.startswith(p) for p in (
+            "how are you", "how is it going", "hows it going", "good morning",
+            "good afternoon", "good evening", "tell me about yourself", "who are you",
+        )) and len(words) <= 7:
             return True
 
         if len(words) <= 3 and any(w in ("hi", "hello", "hey", "merlin", "yo", "sup", "greetings") for w in words):
@@ -730,7 +735,7 @@ class InferenceEngine:
     def _get_conversational_response(self, prompt: str) -> str:
         cleaned = _NON_WORD_RE.sub("", prompt.strip().lower())
 
-        if any(q in cleaned for q in ("who are you", "what are you", "what is your name", "who made you")):
+        if any(q in cleaned for q in ("who are you", "what are you", "what is your name", "who made you", "tell me about yourself", "about yourself", "introduce yourself")):
             return (
                 "I am **Merlin** (Merlin AI), your autonomous offline Personal Assistant and expert coding companion. "
                 "I run completely locally on your private network, ensuring zero data leaves your server.\n\n"
