@@ -139,7 +139,13 @@ def run_cron_cycle() -> None:
         purge_stale_history(retention_days=14)
 
         is_online = check_internet_connectivity()
-        api_key = os.getenv("TEACHER_API_KEY")
+        api_key = (
+            os.getenv("TEACHER_API_KEY")
+            or os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_API_KEY")
+            or os.getenv("GROQ_API_KEY")
+            or os.getenv("OPENAI_API_KEY")
+        )
 
         if is_online:
             if api_key:

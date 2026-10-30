@@ -11,12 +11,14 @@ from collections.abc import Iterator
 from typing import Any
 
 from database import (
+    add_gap,
     get_context_window,
     get_recent_chat,  # noqa: F401
     log_event,
     save_chat_message,
     search_knowledge,
 )
+from sync_teacher import run_sync
 
 try:
     import requests
@@ -720,15 +722,15 @@ class InferenceEngine:
         intent = self.detect_conversation_intent(prompt) if mode in ("auto", "assistant", "") else mode
         self.auto_select_optimal_model(intent)
 
-        # Only query FTS5 learned memory when the prompt is a technical/coding/reasoning query
-        learned_context = search_knowledge(prompt, limit=2) if intent in ("coder", "reasoning") else []
+        # Retrieve distilled lessons from Teacher LLMs / Hugging Face datasets in SQLite FTS5 memory
+        learned_context = search_knowledge(prompt, limit=2) if len(prompt.strip()) > 12 else []
         memory_parts: list[str] = []
         if learned_context:
-            memory_parts.append("[Verified Lessons from Past Teacher Sessions]:\n")
+            memory_parts.append("[Distilled Knowledge from Teacher Models]:\n")
             for k in learned_context:
-                memory_parts.append(f"- Topic: {k['topic']}\n  Lesson: {k['lesson']}\n")
+                memory_parts.append(f"- Topic: {k['topic']}\n  Lesson: {k['lesson'][:600]}\n")
                 if k.get("code_example"):
-                    memory_parts.append(f"  Code:\n{k['code_example']}\n")
+                    memory_parts.append(f"  Reference Code:\n{k['code_example'][:800]}\n")
         memory_prompt = "".join(memory_parts)
 
         system_content = self.build_system_prompt(mode=mode, detected_intent=intent)
@@ -852,6 +854,34 @@ class InferenceEngine:
                 token_count = len(response_buffer)
                 tps = round(token_count / max(elapsed, 0.001), 1)
                 log_event("inference_stream", f"Completed generation: {token_count} chunks ({tps} chunks/s) via {self.backend}", "info")
+
+                # Autonomous Self-Improvement Loop:
+                # If this was a substantive technical/reasoning query not yet in FTS5 memory,
+                # record a knowledge gap and trigger background Teacher LLM distillation if an API key is configured.
+                if not learned_context and intent in ("coder", "reasoning") and len(safe_prompt) >= 20:
+                    uncertainty_markers = (
+                        "i'm not sure", "i am not sure", "i don't know", "i do not know",
+                        "cannot verify", "as a small", "beyond my knowledge",
+                    )
+                    should_learn = any(m in full_response.lower() for m in uncertainty_markers) or len(safe_prompt) >= 35
+                    if should_learn:
+                        try:
+                            add_gap(safe_prompt[:300], context=f"Auto-captured from {intent} session ({self.active_model_name})")
+                            teacher_key = (
+                                os.getenv("TEACHER_API_KEY")
+                                or os.getenv("GEMINI_API_KEY")
+                                or os.getenv("GOOGLE_API_KEY")
+                                or os.getenv("GROQ_API_KEY")
+                                or os.getenv("OPENAI_API_KEY")
+                            )
+                            if teacher_key:
+                                threading.Thread(
+                                    target=run_sync,
+                                    kwargs={"api_key": teacher_key},
+                                    daemon=True,
+                                ).start()
+                        except Exception:
+                            pass
 
     chat_stream = generate_stream
 

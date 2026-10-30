@@ -942,6 +942,9 @@ def start_teacher_sync(data: TeacherSyncRequest):
     if not api_key:
         raise HTTPException(status_code=400, detail="API Key is required to communicate with teacher AI.")
 
+    # Persist the Teacher API key in the process environment so autonomous gap learning can use it automatically
+    os.environ["TEACHER_API_KEY"] = api_key
+
     if sync_state.get("is_syncing"):
         raise HTTPException(status_code=409, detail="Sync is already in progress")
 
@@ -977,6 +980,9 @@ def argon_query_route(data: ArgonQueryRequest):
 
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required for Gemini 4 Argon reasoning query.")
+
+    if api_key:
+        os.environ["TEACHER_API_KEY"] = api_key
 
     try:
         result = query_gemini_argon(
