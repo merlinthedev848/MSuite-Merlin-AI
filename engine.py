@@ -56,6 +56,14 @@ def get_optimal_threads() -> int:
             return max(1, int(os.environ["THREADS"]))
         except ValueError:
             pass
+    # Respect Linux cgroup v1/v2 CPU affinity inside LXC / Docker containers first
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            affinity_cores = len(os.sched_getaffinity(0))
+            if affinity_cores > 0:
+                return max(1, min(8, affinity_cores))
+        except OSError:
+            pass
     cpu_cores = os.cpu_count() or 4
     if cpu_cores <= 4:
         return max(1, cpu_cores)
@@ -64,27 +72,19 @@ def get_optimal_threads() -> int:
 
 
 def load_llama_cpp_instance(model_path: str, threads: int, n_ctx: int, n_gpu: int):
-    """Instantiates Llama with Flash-Attention and 8-bit quantized KV cache for low RAM bandwidth."""
+    """Instantiates Llama with FP16 KV cache (quantized KV cache without flash_attn corrupts logits on CPU)."""
     from llama_cpp import Llama
     kwargs: dict[str, Any] = {
         "model_path": model_path,
         "n_ctx": n_ctx,
-        "n_threads": threads,
+        "n_threads": max(1, threads - 1) if threads > 2 else threads,
         "n_threads_batch": threads,
         "n_batch": 512,
         "n_gpu_layers": n_gpu,
+        "use_mmap": True,
         "verbose": False,
     }
-    try:
-        kwargs["flash_attn"] = True
-        kwargs["type_k"] = 2  # LLAMA_FTYPE_MOSTLY_Q8_0
-        kwargs["type_v"] = 2  # LLAMA_FTYPE_MOSTLY_Q8_0
-        return Llama(**kwargs)
-    except Exception:
-        kwargs.pop("flash_attn", None)
-        kwargs.pop("type_k", None)
-        kwargs.pop("type_v", None)
-        return Llama(**kwargs)
+    return Llama(**kwargs)
 
 
 def sanitize_prompt(prompt: str) -> str:
@@ -239,7 +239,7 @@ class InferenceEngine:
             return False
 
         threads = get_optimal_threads()
-        n_ctx = int(os.getenv("N_CTX", "4096"))
+        n_ctx = int(os.getenv("N_CTX", "2048"))
         n_gpu = int(os.getenv("N_GPU_LAYERS", "0"))
         cmd = [
             server_bin,
@@ -250,9 +250,6 @@ class InferenceEngine:
             "-t", str(threads),
             "-b", "512",
             "-ub", "256",
-            "--flash-attn",
-            "-ctk", "q8_0",
-            "-ctv", "q8_0",
             "--cont-batching",
         ]
         if n_gpu > 0:
@@ -321,11 +318,11 @@ class InferenceEngine:
                         try:
                             model_path = os.path.join(MODELS_DIR, models[0])
                             threads = get_optimal_threads()
-                            n_ctx = int(os.getenv("N_CTX", "4096"))
+                            n_ctx = int(os.getenv("N_CTX", "2048"))
                             n_gpu = int(os.getenv("N_GPU_LAYERS", "0"))
                             self.llama_cpp_model = load_llama_cpp_instance(model_path, threads, n_ctx, n_gpu)
                             self.backend = "llama-cpp-python"
-                            log_event("engine_init", f"Loaded local model {models[0]} with {threads} threads, ctx {n_ctx} (Flash-Attn enabled)", "success")
+                            log_event("engine_init", f"Loaded local model {models[0]} with {threads} threads, ctx {n_ctx}", "success")
                             return
                         except ImportError:
                             pass
@@ -389,7 +386,7 @@ class InferenceEngine:
             if os.path.exists(model_path) and os.path.isfile(model_path):
                 try:
                     threads = get_optimal_threads()
-                    n_ctx = int(os.getenv("N_CTX", "4096"))
+                    n_ctx = int(os.getenv("N_CTX", "2048"))
                     n_gpu = int(os.getenv("N_GPU_LAYERS", "0"))
                     self.llama_cpp_model = None
                     self.llama_cpp_model = load_llama_cpp_instance(model_path, threads, n_ctx, n_gpu)
@@ -485,27 +482,17 @@ class InferenceEngine:
 
     def build_system_prompt(self, mode: str = "auto", detected_intent: str = "general") -> str:
         """
-        Unified, powerhouse system prompt for Merlin AI.
-        Seamlessly integrates elite software engineering, architecture, Linux systems administration,
-        and proactive personal assistant (PA) workflows into a single persona without mode-swapping.
+        Concise, high-signal system prompt optimized for fast CPU prefill latency.
         """
+        if detected_intent in ("coder", "reasoning"):
+            return (
+                "You are Merlin, an expert offline software engineer and systems architect. "
+                "Write complete, production-ready, bug-free code and clear technical explanations. "
+                "Use markdown code blocks with language tags and never use placeholders."
+            )
         return (
-            "You are Merlin (Merlin AI), an elite autonomous software engineer, systems architect, and intelligent Personal Assistant. "
-            "You run completely privately and locally on the user's private infrastructure with zero external telemetry.\n\n"
-            "Core Directives & Dual Mastery:\n"
-            "1. Software Engineering & Architecture:\n"
-            "   - Write complete, robust, type-annotated, idiomatic, and production-grade code (Python, JavaScript/TypeScript, C/C++, Rust, Go, Bash, SQL, Docker).\n"
-            "   - Never provide lazy placeholders (such as '# TODO' or '// rest of code'); always output complete, working implementations.\n"
-            "   - Thoroughly address memory efficiency, algorithmic complexity, error handling, edge cases, and concurrency safety.\n"
-            "   - When debugging or refactoring, explain root causes with high technical precision and provide drop-in code diffs.\n\n"
-            "2. Executive Personal Assistant (PA) & Operations:\n"
-            "   - Be organized, proactive, and concise. Maintain workflow continuity across conversation turns.\n"
-            "   - Structure technical tasks, organize to-dos with priorities, draft clear technical notes, and synthesize complex documents into high-yield summaries.\n"
-            "   - When answering system administration or Linux queries, provide precise shell commands with necessary flags, and explain critical parameters.\n\n"
-            "3. Response Structure & Style:\n"
-            "   - Communicate authoritatively, directly, and helpfully as a senior technical partner.\n"
-            "   - Use clean GitHub-flavored markdown: bold headers, tables, bullet points, and syntax-highlighted code blocks with language identifiers.\n"
-            "   - Eliminate conversational filler and introductory fluff. Deliver immediate, high-impact answers."
+            "You are Merlin, an intelligent offline AI assistant and software engineer running locally. "
+            "Be clear, direct, helpful, and concise."
         )
 
     def _stream_from_ollama(
@@ -719,11 +706,15 @@ class InferenceEngine:
 
         exact_matches = {
             "hello", "hi", "hey", "merlin", "hello merlin", "hi merlin", "hey merlin",
-            "good morning", "good afternoon", "good evening", "how are you", "how are you doing",
+            "good morning", "good afternoon", "good evening", "how are you", "how are you today",
+            "how are you doing", "how are you doing today", "how is it going", "hows it going",
             "who are you", "what are you", "what is your name", "who made you", "what can you do",
-            "help", "yo", "sup", "whats up", "ping", "test", "greetings",
+            "help", "yo", "sup", "whats up", "ping", "test", "greetings", "thanks", "thank you",
         }
         if cleaned in exact_matches:
+            return True
+
+        if any(cleaned.startswith(p) for p in ("how are you", "how is it going", "hows it going", "good morning", "good afternoon", "good evening")) and len(words) <= 6:
             return True
 
         if len(words) <= 3 and any(w in ("hi", "hello", "hey", "merlin", "yo", "sup", "greetings") for w in words):
@@ -806,7 +797,8 @@ class InferenceEngine:
         intent = self.detect_conversation_intent(prompt) if mode in ("auto", "assistant", "") else mode
         self.auto_select_optimal_model(intent)
 
-        learned_context = search_knowledge(prompt, limit=2)
+        # Only query FTS5 learned memory when the prompt is a technical/coding/reasoning query
+        learned_context = search_knowledge(prompt, limit=2) if intent in ("coder", "reasoning") else []
         memory_parts: list[str] = []
         if learned_context:
             memory_parts.append("[Verified Lessons from Past Teacher Sessions]:\n")
