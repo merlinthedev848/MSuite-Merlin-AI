@@ -9,13 +9,81 @@ import urllib.request
 
 from database import (
     add_knowledge,
+    get_all_knowledge,
     get_unresolved_gaps,
     init_db,
     log_event,
     set_gap_status,
 )
 
-DATASET_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "training_dataset.jsonl")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATASET_FILE = os.path.join(BASE_DIR, "training_dataset.jsonl")
+ENV_FILE = os.path.join(BASE_DIR, ".env")
+
+# Autonomous Continuous Curriculum Topics (Merlin self-trains on these via Gemini when idle)
+AUTONOMOUS_CURRICULUM = [
+    "Proxmox VE LXC & KVM virtualization tuning, ZFS storage optimization, and pct/qm CLI automation",
+    "Nginx reverse proxy hardening, HTTP/2, WebSocket & SSE streaming, TLS 1.3, and Let's Encrypt Certbot",
+    "Asterisk / FreePBX SIP trunking, PJSIP NAT traversal, RTP media debugging, and dialplan architecture",
+    "Advanced Python asyncio concurrency, FastAPI high-throughput streaming, and SQLite WAL/FTS5 indexing",
+    "Linux systemd service hardening, journalctl diagnostics, netfilter/nftables firewalls, and WireGuard VPN",
+    "Docker & Linux cgroup v2 resource isolation, GPU device passthrough (/dev/dri), and container security",
+    "Modern JavaScript ES2025 reactive DOM patterns, EventSource SSE resilience, and zero-dependency UI architecture",
+    "Bash scripting best practices, POSIX error handling, awk/sed/jq data pipelines, and automated backups",
+    "PostgreSQL & SQLite query plan optimization, composite B-Tree indexing, and zero-downtime migrations",
+    "Network packet analysis with tcpdump, MTR, ss, iperf3, and debugging DNS/TLS handshakes on Linux",
+    "Git internals, rebase workflows, bisect debugging, and automated CI/CD deployment pipelines",
+    "Rust & C systems programming: memory layout, zero-copy buffers, epoll event loops, and SIMD vectorization",
+]
+
+
+def load_saved_api_key() -> str:
+    """Loads the persisted Teacher/Gemini API key from environment or local .env file."""
+    for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "TEACHER_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY"):
+        val = os.getenv(var, "").strip()
+        if val:
+            return val
+    if os.path.exists(ENV_FILE):
+        try:
+            with open(ENV_FILE, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'\"")
+                        if k in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "TEACHER_API_KEY") and v:
+                            os.environ[k] = v
+                            return v
+        except OSError:
+            pass
+    return ""
+
+
+def save_persistent_api_key(api_key: str) -> None:
+    """Saves the Teacher/Gemini API key to .env on disk so autonomous learning survives server reboots."""
+    clean_key = (api_key or "").strip().strip("'\"")
+    if not clean_key or " " in clean_key:
+        return
+    os.environ["GEMINI_API_KEY"] = clean_key
+    os.environ["TEACHER_API_KEY"] = clean_key
+    lines: list[str] = []
+    if os.path.exists(ENV_FILE):
+        try:
+            with open(ENV_FILE, encoding="utf-8") as f:
+                lines = [
+                    ln for ln in f.read().splitlines()
+                    if not ln.strip().startswith(("GEMINI_API_KEY=", "TEACHER_API_KEY="))
+                ]
+        except OSError:
+            lines = []
+    lines.append(f"GEMINI_API_KEY={clean_key}")
+    lines.append(f"TEACHER_API_KEY={clean_key}")
+    try:
+        with open(ENV_FILE, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except OSError:
+        pass
 
 # Concurrency & Sync State Tracker
 _sync_lock = threading.Lock()
@@ -421,14 +489,27 @@ def query_commercial_ai(prompt, api_key, endpoint=None, model="gemini-1.5-flash"
 
 def run_sync(api_key, endpoint=None, model=None, topic_to_explore=None):
     """
-    Thread-safe synchronization pipeline with gap state transitions.
+    Thread-safe synchronization pipeline with gap state transitions and autonomous curriculum learning.
     """
     if not _sync_lock.acquire(blocking=False):
         log_event("sync_aborted", "Sync already in progress; skipped concurrent trigger", "warning")
         return {"status": "error", "message": "Synchronization is already running."}
 
     init_db()
+    api_key = (api_key or load_saved_api_key()).strip()
+    if api_key:
+        save_persistent_api_key(api_key)
     endpoint, model = resolve_teacher_provider(api_key, endpoint, model)
+
+    # If no explicit topic and no unresolved gaps exist, automatically pick the next unlearned curriculum topic
+    if not (topic_to_explore and topic_to_explore.strip()):
+        pending_gaps = get_unresolved_gaps()
+        if not pending_gaps:
+            existing_topics = {k["topic"].lower() for k in get_all_knowledge(limit=500)}
+            for candidate_topic in AUTONOMOUS_CURRICULUM:
+                if not any(candidate_topic[:25].lower() in t for t in existing_topics):
+                    topic_to_explore = candidate_topic
+                    break
 
     try:
         sync_state["is_syncing"] = True

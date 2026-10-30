@@ -52,9 +52,11 @@ from engine import InferenceEngine
 from import_dataset import POPULAR_DATASETS, import_hf_dataset, import_state
 from sync_teacher import (
     fetch_live_models_for_provider,
+    load_saved_api_key,
     query_gemini_argon,
     query_gemini_multimodal,
     run_sync,
+    save_persistent_api_key,
     sync_state,
 )
 
@@ -87,19 +89,48 @@ def get_engine(lazy_init: bool = False) -> InferenceEngine:
     return engine
 
 
+_autonomous_stop_event = threading.Event()
+
+
+def _autonomous_gemini_learning_worker() -> None:
+    """
+    Background self-improvement daemon:
+    Whenever a Gemini / Teacher API key is configured, periodically resolves any
+    captured Knowledge Gaps and studies the next unlearned curriculum topic from Gemini.
+    """
+    # Wait 25s after server boot before starting background learning
+    if _autonomous_stop_event.wait(25.0):
+        return
+    while not _autonomous_stop_event.is_set():
+        try:
+            key = load_saved_api_key()
+            if key and not sync_state.get("is_syncing"):
+                run_sync(key)
+        except Exception:
+            pass
+        # Study a new topic / resolve gaps every 5 minutes without hitting rate limits
+        if _autonomous_stop_event.wait(300.0):
+            break
+
+
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
+    # Load any persisted Gemini/Teacher API key from .env on startup
+    saved_key = load_saved_api_key()
     # Initialize in lazy background mode so Uvicorn binds port 5000 in < 50ms
     # and never triggers 502 Bad Gateway while loading multi-GB GGUF weights.
     eng = get_engine(lazy_init=True)
+    threading.Thread(target=_autonomous_gemini_learning_worker, daemon=True).start()
     print("=" * 66)
     print("  MERLIN AI — FASTAPI CORE RUNTIME (PRODUCTION READY)")
     print(f"  Web Dashboard:     http://localhost:{PORT}")
     print(f"  OpenAI REST API:   http://localhost:{PORT}/v1/chat/completions")
     print(f"  Network Host:      http://{HOST}:{PORT}")
     print(f"  Model Engine:      {eng.backend} ({eng.active_model_name})")
+    print(f"  Gemini Learning:   {'ACTIVE (Autonomous 24/7)' if saved_key else 'Ready (Add API Key in UI)'}")
     print("=" * 66)
     yield
+    _autonomous_stop_event.set()
     if engine is not None:
         engine.cleanup()
 
@@ -942,8 +973,8 @@ def start_teacher_sync(data: TeacherSyncRequest):
     if not api_key:
         raise HTTPException(status_code=400, detail="API Key is required to communicate with teacher AI.")
 
-    # Persist the Teacher API key in the process environment so autonomous gap learning can use it automatically
-    os.environ["TEACHER_API_KEY"] = api_key
+    # Persist the Teacher API key to .env so autonomous 24/7 Gemini learning survives reboots
+    save_persistent_api_key(api_key)
 
     if sync_state.get("is_syncing"):
         raise HTTPException(status_code=409, detail="Sync is already in progress")
@@ -982,7 +1013,7 @@ def argon_query_route(data: ArgonQueryRequest):
         raise HTTPException(status_code=400, detail="Prompt is required for Gemini 4 Argon reasoning query.")
 
     if api_key:
-        os.environ["TEACHER_API_KEY"] = api_key
+        save_persistent_api_key(api_key)
 
     try:
         result = query_gemini_argon(
