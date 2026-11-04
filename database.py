@@ -1,8 +1,10 @@
 import datetime
+import hashlib
 import json
 import os
 import platform
 import re
+import secrets
 import shutil
 import sqlite3
 import threading
@@ -115,6 +117,29 @@ def init_db(force: bool = False) -> None:
         with get_db() as conn:
             c = conn.cursor()
 
+            # 0. User Accounts & Session Tokens (Per-User Saved Chats)
+            c.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                display_name TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
+
+            c.execute("""
+            CREATE TABLE IF NOT EXISTS user_tokens (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP
+            );
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_tokens_user ON user_tokens(user_id);")
+
             # 1. Sessions / Conversations
             c.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
@@ -122,6 +147,7 @@ def init_db(force: bool = False) -> None:
                 title TEXT NOT NULL,
                 mode TEXT DEFAULT 'assistant',
                 pinned INTEGER DEFAULT 0,
+                user_id TEXT DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -135,10 +161,23 @@ def init_db(force: bool = False) -> None:
                 title TEXT NOT NULL,
                 mode TEXT DEFAULT 'assistant',
                 pinned INTEGER DEFAULT 0,
+                user_id TEXT DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """)
+
+            c.execute("PRAGMA table_info(sessions);")
+            s_cols = {col[1] for col in c.fetchall()}
+            if "user_id" not in s_cols:
+                c.execute("ALTER TABLE sessions ADD COLUMN user_id TEXT DEFAULT NULL;")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id, updated_at DESC);")
+
+            c.execute("PRAGMA table_info(conversations);")
+            c_cols = {col[1] for col in c.fetchall()}
+            if "user_id" not in c_cols:
+                c.execute("ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT NULL;")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at DESC);")
 
             # 2. Messages (Structured multi-turn history)
             c.execute("""
@@ -334,6 +373,120 @@ def init_db(force: bool = False) -> None:
         _initialized_db_path = DB_PATH
 
 
+# --- User Accounts & Session Authentication ---
+
+def hash_password(password: str, salt: str) -> str:
+    """Computes PBKDF2-HMAC-SHA256 hash with 100,000 iterations."""
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
+
+
+def create_user(username: str, password: str, display_name: str = "") -> dict[str, Any]:
+    """Registers a new user account with secure hashed password."""
+    clean_username = username.strip().lower()
+    if not clean_username or len(clean_username) < 3:
+        raise ValueError("Username must be at least 3 characters long.")
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", clean_username):
+        raise ValueError("Username can only contain alphanumeric characters, dots, underscores, or dashes.")
+    if not password or len(password) < 4:
+        raise ValueError("Password must be at least 4 characters long.")
+
+    uid = str(uuid.uuid4())[:12]
+    salt = secrets.token_hex(16)
+    pw_hash = hash_password(password, salt)
+    clean_display = display_name.strip() or clean_username
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM users WHERE username = ?", (clean_username,))
+        if c.fetchone():
+            raise ValueError(f"Username '{clean_username}' already exists.")
+
+        now = datetime.datetime.now().isoformat()
+        c.execute("""
+            INSERT INTO users (id, username, password_hash, salt, display_name, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (uid, clean_username, pw_hash, salt, clean_display, now))
+
+    token = create_user_token(uid)
+    return {
+        "id": uid,
+        "username": clean_username,
+        "display_name": clean_display,
+        "token": token,
+    }
+
+
+def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
+    """Authenticates username and password. Returns user dict with new token if valid."""
+    clean_username = username.strip().lower()
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, username, password_hash, salt, display_name FROM users WHERE username = ?", (clean_username,))
+        row = c.fetchone()
+        if not row:
+            return None
+
+        computed_hash = hash_password(password, row["salt"])
+        if not secrets.compare_digest(computed_hash, row["password_hash"]):
+            return None
+
+        uid = row["id"]
+        token = create_user_token(uid)
+        return {
+            "id": uid,
+            "username": row["username"],
+            "display_name": row["display_name"] or row["username"],
+            "token": token,
+        }
+
+
+def create_user_token(user_id: str) -> str:
+    """Generates and stores a new cryptographically secure session token."""
+    token = secrets.token_urlsafe(32)
+    now = datetime.datetime.now().isoformat()
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO user_tokens (token, user_id, created_at)
+            VALUES (?, ?, ?)
+        """, (token, user_id, now))
+    return token
+
+
+def get_user_by_token(token: str) -> dict[str, Any] | None:
+    """Resolves an auth token to its active user record."""
+    if not token or not token.strip():
+        return None
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT u.id, u.username, u.display_name, u.created_at
+            FROM user_tokens t
+            JOIN users u ON u.id = t.user_id
+            WHERE t.token = ?
+        """, (token.strip(),))
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
+def delete_user_token(token: str) -> bool:
+    """Invalidates an auth token upon logout."""
+    if not token:
+        return False
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM user_tokens WHERE token = ?", (token.strip(),))
+        return c.rowcount > 0
+
+
+def associate_session_with_user(session_id: str, user_id: str) -> bool:
+    """Assigns an existing session to a user account."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("UPDATE sessions SET user_id = ? WHERE id = ?", (user_id, session_id))
+        c.execute("UPDATE conversations SET user_id = ? WHERE id = ?", (user_id, session_id))
+        return True
+
+
 # --- Sessions / Conversations Management ---
 
 def _derive_session_title(content: str) -> str:
@@ -359,56 +512,73 @@ def create_session(
     title: str = "New Chat",
     mode: str = "assistant",
     session_id: str | None = None,
-    conv_id: str | None = None
+    conv_id: str | None = None,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
     sid = session_id or conv_id or str(uuid.uuid4())[:8]
     clean_title = (title or "New Chat").strip() or "New Chat"
     now = datetime.datetime.now().isoformat()
     with get_db() as conn:
         conn.execute("""
-            INSERT OR REPLACE INTO sessions (id, title, mode, pinned, created_at, updated_at)
-            VALUES (?, ?, ?, 0, ?, ?)
-        """, (sid, clean_title, mode, now, now))
+            INSERT OR REPLACE INTO sessions (id, title, mode, pinned, user_id, created_at, updated_at)
+            VALUES (?, ?, ?, 0, ?, ?, ?)
+        """, (sid, clean_title, mode, user_id, now, now))
         conn.execute("""
-            INSERT OR REPLACE INTO conversations (id, title, mode, pinned, created_at, updated_at)
-            VALUES (?, ?, ?, 0, ?, ?)
-        """, (sid, clean_title, mode, now, now))
-    return {"id": sid, "title": clean_title, "mode": mode, "pinned": 0, "created_at": now, "updated_at": now}
+            INSERT OR REPLACE INTO conversations (id, title, mode, pinned, user_id, created_at, updated_at)
+            VALUES (?, ?, ?, 0, ?, ?, ?)
+        """, (sid, clean_title, mode, user_id, now, now))
+    return {"id": sid, "title": clean_title, "mode": mode, "pinned": 0, "user_id": user_id, "created_at": now, "updated_at": now}
 
 
-def get_sessions(limit: int = 100) -> list[dict[str, Any]]:
-    """Fetches sessions using indexed session_id lookup (O(S log M) instead of O(S*M) OR-join)."""
+def get_sessions(limit: int = 100, user_id: str | None = None, guest_only: bool = False) -> list[dict[str, Any]]:
+    """Fetches sessions using indexed session_id lookup. Scoped per user when user_id is provided."""
     with get_db() as conn:
         c = conn.cursor()
-        c.execute("""
-            SELECT s.id, s.title, s.mode, s.pinned, s.created_at, s.updated_at,
+        where_clause = ""
+        params: list[Any] = []
+
+        if user_id:
+            where_clause = "WHERE s.user_id = ?"
+            params.append(user_id)
+        elif guest_only:
+            where_clause = "WHERE s.user_id IS NULL"
+
+        sql_sess = f"""
+            SELECT s.id, s.title, s.mode, s.pinned, s.user_id, s.created_at, s.updated_at,
                    (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) as message_count,
                    (SELECT content FROM messages m WHERE m.session_id = s.id ORDER BY m.id DESC LIMIT 1) as last_message
             FROM sessions s
+            {where_clause}
             ORDER BY s.pinned DESC, s.updated_at DESC
             LIMIT ?
-        """, (limit,))
+        """
+        c.execute(sql_sess, params + [limit])
         rows = [dict(r) for r in c.fetchall()]
-        if not rows:
-            c.execute("""
-                SELECT c.id, c.title, c.mode, c.pinned, c.created_at, c.updated_at,
+
+        if not rows and not user_id:
+            where_conv = "WHERE c.user_id IS NULL" if guest_only else ""
+            sql_conv = f"""
+                SELECT c.id, c.title, c.mode, c.pinned, c.user_id, c.created_at, c.updated_at,
                        (SELECT COUNT(*) FROM messages m WHERE m.session_id = c.id) as message_count,
                        (SELECT content FROM messages m WHERE m.session_id = c.id ORDER BY m.id DESC LIMIT 1) as last_message
                 FROM conversations c
+                {where_conv}
                 ORDER BY c.pinned DESC, c.updated_at DESC
                 LIMIT ?
-            """, (limit,))
+            """
+            c.execute(sql_conv, [limit])
             rows = [dict(r) for r in c.fetchall()]
+
         return rows
 
 
 def get_session(session_id: str) -> dict[str, Any] | None:
     with get_db() as conn:
         c = conn.cursor()
-        c.execute("SELECT id, title, mode, pinned, created_at, updated_at FROM sessions WHERE id = ?", (session_id,))
+        c.execute("SELECT id, title, mode, pinned, user_id, created_at, updated_at FROM sessions WHERE id = ?", (session_id,))
         row = c.fetchone()
         if not row:
-            c.execute("SELECT id, title, mode, pinned, created_at, updated_at FROM conversations WHERE id = ?", (session_id,))
+            c.execute("SELECT id, title, mode, pinned, user_id, created_at, updated_at FROM conversations WHERE id = ?", (session_id,))
             row = c.fetchone()
         return dict(row) if row else None
 

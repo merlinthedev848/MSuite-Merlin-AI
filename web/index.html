@@ -23,7 +23,7 @@
       </button>
     </div>
 
-    <div class="sidebar-section-title">Conversations</div>
+    <div class="sidebar-section-title" id="sidebar-conv-title">Conversations</div>
     <div class="conversations-scroll" id="conversations-list">
       <!-- Injected via JavaScript -->
     </div>
@@ -104,6 +104,10 @@
       </div>
 
       <div class="navbar-right">
+        <div class="user-auth-badge" id="user-auth-badge" onclick="openAuthModal()" title="Account &amp; Saved Chats">
+          <span class="user-avatar-icon" id="user-avatar-icon">👤</span>
+          <span class="user-name-label" id="user-name-label">Sign In</span>
+        </div>
 
         <button class="icon-btn" onclick="openModal('pa-modal')" title="Tasks &amp; Notes" aria-label="Open Tasks and Notes">
           <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
@@ -739,6 +743,64 @@ Content-Type: application/json
 
       <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
         <button class="btn-secondary" onclick="closeModal('telephony-modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: USER AUTHENTICATION & LOGIN (PER-USER SAVED CHATS)
+       ======================================================================== -->
+  <div class="modal-backdrop" id="auth-modal">
+    <div class="modal-box" style="max-width:440px;">
+      <div class="modal-header">
+        <h2 id="auth-modal-title">👤 User Account &amp; Saved Chats</h2>
+        <button class="icon-btn" onclick="closeModal('auth-modal')">✕</button>
+      </div>
+
+      <!-- Logged In View -->
+      <div id="auth-logged-in-view" style="display:none;">
+        <div class="hardware-card" style="margin-bottom:14px;text-align:center;padding:18px;">
+          <div style="font-size:2rem;margin-bottom:6px;">👤</div>
+          <div style="font-weight:700;font-size:1.05rem;" id="auth-current-username">User</div>
+          <div style="color:var(--text-muted);font-size:0.8rem;margin-top:2px;" id="auth-current-meta">Chats are securely remembered on your account</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button class="btn-primary" onclick="claimActiveChat()" id="btn-claim-chat">💾 Save Current Chat to My Account</button>
+          <button class="btn-secondary" onclick="handleLogout()" style="color:#ef4444;">Log Out</button>
+        </div>
+      </div>
+
+      <!-- Logged Out / Auth View -->
+      <div id="auth-form-view">
+        <p style="font-size:0.84rem; color:var(--text-muted); margin-bottom:14px;">
+          Log in or create a local account to have your conversations, memory, and personal settings remembered securely. Guests can still chat freely with the live model.
+        </p>
+
+        <!-- Tabs: Login vs Register -->
+        <div class="memory-tabs" style="margin-bottom:14px;">
+          <button class="memory-tab-btn active" id="tab-auth-login" onclick="switchAuthTab('login')">Log In</button>
+          <button class="memory-tab-btn" id="tab-auth-register" onclick="switchAuthTab('register')">Create Account</button>
+        </div>
+
+        <form onsubmit="handleAuthSubmit(event)">
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" class="form-input" id="auth-username" placeholder="e.g. chris, merlin_dev" required autocomplete="username">
+          </div>
+          <div class="form-group" id="group-display-name" style="display:none;">
+            <label>Display Name (optional)</label>
+            <input type="text" class="form-input" id="auth-display-name" placeholder="e.g. Chris K.">
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" class="form-input" id="auth-password" placeholder="••••••••" required autocomplete="current-password">
+          </div>
+          <div id="auth-error-msg" style="color:var(--danger-color);font-size:0.82rem;margin-bottom:10px;display:none;"></div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px;">
+            <button type="button" class="btn-secondary" onclick="closeModal('auth-modal')">Cancel</button>
+            <button type="submit" class="btn-primary" id="btn-auth-submit">Log In</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>

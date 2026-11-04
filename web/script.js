@@ -13,7 +13,22 @@ let syncPollTimer = null;
 let datasetPollTimer = null;
 let skillsSearchTimer = null;
 let popularDatasetsLoaded = false;
+let currentUser = null;
+let currentAuthTab = "login";
 const notesById = new Map();
+
+function getAuthToken() {
+  return localStorage.getItem("merlin_auth_token") || "";
+}
+
+function authHeaders(extraHeaders = {}) {
+  const token = getAuthToken();
+  const headers = { "Content-Type": "application/json", ...extraHeaders };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 // HTML Escaping Utility (Prevents XSS in dynamic titles, notes, tasks, and skills)
 function escapeHtml(str) {
@@ -152,6 +167,8 @@ function openModal(id) {
     loadCalendarEvents();
   } else if (id === "telephony-modal") {
     loadTelephonyStatus();
+  } else if (id === "auth-modal") {
+    renderAuthModalContent();
   }
 }
 
@@ -270,14 +287,15 @@ function copyCode(btn) {
 // ==========================================================================
 async function loadConversations() {
   try {
-    const res = await fetch("/api/conversations");
+    const res = await fetch("/api/conversations", { headers: authHeaders() });
     const convs = await res.json();
     const list = document.getElementById("conversations-list");
     if (!list) return;
     list.innerHTML = "";
 
     if (!convs.length) {
-      list.innerHTML = '<div style="padding:12px;font-size:0.75rem;color:var(--text-muted);">No saved chats yet.</div>';
+      const msg = currentUser ? "No saved chats for this account yet." : "No guest chats yet.";
+      list.innerHTML = `<div style="padding:12px;font-size:0.75rem;color:var(--text-muted);">${msg}</div>`;
       return;
     }
 
@@ -311,7 +329,7 @@ async function createNewChat() {
   }
   const res = await fetch("/api/conversations", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(),
     body: JSON.stringify({ title: "New Chat", mode: "auto" })
   });
   const conv = await res.json();
@@ -330,7 +348,7 @@ async function switchConversation(convId) {
   activeConversationId = convId;
   loadConversations();
   try {
-    const res = await fetch(`/api/conversations/${encodeURIComponent(convId)}`);
+    const res = await fetch(`/api/conversations/${encodeURIComponent(convId)}`, { headers: authHeaders() });
     if (!res.ok) {
       showToast("Could not load conversation.", "danger");
       return;
@@ -349,7 +367,7 @@ async function renameConv(convId) {
   if (!newTitle || !newTitle.trim()) return;
   await fetch(`/api/conversations/${encodeURIComponent(convId)}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(),
     body: JSON.stringify({ title: newTitle.trim() })
   });
   loadConversations();
@@ -358,14 +376,17 @@ async function renameConv(convId) {
 async function togglePin(convId, newPinned) {
   await fetch(`/api/conversations/${encodeURIComponent(convId)}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(),
     body: JSON.stringify({ pinned: newPinned })
   });
   loadConversations();
 }
 
 async function deleteConv(convId) {
-  await fetch(`/api/conversations/${encodeURIComponent(convId)}/delete`, { method: "POST" });
+  await fetch(`/api/conversations/${encodeURIComponent(convId)}/delete`, {
+    method: "POST",
+    headers: authHeaders()
+  });
   if (activeConversationId === convId) {
     activeConversationId = null;
     document.getElementById("hero-view").style.display = "flex";
@@ -376,7 +397,10 @@ async function deleteConv(convId) {
 
 async function clearCurrentChat() {
   if (activeConversationId) {
-    await fetch(`/api/conversations/${encodeURIComponent(activeConversationId)}/clear`, { method: "POST" });
+    await fetch(`/api/conversations/${encodeURIComponent(activeConversationId)}/clear`, {
+      method: "POST",
+      headers: authHeaders()
+    });
     showConversationMessages(activeConversationId, []);
     showToast("Conversation history cleared.", "info");
   }
@@ -563,7 +587,8 @@ async function submitMessage() {
       activeEventSource.close();
       activeEventSource = null;
     }
-    const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=auto&session_id=${encodeURIComponent(activeConversationId)}`;
+    const tokenParam = getAuthToken() ? `&token=${encodeURIComponent(getAuthToken())}` : "";
+    const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=auto&session_id=${encodeURIComponent(activeConversationId)}${tokenParam}`;
     activeEventSource = new EventSource(streamUrl);
 
     activeEventSource.onmessage = function(event) {
@@ -607,7 +632,8 @@ async function submitMessage() {
       ws.send(JSON.stringify({
         prompt: payloadText,
         session_id: activeConversationId,
-        mode: "auto"
+        mode: "auto",
+        token: getAuthToken()
       }));
     };
 
@@ -769,7 +795,7 @@ async function analyzeAttachedMultimodal() {
   appendMessageElement("user", userDisplay);
   await fetch(`/api/conversations/${encodeURIComponent(activeConversationId)}/messages`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(),
     body: JSON.stringify({ role: "user", content: userDisplay })
   });
 
@@ -779,7 +805,7 @@ async function analyzeAttachedMultimodal() {
   try {
     const res = await fetch("/api/analyze/multimodal", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify({ file_id: fileObj.id, prompt: userPrompt, api_key: apiKey })
     });
     const d = await res.json();
@@ -787,7 +813,7 @@ async function analyzeAttachedMultimodal() {
     assistantBubble.innerHTML = renderMarkdown(reply);
     await fetch(`/api/conversations/${encodeURIComponent(activeConversationId)}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify({ role: "assistant", content: reply })
     });
     loadConversations();
@@ -1930,10 +1956,243 @@ async function simulateTelephonyCall() {
 }
 
 // ==========================================================================
+// USER AUTHENTICATION & LOGIN (PER-USER SAVED CHATS & GUEST CHAT)
+// ==========================================================================
+
+async function checkAuthStatus() {
+  const token = getAuthToken();
+  const badge = document.getElementById("user-auth-badge");
+  const nameLabel = document.getElementById("user-name-label");
+  const avatarIcon = document.getElementById("user-avatar-icon");
+  const sidebarTitle = document.getElementById("sidebar-conv-title");
+
+  if (!token) {
+    currentUser = null;
+    if (badge) badge.classList.remove("logged-in");
+    if (nameLabel) nameLabel.innerText = "Sign In";
+    if (avatarIcon) avatarIcon.innerText = "👤";
+    if (sidebarTitle) sidebarTitle.innerText = "Guest Chats (Live AI)";
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/auth/me", { headers: authHeaders() });
+    if (!res.ok) throw new Error("Auth check failed");
+    const data = await res.json();
+    if (data.logged_in && data.user) {
+      currentUser = data.user;
+      if (badge) badge.classList.add("logged-in");
+      if (nameLabel) nameLabel.innerText = currentUser.display_name || currentUser.username;
+      if (avatarIcon) avatarIcon.innerText = "⭐";
+      if (sidebarTitle) sidebarTitle.innerText = `${currentUser.display_name || currentUser.username}'s Chats`;
+    } else {
+      currentUser = null;
+      localStorage.removeItem("merlin_auth_token");
+      if (badge) badge.classList.remove("logged-in");
+      if (nameLabel) nameLabel.innerText = "Sign In";
+      if (avatarIcon) avatarIcon.innerText = "👤";
+      if (sidebarTitle) sidebarTitle.innerText = "Guest Chats (Live AI)";
+    }
+  } catch (e) {
+    currentUser = null;
+    if (badge) badge.classList.remove("logged-in");
+    if (nameLabel) nameLabel.innerText = "Sign In";
+    if (avatarIcon) avatarIcon.innerText = "👤";
+    if (sidebarTitle) sidebarTitle.innerText = "Guest Chats (Live AI)";
+  }
+}
+
+function openAuthModal() {
+  openModal("auth-modal");
+}
+
+function renderAuthModalContent() {
+  const loggedInView = document.getElementById("auth-logged-in-view");
+  const formView = document.getElementById("auth-form-view");
+  const currentUsernameEl = document.getElementById("auth-current-username");
+  const currentMetaEl = document.getElementById("auth-current-meta");
+  const btnClaim = document.getElementById("btn-claim-chat");
+  const errorMsg = document.getElementById("auth-error-msg");
+
+  if (errorMsg) {
+    errorMsg.style.display = "none";
+    errorMsg.innerText = "";
+  }
+
+  if (currentUser) {
+    if (loggedInView) loggedInView.style.display = "block";
+    if (formView) formView.style.display = "none";
+    if (currentUsernameEl) {
+      currentUsernameEl.innerText = currentUser.display_name
+        ? `${currentUser.display_name} (@${currentUser.username})`
+        : `@${currentUser.username}`;
+    }
+    if (currentMetaEl) {
+      currentMetaEl.innerText = "Your chats, notes, and memory are securely saved to your account.";
+    }
+    if (btnClaim) {
+      btnClaim.style.display = activeConversationId ? "block" : "none";
+    }
+  } else {
+    if (loggedInView) loggedInView.style.display = "none";
+    if (formView) formView.style.display = "block";
+    switchAuthTab(currentAuthTab || "login");
+  }
+}
+
+function switchAuthTab(tab) {
+  currentAuthTab = tab;
+  const tabLogin = document.getElementById("tab-auth-login");
+  const tabRegister = document.getElementById("tab-auth-register");
+  const groupDisplayName = document.getElementById("group-display-name");
+  const btnSubmit = document.getElementById("btn-auth-submit");
+  const errorMsg = document.getElementById("auth-error-msg");
+
+  if (errorMsg) {
+    errorMsg.style.display = "none";
+    errorMsg.innerText = "";
+  }
+
+  if (tab === "register") {
+    if (tabLogin) tabLogin.classList.remove("active");
+    if (tabRegister) tabRegister.classList.add("active");
+    if (groupDisplayName) groupDisplayName.style.display = "block";
+    if (btnSubmit) btnSubmit.innerText = "Create Account";
+  } else {
+    if (tabLogin) tabLogin.classList.add("active");
+    if (tabRegister) tabRegister.classList.remove("active");
+    if (groupDisplayName) groupDisplayName.style.display = "none";
+    if (btnSubmit) btnSubmit.innerText = "Log In";
+  }
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  const usernameInput = document.getElementById("auth-username");
+  const passwordInput = document.getElementById("auth-password");
+  const displayNameInput = document.getElementById("auth-display-name");
+  const errorMsg = document.getElementById("auth-error-msg");
+  const btnSubmit = document.getElementById("btn-auth-submit");
+
+  const username = usernameInput ? usernameInput.value.trim() : "";
+  const password = passwordInput ? passwordInput.value : "";
+  const displayName = displayNameInput ? displayNameInput.value.trim() : "";
+
+  if (!username || !password) {
+    if (errorMsg) {
+      errorMsg.innerText = "Username and password are required.";
+      errorMsg.style.display = "block";
+    }
+    return;
+  }
+
+  if (btnSubmit) btnSubmit.disabled = true;
+  if (errorMsg) {
+    errorMsg.style.display = "none";
+    errorMsg.innerText = "";
+  }
+
+  const endpoint = currentAuthTab === "register" ? "/api/auth/register" : "/api/auth/login";
+  const payload = { username, password };
+  if (currentAuthTab === "register" && displayName) {
+    payload.display_name = displayName;
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = data.detail || data.error || "Authentication failed.";
+      if (errorMsg) {
+        errorMsg.innerText = err;
+        errorMsg.style.display = "block";
+      }
+      return;
+    }
+
+    if (data.token) {
+      localStorage.setItem("merlin_auth_token", data.token);
+    }
+    currentUser = data.user;
+
+    // If there is an active guest conversation, claim it for this account
+    if (activeConversationId) {
+      try {
+        await fetch("/api/auth/claim_session", {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ session_id: activeConversationId })
+        });
+      } catch (claimErr) {
+        console.warn("Could not auto-claim current session:", claimErr);
+      }
+    }
+
+    closeModal("auth-modal");
+    showToast(`Welcome, ${currentUser.display_name || currentUser.username}!`, "success");
+    await checkAuthStatus();
+    await loadConversations();
+  } catch (err) {
+    if (errorMsg) {
+      errorMsg.innerText = `Network error: ${err.message}`;
+      errorMsg.style.display = "block";
+    }
+  } finally {
+    if (btnSubmit) btnSubmit.disabled = false;
+  }
+}
+
+async function handleLogout() {
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: authHeaders()
+    });
+  } catch (e) {
+    console.warn("Logout request failed:", e);
+  }
+  localStorage.removeItem("merlin_auth_token");
+  currentUser = null;
+  closeModal("auth-modal");
+  showToast("Logged out successfully. You are now in guest chat mode.", "info");
+  await checkAuthStatus();
+  await loadConversations();
+}
+
+async function claimActiveChat() {
+  if (!activeConversationId) {
+    showToast("No active conversation to claim.", "warning");
+    return;
+  }
+  try {
+    const res = await fetch("/api/auth/claim_session", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ session_id: activeConversationId })
+    });
+    const d = await res.json();
+    if (res.ok && d.success) {
+      showToast("Conversation attached to your account!", "success");
+      closeModal("auth-modal");
+      await loadConversations();
+    } else {
+      showToast(d.detail || "Could not claim conversation.", "danger");
+    }
+  } catch (err) {
+    showToast(`Error claiming conversation: ${err.message}`, "danger");
+  }
+}
+
+// ==========================================================================
 // APPLICATION BOOTSTRAP
 // ==========================================================================
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   initTheme();
+  await checkAuthStatus();
   loadConversations();
   loadTodos();
   loadModels();

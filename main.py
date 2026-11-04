@@ -24,18 +24,22 @@ from database import (
     add_knowledge,
     add_note,
     add_todo,
+    associate_session_with_user,
+    authenticate_user,
     book_calendar_event,
     cancel_calendar_event,
     check_calendar_availability,
     checkpoint_and_vacuum,
     clear_session_messages,
     create_session,
+    create_user,
     delete_calendar_event,
     delete_gap,
     delete_knowledge,
     delete_note,
     delete_session,
     delete_todo,
+    delete_user_token,
     get_all_knowledge,
     get_calendar_events,
     get_counts,
@@ -48,6 +52,7 @@ from database import (
     get_system_telemetry,
     get_todos,
     get_unresolved_gaps,
+    get_user_by_token,
     index_knowledge_embeddings,
     init_db,
     log_event,
@@ -225,6 +230,18 @@ def verify_api_key(authorization: str | None = Header(None)) -> bool:
     return True
 
 
+def extract_auth_user(authorization: str | None = None, request: Request | None = None) -> dict[str, Any] | None:
+    """Extracts authenticated user from Authorization Bearer header, query param, or cookie."""
+    token: str | None = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:].strip()
+    if not token and request is not None:
+        token = request.query_params.get("token") or request.cookies.get("merlin_auth_token")
+    if token:
+        return get_user_by_token(token)
+    return None
+
+
 # =====================================================================
 # Strict Pydantic Request Contracts
 # =====================================================================
@@ -363,6 +380,21 @@ class CalendarAvailabilityRequest(_BaseContract):
 
 class CalendarCancelRequest(_BaseContract):
     event_id: int | str = 0
+
+
+class RegisterRequest(_BaseContract):
+    username: str = ""
+    password: str = ""
+    display_name: str = ""
+
+
+class LoginRequest(_BaseContract):
+    username: str = ""
+    password: str = ""
+
+
+class AssociateSessionRequest(_BaseContract):
+    session_id: str = ""
 
 
 class ArgonAssimilateRequest(_BaseContract):
@@ -566,9 +598,22 @@ async def chat_completions(req: OpenAIChatRequest, request: Request, auth: bool 
 # =====================================================================
 
 @app.get("/api/chat/stream")
-async def chat_stream(request: Request, prompt: str, mode: str = "assistant", session_id: str = "default"):
+async def chat_stream(
+    request: Request,
+    prompt: str,
+    mode: str = "assistant",
+    session_id: str = "default",
+    authorization: str | None = Header(default=None),
+):
     if not prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
+
+    user = extract_auth_user(authorization, request)
+    if user:
+        try:
+            associate_session_with_user(session_id, user["id"])
+        except Exception:
+            pass
 
     eng = get_engine()
     queue: asyncio.Queue = asyncio.Queue()
@@ -697,6 +742,15 @@ async def websocket_chat_endpoint(websocket: WebSocket):
             if not prompt:
                 await websocket.send_json({"type": "error", "message": "Prompt cannot be empty."})
                 continue
+
+            auth_token = data.get("token")
+            if auth_token:
+                user = get_user_by_token(auth_token)
+                if user:
+                    try:
+                        associate_session_with_user(active_sid, user["id"])
+                    except Exception:
+                        pass
 
             mode = data.get("mode", "assistant")
             model = data.get("model")
@@ -892,22 +946,81 @@ def delete_calendar_event_route(data: CalendarCancelRequest):
 
 
 # =====================================================================
+# User Authentication & Per-User Chat Management Endpoints
+# =====================================================================
+
+@app.post("/api/auth/register")
+def register_route(data: RegisterRequest):
+    try:
+        user = create_user(data.username, data.password, display_name=data.display_name)
+        return {"success": True, "user": user, "token": user["token"]}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Registration failed: {e}") from e
+
+
+@app.post("/api/auth/login")
+def login_route(data: LoginRequest):
+    user = authenticate_user(data.username, data.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+    return {"success": True, "user": user, "token": user["token"]}
+
+
+@app.post("/api/auth/logout")
+def logout_route(request: Request, authorization: str | None = Header(default=None)):
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:].strip()
+    if not token and request is not None:
+        token = request.query_params.get("token") or request.cookies.get("merlin_auth_token")
+    if token:
+        delete_user_token(token)
+    return {"success": True, "logged_out": True}
+
+
+@app.get("/api/auth/me")
+def get_current_user_profile(request: Request, authorization: str | None = Header(default=None)):
+    user = extract_auth_user(authorization, request)
+    if user:
+        return {"logged_in": True, "user": user}
+    return {"logged_in": False, "user": None}
+
+
+@app.post("/api/auth/claim_session")
+def claim_session_route(data: AssociateSessionRequest, request: Request, authorization: str | None = Header(default=None)):
+    user = extract_auth_user(authorization, request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Must be logged in to claim a session.")
+    sid = data.session_id.strip()
+    if not sid:
+        raise HTTPException(status_code=400, detail="session_id is required.")
+    success = associate_session_with_user(sid, user["id"])
+    return {"success": success, "session_id": sid, "user_id": user["id"]}
+
+
+# =====================================================================
 # Sessions / Conversations Endpoints
 # =====================================================================
 
 @app.get("/api/conversations")
 @app.get("/api/sessions")
-def list_conversations():
-    return get_sessions()
+def list_conversations(request: Request, authorization: str | None = Header(default=None)):
+    user = extract_auth_user(authorization, request)
+    user_id = user["id"] if user else None
+    return get_sessions(user_id=user_id, guest_only=(user is None))
 
 
 @app.post("/api/conversations")
 @app.post("/api/sessions")
-def create_new_conversation(data: SessionCreateRequest):
+def create_new_conversation(data: SessionCreateRequest, request: Request, authorization: str | None = Header(default=None)):
+    user = extract_auth_user(authorization, request)
+    user_id = user["id"] if user else None
     title = (data.title or "New Chat").strip() or "New Chat"
     mode = (data.mode or "assistant").strip() or "assistant"
     cid = (data.id or "").strip() or None
-    return create_session(title=title, mode=mode, session_id=cid)
+    return create_session(title=title, mode=mode, session_id=cid, user_id=user_id)
 
 
 @app.get("/api/conversations/{conv_id}")

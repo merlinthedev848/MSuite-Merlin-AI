@@ -954,3 +954,177 @@ def test_api_knowledge_hybrid_and_reindex(client):
     assert len(search_resp.json()) >= 1
 
 
+# =====================================================================
+# 10. User Accounts, Authentication & Per-User Chat Isolation Tests
+# =====================================================================
+
+def test_user_registration_and_authentication(isolated_db):
+    """Verifies user registration, PBKDF2 hashing, and credential authentication."""
+    import database
+
+    # 1. Successful registration
+    user = database.create_user("alice_dev", "SecretPass123!", display_name="Alice D.")
+    assert user["username"] == "alice_dev"
+    assert user["display_name"] == "Alice D."
+    assert "id" in user
+    assert "token" in user
+
+    # 2. Authenticate with valid password
+    auth_user = database.authenticate_user("alice_dev", "SecretPass123!")
+    assert auth_user is not None
+    assert auth_user["id"] == user["id"]
+    assert auth_user["token"] != ""
+
+    # 3. Authenticate with invalid password
+    bad_auth = database.authenticate_user("alice_dev", "WrongPassword")
+    assert bad_auth is None
+
+    # 4. Duplicate username raises ValueError
+    import pytest
+    with pytest.raises(ValueError, match="already exists"):
+        database.create_user("alice_dev", "AnotherPass999")
+
+    # 5. Invalid username length/characters
+    with pytest.raises(ValueError, match="at least 3 characters"):
+        database.create_user("al", "validpass")
+
+    with pytest.raises(ValueError, match="alphanumeric characters"):
+        database.create_user("user space!", "validpass")
+
+
+def test_user_tokens_and_profile_extraction(isolated_db):
+    """Verifies token generation, retrieval, and revocation."""
+    import database
+
+    user = database.create_user("bob_test", "P@ssw0rd999")
+    token = user["token"]
+
+    # Verify retrieval
+    retrieved = database.get_user_by_token(token)
+    assert retrieved is not None
+    assert retrieved["id"] == user["id"]
+    assert retrieved["username"] == "bob_test"
+
+    # Revoke token
+    database.delete_user_token(token)
+    assert database.get_user_by_token(token) is None
+
+
+def test_api_auth_endpoints(client):
+    """Verifies FastAPI REST auth routes: register, login, profile check, and logout."""
+    # Register
+    reg_resp = client.post("/api/auth/register", json={
+        "username": "charlie_app",
+        "password": "SuperSecretPassword1",
+        "display_name": "Charlie Chaplin"
+    })
+    assert reg_resp.status_code == 200
+    data = reg_resp.json()
+    assert data["success"] is True
+    token = data["token"]
+    assert len(token) > 20
+
+    # Profile check with token header
+    me_resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me_resp.status_code == 200
+    me_data = me_resp.json()
+    assert me_data["logged_in"] is True
+    assert me_data["user"]["username"] == "charlie_app"
+
+    # Profile check without token
+    anon_resp = client.get("/api/auth/me")
+    assert anon_resp.status_code == 200
+    assert anon_resp.json()["logged_in"] is False
+
+    # Login
+    login_resp = client.post("/api/auth/login", json={
+        "username": "charlie_app",
+        "password": "SuperSecretPassword1"
+    })
+    assert login_resp.status_code == 200
+    new_token = login_resp.json()["token"]
+
+    # Bad login
+    bad_login = client.post("/api/auth/login", json={
+        "username": "charlie_app",
+        "password": "WrongPassword"
+    })
+    assert bad_login.status_code == 401
+
+    # Logout
+    logout_resp = client.post("/api/auth/logout", headers={"Authorization": f"Bearer {new_token}"})
+    assert logout_resp.status_code == 200
+
+    # Token should now be invalid
+    after_logout = client.get("/api/auth/me", headers={"Authorization": f"Bearer {new_token}"})
+    assert after_logout.json()["logged_in"] is False
+
+
+def test_per_user_and_guest_conversation_isolation(client):
+    """Verifies that conversations are strictly scoped per authenticated user or guest."""
+    # 1. Register User 1
+    u1_reg = client.post("/api/auth/register", json={"username": "user_one", "password": "Password123!"})
+    t1 = u1_reg.json()["token"]
+
+    # 2. Register User 2
+    u2_reg = client.post("/api/auth/register", json={"username": "user_two", "password": "Password123!"})
+    t2 = u2_reg.json()["token"]
+
+    # 3. User 1 creates conversation
+    c1 = client.post("/api/conversations", json={"title": "User 1 Chat"}, headers={"Authorization": f"Bearer {t1}"}).json()
+    assert c1["user_id"] is not None
+
+    # 4. User 2 creates conversation
+    c2 = client.post("/api/conversations", json={"title": "User 2 Chat"}, headers={"Authorization": f"Bearer {t2}"}).json()
+    assert c2["user_id"] is not None
+
+    # 5. Guest creates conversation (no auth header)
+    cguest = client.post("/api/conversations", json={"title": "Guest Chat"}).json()
+    assert cguest.get("user_id") is None
+
+    # 6. Verify User 1 sees only User 1's chat
+    list1 = client.get("/api/conversations", headers={"Authorization": f"Bearer {t1}"}).json()
+    ids1 = [c["id"] for c in list1]
+    assert c1["id"] in ids1
+    assert c2["id"] not in ids1
+    assert cguest["id"] not in ids1
+
+    # 7. Verify User 2 sees only User 2's chat
+    list2 = client.get("/api/conversations", headers={"Authorization": f"Bearer {t2}"}).json()
+    ids2 = [c["id"] for c in list2]
+    assert c2["id"] in ids2
+    assert c1["id"] not in ids2
+    assert cguest["id"] not in ids2
+
+    # 8. Verify Guest sees only Guest chat
+    list_guest = client.get("/api/conversations").json()
+    ids_guest = [c["id"] for c in list_guest]
+    assert cguest["id"] in ids_guest
+    assert c1["id"] not in ids_guest
+    assert c2["id"] not in ids_guest
+
+    # 9. User 1 claims guest session
+    claim_resp = client.post("/api/auth/claim_session", json={"session_id": cguest["id"]}, headers={"Authorization": f"Bearer {t1}"})
+    assert claim_resp.status_code == 200
+    assert claim_resp.json()["success"] is True
+
+    # 10. User 1 now owns the guest chat as well
+    list1_after = client.get("/api/conversations", headers={"Authorization": f"Bearer {t1}"}).json()
+    ids1_after = [c["id"] for c in list1_after]
+    assert cguest["id"] in ids1_after
+    assert c1["id"] in ids1_after
+
+
+def test_live_ai_guest_and_user_chat_streaming(client):
+    """Verifies that guest chats stream live generated tokens (zero static replies)."""
+    # Guest chat stream
+    resp = client.get("/api/chat/stream?prompt=Calculate+2%2B2&session_id=guest-live-test")
+    assert resp.status_code == 200
+    content = resp.text
+    assert "data:" in content
+    # Ensure it's not a canned greeting
+    assert "Hey there! Merlin at your service" not in content
+    assert "All systems are green" not in content
+
+
+
