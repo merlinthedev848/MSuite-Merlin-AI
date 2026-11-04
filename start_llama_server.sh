@@ -42,14 +42,16 @@ if [ -z "$THREADS" ]; then
 fi
 CTX_SIZE=${CTX_SIZE:-4096}
 N_GPU_LAYERS=${N_GPU_LAYERS:-0}
+HOST=${HOST:-127.0.0.1}
+PORT=${PORT:-8080}
 
 if [ "$N_GPU_LAYERS" == "0" ] && command -v nvidia-smi &> /dev/null; then
     N_GPU_LAYERS=99
 fi
 
-# Check if llama-server is already actively running on port 8080
-if curl -s http://127.0.0.1:8080/health | grep -q "ok" 2>/dev/null; then
-    echo "[*] llama-server is already running on http://127.0.0.1:8080 (healthy)."
+# Check if llama-server is already actively running on target port
+if curl -s "http://${HOST}:${PORT}/health" | grep -q "ok" 2>/dev/null; then
+    echo "[*] llama-server is already running on http://${HOST}:${PORT} (healthy)."
     exit 0
 fi
 
@@ -75,16 +77,21 @@ if [ -z "$SERVER_BIN" ]; then
     cd "$DIR"
 fi
 
-echo "[*] Launching C++ llama-server on port 8080 ($THREADS threads, ctx $CTX_SIZE, GPU layers: $N_GPU_LAYERS)..."
+EXTRA_ARGS=()
+if [ "$DISABLE_FLASH_ATTN" != "1" ]; then
+    EXTRA_ARGS+=(--flash-attn)
+fi
+
+echo "[*] Launching C++ llama-server on ${HOST}:${PORT} ($THREADS threads, ctx $CTX_SIZE, GPU layers: $N_GPU_LAYERS)..."
 exec "$SERVER_BIN" \
     -m "$MODEL" \
-    --host 127.0.0.1 \
-    --port 8080 \
+    --host "$HOST" \
+    --port "$PORT" \
     -c "$CTX_SIZE" \
     -t "$THREADS" \
     -b 512 \
     -ub 256 \
-    --flash-attn \
+    "${EXTRA_ARGS[@]}" \
     -ctk q8_0 \
     -ctv q8_0 \
     -ngl "$N_GPU_LAYERS" \

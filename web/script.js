@@ -32,10 +32,18 @@ function showToast(message, type = "info") {
   const toast = document.createElement("div");
   toast.className = `toast-item toast-${type}`;
   toast.innerText = message;
+  toast.setAttribute("role", "alert");
+  toast.title = "Click to dismiss";
+  toast.onclick = () => {
+    toast.classList.add("toast-fade-out");
+    setTimeout(() => toast.remove(), 150);
+  };
   container.appendChild(toast);
   setTimeout(() => {
-    toast.classList.add("toast-fade-out");
-    setTimeout(() => toast.remove(), 250);
+    if (toast.parentElement) {
+      toast.classList.add("toast-fade-out");
+      setTimeout(() => toast.remove(), 250);
+    }
   }, 3600);
 }
 
@@ -169,15 +177,17 @@ function renderMarkdown(rawText) {
     return `\x00INLINECODE_${idx}\x00`;
   });
 
-  // 3. Apply math and markdown formatting only to non-code prose
+  // 3. Apply math, links, and markdown formatting only to non-code prose
   txt = txt.replace(/\$\$([\s\S]*?)\$\$/g, '<div class="math-display">$1</div>');
   txt = txt.replace(/\$([^\$\n]+)\$/g, '<span class="math-inline">$1</span>');
+  txt = txt.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--accent-primary);text-decoration:underline;">$1</a>');
   txt = txt.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   txt = txt.replace(/\*([^*\n]+)\*/g, '<i>$1</i>');
   txt = txt.replace(/^### (.*$)/gim, '<h3 style="margin:14px 0 6px 0;font-size:1.05rem;">$1</h3>');
   txt = txt.replace(/^## (.*$)/gim, '<h2 style="margin:16px 0 8px 0;font-size:1.2rem;">$1</h2>');
   txt = txt.replace(/^# (.*$)/gim, '<h1 style="margin:20px 0 10px 0;font-size:1.35rem;">$1</h1>');
   txt = txt.replace(/^&gt; (.*$)/gim, '<blockquote>$1</blockquote>');
+  txt = txt.replace(/^[•\-\*]\s+(.*$)/gim, '• $1');
   txt = txt.replace(/\n/g, "<br>");
 
   // 4. Restore inline code and fenced code blocks untouched
@@ -186,9 +196,41 @@ function renderMarkdown(rawText) {
   return txt;
 }
 
+function copyToClipboard(text, onSuccess) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      if (onSuccess) onSuccess();
+    }).catch(() => {
+      fallbackCopyToClipboard(text, onSuccess);
+    });
+  } else {
+    fallbackCopyToClipboard(text, onSuccess);
+  }
+}
+
+function fallbackCopyToClipboard(text, onSuccess) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  ta.style.top = "-9999px";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    document.execCommand("copy");
+    if (onSuccess) onSuccess();
+  } catch (err) {
+    console.warn("Fallback copy failed:", err);
+  } finally {
+    document.body.removeChild(ta);
+  }
+}
+
 function copyCode(btn) {
   const pre = btn.closest(".code-container").querySelector("pre code");
-  navigator.clipboard.writeText(pre.innerText).then(() => {
+  if (!pre) return;
+  copyToClipboard(pre.innerText, () => {
     btn.innerHTML = "✓ Copied";
     setTimeout(() => {
       btn.innerHTML = `<svg style="width:13px;height:13px;fill:currentColor;" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy`;
@@ -249,12 +291,23 @@ async function createNewChat() {
 }
 
 async function switchConversation(convId) {
+  if (activeEventSource) {
+    stopGeneration();
+  }
   activeConversationId = convId;
   loadConversations();
-  const res = await fetch(`/api/conversations/${encodeURIComponent(convId)}`);
-  const data = await res.json();
-  if (data.conversation) {
-    showConversationMessages(convId, data.messages || []);
+  try {
+    const res = await fetch(`/api/conversations/${encodeURIComponent(convId)}`);
+    if (!res.ok) {
+      showToast("Could not load conversation.", "danger");
+      return;
+    }
+    const data = await res.json();
+    if (data.conversation) {
+      showConversationMessages(convId, data.messages || []);
+    }
+  } catch (err) {
+    showToast("Network error loading conversation.", "danger");
   }
 }
 
@@ -389,7 +442,7 @@ function appendMessageActions(bubbleEl, text) {
 function copyMessageText(btn) {
   const bubble = btn.closest(".message-block").querySelector(".bubble-content");
   if (bubble) {
-    navigator.clipboard.writeText(bubble.innerText).then(() => {
+    copyToClipboard(bubble.innerText, () => {
       const span = btn.querySelector("span");
       if (span) span.innerText = "Copied!";
       setTimeout(() => { if (span) span.innerText = "Copy"; }, 2000);
@@ -552,8 +605,13 @@ function handleFileUpload(e) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: file.name, data: base64Data })
       });
-      const d = await res.json();
-      if (d.success) {
+      let d = {};
+      try {
+        d = await res.json();
+      } catch (_) {
+        d = { detail: `Upload error (HTTP ${res.status})` };
+      }
+      if (res.ok && d.success) {
         attachedFile = d.file;
         document.getElementById("attached-file-name").innerText = `${file.name} (${d.file.size_str})`;
         document.getElementById("attachment-tray").style.display = "flex";
@@ -564,7 +622,7 @@ function handleFileUpload(e) {
         document.getElementById("btn-send").disabled = false;
         showToast(`Attached ${file.name} (${d.file.category})`, "success");
       } else {
-        showToast(d.error || d.detail || "File upload failed", "danger");
+        showToast(d.detail || d.error || "File upload failed", "danger");
       }
     } catch (err) {
       showToast("Error uploading file", "danger");
@@ -748,16 +806,31 @@ async function deleteTodoItem(id) {
   loadTodos();
 }
 
-async function loadNotes() {
+let notesSearchTimer = null;
+
+function searchNotesDebounced() {
+  clearTimeout(notesSearchTimer);
+  notesSearchTimer = setTimeout(() => {
+    const q = document.getElementById("notes-search-input")?.value?.trim() || "";
+    loadNotes(q);
+  }, 220);
+}
+
+async function loadNotes(query = "") {
   try {
-    const res = await fetch("/api/notes");
+    const url = query
+      ? `/api/notes/search?q=${encodeURIComponent(query)}&limit=50`
+      : "/api/notes";
+    const res = await fetch(url);
     const notes = await res.json();
     const container = document.getElementById("notes-list-container");
     if (!container) return;
 
     notesById.clear();
     if (!notes.length) {
-      container.innerHTML = '<div class="empty-list-msg">No technical notes saved yet.</div>';
+      container.innerHTML = query
+        ? `<div class="empty-list-msg">No notes matching "${escapeHtml(query)}".</div>`
+        : '<div class="empty-list-msg">No technical notes saved yet.</div>';
       return;
     }
 
@@ -1516,6 +1589,32 @@ async function assimilateArgonToMemory() {
   }
 }
 
+async function runDatabaseVacuum() {
+  const btn = document.getElementById("btn-vacuum-db");
+  const origText = btn ? btn.innerText : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = "Vacuuming...";
+  }
+  try {
+    const res = await fetch("/api/maintenance/vacuum", { method: "POST" });
+    const data = await res.json();
+    if (res.ok && data.status === "ok") {
+      showToast("Database optimized and WAL checkpointed successfully.", "success");
+      loadTelemetry();
+    } else {
+      showToast("Vacuum failed: " + (data.detail || "Unknown error"), "error");
+    }
+  } catch (err) {
+    showToast("Error optimizing database: " + err.message, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = origText;
+    }
+  }
+}
+
 // ==========================================================================
 // APPLICATION BOOTSTRAP
 // ==========================================================================
@@ -1524,6 +1623,27 @@ window.addEventListener("DOMContentLoaded", () => {
   loadConversations();
   loadTodos();
   loadModels();
+
+  // Global Keyboard Shortcuts
+  window.addEventListener("keydown", (e) => {
+    // Ctrl+N or Cmd+N: New Chat
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") {
+      const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : "";
+      if (tag !== "input" && tag !== "textarea") {
+        e.preventDefault();
+        createNewChat();
+      }
+    }
+    // Escape: Close open modals
+    if (e.key === "Escape") {
+      const openModals = document.querySelectorAll(".modal-backdrop");
+      openModals.forEach(m => {
+        if (m.style.display === "flex" && m.id) {
+          closeModal(m.id);
+        }
+      });
+    }
+  });
 
   // Close modals when clicking outside modal box (using closeModal so timers are cleaned up)
   window.addEventListener("click", (e) => {

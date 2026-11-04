@@ -6,6 +6,7 @@ import re
 import struct
 import threading
 import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -21,6 +22,7 @@ from database import (
     add_knowledge,
     add_note,
     add_todo,
+    checkpoint_and_vacuum,
     clear_session_messages,
     create_session,
     delete_gap,
@@ -43,6 +45,7 @@ from database import (
     log_event,
     save_message,
     search_knowledge,
+    search_notes,
     toggle_todo,
     update_knowledge,
     update_note,
@@ -162,6 +165,16 @@ else:
     )
 
 
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Enforces essential security headers across all HTTP responses."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
 def format_bytes(size: float) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if size < 1024.0:
@@ -207,6 +220,9 @@ class OpenAIChatRequest(_BaseContract):
     stream: bool | None = False
     temperature: float | None = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=1024, ge=1, le=32768)
+    top_p: float | None = Field(default=0.9, ge=0.0, le=1.0)
+    frequency_penalty: float | None = Field(default=0.0, ge=-2.0, le=2.0)
+    presence_penalty: float | None = Field(default=0.0, ge=-2.0, le=2.0)
     stop: Any | None = None
 
 
@@ -382,6 +398,13 @@ async def chat_completions(req: OpenAIChatRequest, request: Request, auth: bool 
         stop_sentinel = object()
         abort_event = threading.Event()
 
+        def safe_put(item):
+            if not loop.is_closed():
+                try:
+                    loop.call_soon_threadsafe(queue.put_nowait, item)
+                except RuntimeError:
+                    pass
+
         def openai_worker():
             try:
                 for delta_chunk in eng.generate_chat_completion_stream(
@@ -389,16 +412,17 @@ async def chat_completions(req: OpenAIChatRequest, request: Request, auth: bool 
                     temperature=temp,
                     max_tokens=max_tok,
                     stop=req.stop,
+                    abort_event=abort_event,
                 ):
                     if abort_event.is_set():
                         break
                     while queue.qsize() > 400 and not abort_event.is_set():
                         time.sleep(0.01)
-                    loop.call_soon_threadsafe(queue.put_nowait, delta_chunk)
+                    safe_put(delta_chunk)
             except Exception as e:
                 log_event("v1_worker_error", f"OpenAI stream worker error: {e}", "danger")
             finally:
-                loop.call_soon_threadsafe(queue.put_nowait, stop_sentinel)
+                safe_put(stop_sentinel)
 
         threading.Thread(target=openai_worker, daemon=True).start()
 
@@ -410,21 +434,34 @@ async def chat_completions(req: OpenAIChatRequest, request: Request, auth: bool 
                         break
 
                     try:
-                        delta = await asyncio.wait_for(queue.get(), timeout=0.08)
+                        delta = await asyncio.wait_for(queue.get(), timeout=0.02)
                     except TimeoutError:
                         continue
 
                     if delta is stop_sentinel:
                         break
 
-                    chunk_obj = {
-                        "id": chat_id,
-                        "object": "chat.completion.chunk",
-                        "created": created_ts,
-                        "model": model_name,
-                        "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}],
-                    }
-                    yield f"data: {json.dumps(chunk_obj)}\n\n"
+                    batch = [delta]
+                    stop_reached = False
+                    while not queue.empty() and len(batch) < 32:
+                        nxt = queue.get_nowait()
+                        if nxt is stop_sentinel:
+                            stop_reached = True
+                            break
+                        batch.append(nxt)
+
+                    for d in batch:
+                        chunk_obj = {
+                            "id": chat_id,
+                            "object": "chat.completion.chunk",
+                            "created": created_ts,
+                            "model": model_name,
+                            "choices": [{"index": 0, "delta": {"content": d}, "finish_reason": None}],
+                        }
+                        yield f"data: {json.dumps(chunk_obj)}\n\n"
+
+                    if stop_reached:
+                        break
 
                 final_chunk = {
                     "id": chat_id,
@@ -496,6 +533,13 @@ async def chat_stream(request: Request, prompt: str, mode: str = "assistant", se
     stop_sentinel = object()
     abort_event = threading.Event()
 
+    def safe_put(item):
+        if not loop.is_closed():
+            try:
+                loop.call_soon_threadsafe(queue.put_nowait, item)
+            except RuntimeError:
+                pass
+
     def stream_worker():
         try:
             for chunk in eng.generate_stream(prompt, session_id=session_id, mode=mode):
@@ -503,11 +547,11 @@ async def chat_stream(request: Request, prompt: str, mode: str = "assistant", se
                     break
                 while queue.qsize() > 400 and not abort_event.is_set():
                     time.sleep(0.01)
-                loop.call_soon_threadsafe(queue.put_nowait, chunk)
+                safe_put(chunk)
         except Exception as e:
             log_event("stream_worker_error", f"Stream worker exception: {e}", "danger")
         finally:
-            loop.call_soon_threadsafe(queue.put_nowait, stop_sentinel)
+            safe_put(stop_sentinel)
 
     threading.Thread(target=stream_worker, daemon=True).start()
 
@@ -521,14 +565,27 @@ async def chat_stream(request: Request, prompt: str, mode: str = "assistant", se
                     break
 
                 try:
-                    chunk = await asyncio.wait_for(queue.get(), timeout=0.08)
+                    chunk = await asyncio.wait_for(queue.get(), timeout=0.02)
                 except TimeoutError:
                     continue
 
                 if chunk is stop_sentinel:
                     break
 
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                batch = [chunk]
+                stop_reached = False
+                while not queue.empty() and len(batch) < 32:
+                    nxt = queue.get_nowait()
+                    if nxt is stop_sentinel:
+                        stop_reached = True
+                        break
+                    batch.append(nxt)
+
+                for c in batch:
+                    yield f"data: {json.dumps({'chunk': c})}\n\n"
+
+                if stop_reached:
+                    break
 
             yield "data: [DONE]\n\n"
         except (BrokenPipeError, ConnectionResetError):
@@ -751,6 +808,17 @@ def delete_note_route(data: IdRequest):
     return {"success": delete_note(nid)}
 
 
+@app.get("/api/notes/search")
+def search_notes_route(q: str = "", limit: int = 50):
+    safe_limit = max(1, min(limit, 200))
+    return search_notes(q, limit=safe_limit)
+
+
+@app.post("/api/maintenance/vacuum")
+def vacuum_db_route():
+    return checkpoint_and_vacuum()
+
+
 # =====================================================================
 # Knowledge & Gaps
 # =====================================================================
@@ -829,7 +897,7 @@ def upload_file(data: FileUploadRequest):
     name = data.name.strip() or "upload.bin"
     clean_name = _SAFE_FILENAME_RE.sub("_", os.path.basename(name)) or "upload.bin"
     file_ext = os.path.splitext(clean_name)[1].lower()
-    unique_id = f"{int(time.time())}_{clean_name}"
+    unique_id = f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{clean_name}"
     file_path = os.path.join(UPLOADS_DIR, unique_id)
 
     raw_b64 = data.data
@@ -876,7 +944,16 @@ def upload_file(data: FileUploadRequest):
             try:
                 import pypdf
                 reader = pypdf.PdfReader(file_path)
-                extracted_text = "\n".join([page.extract_text() or "" for page in reader.pages])
+                pages_text: list[str] = []
+                max_pages = min(len(reader.pages), 100)
+                total_chars = 0
+                for i in range(max_pages):
+                    txt = reader.pages[i].extract_text() or ""
+                    pages_text.append(txt)
+                    total_chars += len(txt)
+                    if total_chars > 80000:
+                        break
+                extracted_text = "\n".join(pages_text)
             except Exception:
                 pass
     elif file_ext in image_exts:

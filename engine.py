@@ -18,7 +18,7 @@ from database import (
     save_chat_message,
     search_knowledge,
 )
-from sync_teacher import run_sync
+from sync_teacher import load_saved_api_key, resolve_teacher_provider, run_sync
 
 try:
     import requests
@@ -436,8 +436,10 @@ class InferenceEngine:
         """Classifies the conversation domain (coder, reasoning, assistant)."""
         text = prompt.lower()
         code_phrases = (
-            "def ", "class ", "import ", "const ", "```", "c++",
+            "def ", "class ", "import ", "const ", "```", "c++", "fn ", "pub fn",
             "write code", "how to code", "unit test", "stack trace", "select * from",
+            "dockerfile", "yaml", "json", "fastapi", "pytest", "asyncio", "kernel",
+            "systemd", "nftables", "wireguard", "pjsip", "asterisk", "proxmox",
         )
         if any(phrase in text for phrase in code_phrases):
             return "coder"
@@ -448,6 +450,7 @@ class InferenceEngine:
         reasoning_signals = (
             "step by step", "architecture", "tradeoffs", "design pattern", "analyze",
             "compare", "optimize", "benchmark", "pros and cons", "deep dive", "proof",
+            "mathematical", "derivation", "root cause", "postmortem", "memory leak",
         )
         if any(sig in text for sig in reasoning_signals):
             return "reasoning"
@@ -456,6 +459,10 @@ class InferenceEngine:
 
     def auto_select_optimal_model(self, intent: str) -> None:
         """Ensures the optimal available model is active based on detected intent."""
+        if self.backend == "llama-server":
+            # llama-server runs as a dedicated external daemon with fixed model weights loaded
+            return
+
         if self.backend == "ollama":
             ollama_ok, models = self._probe_ollama(timeout=0.3)
             if ollama_ok and len(models) > 1:
@@ -509,7 +516,7 @@ class InferenceEngine:
         max_tokens: int = 1024,
         stop: Any | None = None,
         abort_event: threading.Event | None = None,
-        timeout: tuple[float, float] = (3.0, 120.0),
+        timeout: float | tuple[float, float] = (3.0, 120.0),
     ) -> Iterator[str]:
         """Streams NDJSON token chunks from Ollama's native /api/chat endpoint."""
         if abort_event is None:
@@ -518,6 +525,13 @@ class InferenceEngine:
         stop_list = stop if isinstance(stop, list) else ([stop] if stop else ["<|im_end|>", "<|endoftext|>", "</s>"])
         keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "5m")
         num_ctx = int(os.getenv("N_CTX", "4096"))
+
+        if isinstance(timeout, (tuple, list)):
+            req_timeout: float | tuple[float, float] = (float(timeout[0]), float(timeout[1]))
+            urllib_timeout: float = float(timeout[1])
+        else:
+            req_timeout = float(timeout)
+            urllib_timeout = float(timeout)
 
         payload_dict = {
             "model": self.active_model_name,
@@ -543,10 +557,10 @@ class InferenceEngine:
                     json=payload_dict,
                     headers={"Content-Type": "application/json", "User-Agent": "Merlin-AI/1.0"},
                     stream=True,
-                    timeout=timeout,
+                    timeout=req_timeout,
                 )
                 r.raise_for_status()
-                for line in r.iter_lines(decode_unicode=True):
+                for line in r.iter_lines(chunk_size=1, decode_unicode=True):
                     if abort_event.is_set():
                         r.close()
                         break
@@ -580,35 +594,23 @@ class InferenceEngine:
             headers={"Content-Type": "application/json", "User-Agent": "Merlin-AI/1.0"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=timeout[1]) as resp:
-                buf = b""
+            with urllib.request.urlopen(req, timeout=urllib_timeout) as resp:
                 while not abort_event.is_set():
-                    chunk = resp.read(256)
-                    if not chunk:
-                        if buf:
-                            try:
-                                chunk_json = json.loads(buf.decode("utf-8", errors="replace").strip())
-                                delta = chunk_json.get("message", {}).get("content", "")
-                                if delta:
-                                    yield delta
-                            except ValueError:
-                                pass
+                    raw_line = resp.readline()
+                    if not raw_line:
                         break
-                    buf += chunk
-                    while b"\n" in buf:
-                        line, buf = buf.split(b"\n", 1)
-                        line_str = line.decode("utf-8", errors="replace").strip()
-                        if not line_str:
-                            continue
-                        try:
-                            chunk_json = json.loads(line_str)
-                            delta = chunk_json.get("message", {}).get("content", "")
-                            if delta:
-                                yield delta
-                            if chunk_json.get("done", False):
-                                return
-                        except ValueError:
-                            continue
+                    line_str = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line_str:
+                        continue
+                    try:
+                        chunk_json = json.loads(line_str)
+                        delta = chunk_json.get("message", {}).get("content", "")
+                        if delta:
+                            yield delta
+                        if chunk_json.get("done", False):
+                            return
+                    except ValueError:
+                        continue
         except Exception as e:
             if not abort_event.is_set():
                 yield f"[Error querying Ollama daemon via urllib: {e}]"
@@ -617,10 +619,17 @@ class InferenceEngine:
         self,
         payload_dict: dict[str, Any],
         abort_event: threading.Event,
-        timeout: tuple[float, float] = (3.0, 120.0),
+        timeout: float | tuple[float, float] = (3.0, 120.0),
     ) -> Iterator[str]:
         """Streams SSE tokens from llama-server with buffered line parsing."""
         url = f"{self.llama_server_url}/v1/chat/completions"
+
+        if isinstance(timeout, (tuple, list)):
+            req_timeout: float | tuple[float, float] = (float(timeout[0]), float(timeout[1]))
+            urllib_timeout: float = float(timeout[1])
+        else:
+            req_timeout = float(timeout)
+            urllib_timeout = float(timeout)
 
         if HAS_REQUESTS and self._http_session:
             r = None
@@ -630,10 +639,10 @@ class InferenceEngine:
                     json=payload_dict,
                     headers={"Content-Type": "application/json", "User-Agent": "Merlin-AI/1.0"},
                     stream=True,
-                    timeout=timeout,
+                    timeout=req_timeout,
                 )
                 r.raise_for_status()
-                for line in r.iter_lines(decode_unicode=True):
+                for line in r.iter_lines(chunk_size=1, decode_unicode=True):
                     if abort_event.is_set():
                         r.close()
                         break
@@ -669,42 +678,131 @@ class InferenceEngine:
             headers={"Content-Type": "application/json", "User-Agent": "Merlin-AI/1.0"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=timeout[1]) as resp:
-                buf = b""
+            with urllib.request.urlopen(req, timeout=urllib_timeout) as resp:
                 while not abort_event.is_set():
-                    chunk = resp.read(256)
-                    if not chunk:
-                        if buf:
-                            line_str = buf.decode("utf-8", errors="replace").strip()
-                            if line_str.startswith("data: ") and line_str[6:].strip() != "[DONE]":
-                                try:
-                                    chunk_json = json.loads(line_str[6:].strip())
-                                    delta = chunk_json["choices"][0]["delta"].get("content", "")
-                                    if delta:
-                                        yield delta
-                                except (ValueError, KeyError, IndexError):
-                                    pass
+                    raw_line = resp.readline()
+                    if not raw_line:
                         break
-                    buf += chunk
-                    while b"\n" in buf:
-                        line, buf = buf.split(b"\n", 1)
-                        line_str = line.decode("utf-8", errors="replace").strip()
-                        if not line_str:
-                            continue
-                        if line_str.startswith("data: "):
-                            data_content = line_str[6:].strip()
-                            if data_content == "[DONE]":
-                                return
-                            try:
-                                chunk_json = json.loads(data_content)
-                                delta = chunk_json["choices"][0]["delta"].get("content", "")
-                                if delta:
-                                    yield delta
-                            except (ValueError, KeyError, IndexError):
-                                continue
+                    line_str = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line_str or not line_str.startswith("data: "):
+                        continue
+                    data_content = line_str[6:].strip()
+                    if data_content == "[DONE]":
+                        return
+                    try:
+                        chunk_json = json.loads(data_content)
+                        delta = chunk_json["choices"][0]["delta"].get("content", "")
+                        if delta:
+                            yield delta
+                    except (ValueError, KeyError, IndexError):
+                        continue
         except Exception as e:
             if not abort_event.is_set():
                 yield f"[Error querying llama-server: {e}]"
+
+    def _has_teacher_api_key(self) -> bool:
+        """Checks if a valid Teacher/Copilot API key (Gemini, Groq, OpenRouter, OpenAI) is configured."""
+        try:
+            return bool(load_saved_api_key())
+        except Exception:
+            return False
+
+    def _stream_from_teacher_ai(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        abort_event: threading.Event | None = None,
+    ) -> Iterator[str]:
+        """Streams live completions from configured Teacher AI copilot when local model is offline."""
+        if abort_event is None:
+            abort_event = threading.Event()
+
+        api_key = load_saved_api_key()
+        if not api_key:
+            yield "No Teacher AI key found. Configure GEMINI_API_KEY, GROQ_API_KEY, or OPENAI_API_KEY."
+            return
+
+        endpoint, model = resolve_teacher_provider(api_key)
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Merlin-AI/1.0",
+            "Authorization": f"Bearer {api_key}",
+        }
+        if "openrouter.ai" in endpoint:
+            headers["HTTP-Referer"] = "http://localhost:5000"
+            headers["X-Title"] = "Merlin AI Copilot"
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+
+        if HAS_REQUESTS and self._http_session:
+            r = None
+            try:
+                r = self._http_session.post(
+                    endpoint,
+                    json=payload,
+                    headers=headers,
+                    stream=True,
+                    timeout=(5.0, 60.0),
+                )
+                r.raise_for_status()
+                for line in r.iter_lines(chunk_size=1, decode_unicode=True):
+                    if abort_event.is_set():
+                        r.close()
+                        break
+                    if not line:
+                        continue
+                    if line.startswith("data: "):
+                        data_content = line[6:].strip()
+                        if data_content == "[DONE]":
+                            break
+                        try:
+                            chunk_json = json.loads(data_content)
+                            delta = chunk_json["choices"][0]["delta"].get("content", "")
+                            if delta:
+                                yield delta
+                        except (ValueError, KeyError, IndexError):
+                            continue
+            except Exception as e:
+                if not abort_event.is_set():
+                    yield f"[Teacher AI Stream Error: {e}]"
+            finally:
+                if r is not None:
+                    try:
+                        r.close()
+                    except Exception:
+                        pass
+        else:
+            try:
+                data_bytes = json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(endpoint, data=data_bytes, headers=headers)
+                with urllib.request.urlopen(req, timeout=60.0) as resp:
+                    while not abort_event.is_set():
+                        raw_line = resp.readline()
+                        if not raw_line:
+                            break
+                        line = raw_line.decode("utf-8", errors="replace").strip()
+                        if not line or not line.startswith("data: "):
+                            continue
+                        data_content = line[6:].strip()
+                        if data_content == "[DONE]":
+                            break
+                        try:
+                            chunk_json = json.loads(data_content)
+                            delta = chunk_json["choices"][0]["delta"].get("content", "")
+                            if delta:
+                                yield delta
+                        except (ValueError, KeyError, IndexError):
+                            continue
+            except Exception as e:
+                if not abort_event.is_set():
+                    yield f"[Teacher AI Stream Error: {e}]"
 
     def generate_stream(self, prompt: str, session_id: str = "default", mode: str = "assistant") -> Iterator[str]:
         """
@@ -824,23 +922,31 @@ class InferenceEngine:
                     response_buffer.append(err)
                     yield err
 
+            elif self._has_teacher_api_key():
+                log_event("inference_stream", "Local model offline; routing live inference to Teacher AI copilot", "info")
+                for chunk in self._stream_from_teacher_ai(
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    abort_event=abort_event,
+                ):
+                    if abort_event.is_set():
+                        break
+                    response_buffer.append(chunk)
+                    yield chunk
+
             else:
                 msg = (
                     "⚠️ **Offline Intelligence Standby**\n\n"
                     "The local web dashboard and SQLite memory system are fully active.\n\n"
-                    "**To activate the local AI model:**\n"
-                    "1. **Option A (Ollama - Recommended):** Install Ollama and run `ollama run qwen2.5-coder:1.5b`.\n"
-                    "2. **Option B (Native llama.cpp):** Run `./download_model.sh` and `./start_llama_server.sh`.\n"
-                    "Once started, Merlin AI automatically detects the engine with zero restart needed."
+                    "**To activate live AI inference:**\n"
+                    "1. **Option A (Local Ollama - Recommended):** Install Ollama and run `ollama run qwen2.5-coder:1.5b`.\n"
+                    "2. **Option B (Teacher AI Copilot):** Configure your `GEMINI_API_KEY`, `GROQ_API_KEY`, or `OPENAI_API_KEY` in `.env` or click Sync Knowledge to stream live immediately.\n"
+                    "3. **Option C (Native llama.cpp):** Run `./download_model.sh` and `./start_llama_server.sh`.\n\n"
+                    "Merlin AI automatically detects the active backend in real time with zero restart required."
                 )
-                words = msg.split(" ")
-                for i, word in enumerate(words):
-                    if abort_event.is_set():
-                        break
-                    chunk = word + (" " if i < len(words) - 1 else "")
-                    response_buffer.append(chunk)
-                    yield chunk
-                    time.sleep(0.008)
+                response_buffer.append(msg)
+                yield msg
 
         finally:
             if needs_lock and acquired:
@@ -891,12 +997,14 @@ class InferenceEngine:
         temperature: float = 0.7,
         max_tokens: int = 1024,
         stop: Any | None = None,
+        abort_event: threading.Event | None = None,
     ) -> Iterator[str]:
         """OpenAI-compatible streaming generator for /v1/chat/completions."""
         if not self._init_done_event.is_set():
             self._init_done_event.wait(timeout=30.0)
 
-        abort_event = threading.Event()
+        if abort_event is None:
+            abort_event = threading.Event()
         stop_tokens = stop if isinstance(stop, list) else (["<|im_end|>", "<|endoftext|>", "</s>"] if not stop else [stop])
 
         if self.backend == "offline_standby":
@@ -940,18 +1048,30 @@ class InferenceEngine:
                     stop=stop_tokens,
                 )
                 for chunk in res:
+                    if abort_event.is_set():
+                        break
                     delta = chunk["choices"][0]["delta"].get("content", "")
                     if delta:
                         yield delta
             except Exception as e:
-                yield f"[Inference error: {e}]"
+                if not abort_event.is_set():
+                    yield f"[Inference error: {e}]"
             finally:
                 self._inference_lock.release()
             return
 
+        if self._has_teacher_api_key():
+            yield from self._stream_from_teacher_ai(
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                abort_event=abort_event,
+            )
+            return
+
         yield (
-            "Merlin AI is in offline standby mode. No local model weights or Ollama instances are detected. "
-            "Please start Ollama or run `./download_model.sh`."
+            "Merlin AI is in offline standby mode. No local model weights, Ollama instances, or Teacher API keys are detected. "
+            "Please start Ollama, configure an API key in .env, or run `./download_model.sh`."
         )
 
     def generate_chat_completion(
@@ -961,9 +1081,24 @@ class InferenceEngine:
         max_tokens: int = 1024,
         stream: bool = False,
         stop: Any | None = None,
+        abort_event: threading.Event | None = None,
     ):
         """OpenAI-compatible handler for /v1/chat/completions."""
         if stream:
-            return self.generate_chat_completion_stream(messages, temperature=temperature, max_tokens=max_tokens, stop=stop)
+            return self.generate_chat_completion_stream(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stop=stop,
+                abort_event=abort_event,
+            )
 
-        return "".join(self.generate_chat_completion_stream(messages, temperature=temperature, max_tokens=max_tokens, stop=stop))
+        return "".join(
+            self.generate_chat_completion_stream(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stop=stop,
+                abort_event=abort_event,
+            )
+        )

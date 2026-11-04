@@ -60,9 +60,18 @@ def load_saved_api_key() -> str:
     return ""
 
 
+def _sanitize_log_message(msg: str) -> str:
+    """Masks API keys and secrets in URLs or error traces."""
+    if not msg:
+        return ""
+    masked = re.sub(r"(key|api_key|token)=([a-zA-Z0-9_\-\.]+)", r"\1=[REDACTED]", str(msg))
+    masked = re.sub(r"Bearer\s+([a-zA-Z0-9_\-\.]+)", "Bearer [REDACTED]", masked)
+    return masked
+
+
 def save_persistent_api_key(api_key: str) -> None:
     """Saves the Teacher/Gemini API key to .env on disk so autonomous learning survives server reboots."""
-    clean_key = (api_key or "").strip().strip("'\"")
+    clean_key = (api_key or "").strip().strip("'\"").replace("\r", "").replace("\n", "")
     if not clean_key or " " in clean_key:
         return
     os.environ["GEMINI_API_KEY"] = clean_key
@@ -85,8 +94,10 @@ def save_persistent_api_key(api_key: str) -> None:
     except OSError:
         pass
 
+
 # Concurrency & Sync State Tracker
 _sync_lock = threading.Lock()
+_dataset_file_lock = threading.Lock()
 sync_state = {
     "is_syncing": False,
     "progress": 0,
@@ -130,9 +141,17 @@ def extract_json_from_response(raw_text):
     # Greedy search for the outer-most balanced curly braces
     brace_match = re.search(r"(\{[\s\S]*\})", cleaned)
     if brace_match:
+        brace_content = brace_match.group(1).strip()
         try:
-            return json.loads(brace_match.group(1).strip())
+            return json.loads(brace_content)
         except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+        # Fallback for single-quoted Python dict representations from LLMs
+        try:
+            val = ast.literal_eval(brace_content)
+            if isinstance(val, dict):
+                return val
+        except (ValueError, SyntaxError):
             pass
 
     raise ValueError(f"Could not parse valid JSON from model response: {cleaned[:200]}...")
@@ -529,8 +548,10 @@ def run_sync(api_key, endpoint=None, model=None, topic_to_explore=None):
                 valid, msg = validate_code_snippet(code, result.get("tags", ""))
                 if valid:
                     add_knowledge(result["topic"], result["lesson"], code, result.get("tags", ""), source=f"teacher:{model}")
-                    with open(DATASET_FILE, "a", encoding="utf-8") as f:
-                        f.write(json.dumps({"prompt": topic_to_explore, "response": code}) + "\n")
+                    with _dataset_file_lock:
+                        os.makedirs(os.path.dirname(os.path.abspath(DATASET_FILE)), exist_ok=True)
+                        with open(DATASET_FILE, "a", encoding="utf-8") as f:
+                            f.write(json.dumps({"prompt": topic_to_explore, "response": code}) + "\n")
                     log_event("sync_topic_success", f"Learned topic: {result['topic']}", "success")
                 else:
                     had_error = True
@@ -567,8 +588,10 @@ def run_sync(api_key, endpoint=None, model=None, topic_to_explore=None):
                 if valid:
                     add_knowledge(result["topic"], result["lesson"], code, tags, source=f"teacher_gap:{gap['id']}")
                     set_gap_status(gap["id"], "resolved")
-                    with open(DATASET_FILE, "a", encoding="utf-8") as f:
-                        f.write(json.dumps({"prompt": gap["question"], "response": code}) + "\n")
+                    with _dataset_file_lock:
+                        os.makedirs(os.path.dirname(os.path.abspath(DATASET_FILE)), exist_ok=True)
+                        with open(DATASET_FILE, "a", encoding="utf-8") as f:
+                            f.write(json.dumps({"prompt": gap["question"], "response": code}) + "\n")
                     log_event("gap_resolved", f"Gap #{gap['id']} resolved as '{result['topic']}'", "success")
                 else:
                     set_gap_status(gap["id"], "failed", error_msg=msg)
@@ -814,28 +837,43 @@ def query_gemini_argon(prompt, api_key=None, model="gemini-4-argon", reasoning_e
         payload_data["temperature"] = 0.4
 
     req_oa = urllib.request.Request(target_url, data=json.dumps(payload_data).encode("utf-8"), headers=headers)
-    with urllib.request.urlopen(req_oa, timeout=90) as resp_oa:
-        res_json = json.loads(resp_oa.read().decode("utf-8"))
-        choices = res_json.get("choices", [])
-        if choices:
-            msg = choices[0].get("message", {})
-            reasoning = msg.get("reasoning_content") or ""
-            content = msg.get("content") or ""
-            if not reasoning and content:
-                tag_match = re.search(r"<(?:thought|thinking)>([\s\S]*?)</(?:thought|thinking)>", content, re.IGNORECASE)
-                if tag_match:
-                    reasoning = tag_match.group(1).strip()
-                    content = re.sub(r"<(?:thought|thinking)>[\s\S]*?</(?:thought|thinking)>", "", content, flags=re.IGNORECASE).strip()
+    try:
+        with urllib.request.urlopen(req_oa, timeout=90) as resp_oa:
+            res_json = json.loads(resp_oa.read().decode("utf-8"))
+            choices = res_json.get("choices", [])
+            if choices:
+                msg = choices[0].get("message", {})
+                reasoning = msg.get("reasoning_content") or ""
+                content = msg.get("content") or ""
+                if not reasoning and content:
+                    tag_match = re.search(r"<(?:thought|thinking)>([\s\S]*?)</(?:thought|thinking)>", content, re.IGNORECASE)
+                    if tag_match:
+                        reasoning = tag_match.group(1).strip()
+                        content = re.sub(r"<(?:thought|thinking)>[\s\S]*?</(?:thought|thinking)>", "", content, flags=re.IGNORECASE).strip()
 
-            return {
-                "success": True,
-                "model": mdl,
-                "thinking": reasoning,
-                "response": content,
-                "reasoning_effort": reasoning_effort,
-                "thinking_budget": thinking_budget,
-                "usage": res_json.get("usage", {})
-            }
+                return {
+                    "success": True,
+                    "model": mdl,
+                    "thinking": reasoning,
+                    "response": content,
+                    "reasoning_effort": reasoning_effort,
+                    "thinking_budget": thinking_budget,
+                    "usage": res_json.get("usage", {})
+                }
+    except urllib.error.HTTPError as he:
+        err_msg = ""
+        try:
+            err_data = json.loads(he.read().decode("utf-8", errors="replace"))
+            if "error" in err_data:
+                err_msg = err_data["error"].get("message") or str(err_data["error"])
+        except Exception:
+            pass
+        sanitized_err = _sanitize_log_message(err_msg or f"HTTP {he.code}: {he.reason}")
+        raise RuntimeError(f"Reasoning Provider Error ({mdl}): {sanitized_err}") from he
+    except Exception as e:
+        sanitized_err = _sanitize_log_message(str(e))
+        raise RuntimeError(f"Reasoning Connection Error ({mdl}): {sanitized_err}") from e
+
     raise RuntimeError("No response received from reasoning provider.")
 
 

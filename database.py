@@ -22,6 +22,19 @@ _ATTACHED_FILE_RE = re.compile(r"---\s*\[ATTACHED FILE:\s*([^\]]+)\]")
 _WORD_TOKEN_RE = re.compile(r"\b\w{3,}\b")
 
 
+def close_connection() -> None:
+    """Closes the current thread's cached SQLite connection and resets local state."""
+    conn = getattr(_local, "conn", None)
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        _local.conn = None
+        _local.db_path = None
+        _local.tx_depth = 0
+
+
 def get_connection() -> sqlite3.Connection:
     """Returns a thread-local cached SQLite connection tuned for WAL concurrency."""
     conn = getattr(_local, "conn", None)
@@ -32,6 +45,8 @@ def get_connection() -> sqlite3.Connection:
                 conn.close()
             except Exception:
                 pass
+        db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+        os.makedirs(db_dir, exist_ok=True)
         conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode = WAL;")
@@ -52,8 +67,9 @@ def get_connection() -> sqlite3.Connection:
 @contextmanager
 def get_db(max_retries: int = 4, retry_delay: float = 0.04):
     """
-    Thread-safe transactional context manager with exponential backoff on SQLite lock contention.
-    Supports re-entrant calls on the same thread without premature commits.
+    Thread-safe transactional context manager with re-entrancy support.
+    Outer block controls the single atomic transaction commit/rollback.
+    Lock contention is governed by SQLite's busy_timeout PRAGMA (30s).
     """
     conn = get_connection()
     depth = getattr(_local, "tx_depth", 0)
@@ -66,23 +82,15 @@ def get_db(max_retries: int = 4, retry_delay: float = 0.04):
         return
 
     _local.tx_depth = 1
-    retries = 0
     try:
-        while True:
-            try:
-                yield conn
-                conn.commit()
-                break
-            except sqlite3.OperationalError as e:
-                conn.rollback()
-                if "locked" in str(e).lower() and retries < max_retries:
-                    retries += 1
-                    time.sleep(retry_delay * (2 ** retries))
-                    continue
-                raise
-            except Exception:
-                conn.rollback()
-                raise
+        yield conn
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         _local.tx_depth = 0
 
@@ -253,6 +261,7 @@ def init_db(force: bool = False) -> None:
                 completed_at TIMESTAMP
             );
             """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(completed ASC, id DESC);")
 
             # 6. Personal Assistant: Notes
             c.execute("""
@@ -264,6 +273,7 @@ def init_db(force: bool = False) -> None:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at DESC);")
 
             # 7. Legacy chat_history table for backward compatibility
             c.execute("""
@@ -287,6 +297,7 @@ def init_db(force: bool = False) -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(id DESC);")
 
         _initialized_db_path = DB_PATH
 
@@ -525,9 +536,9 @@ def get_context_window(session_id: str, max_tokens: int = 4200) -> list[dict[str
         c = conn.cursor()
         c.execute("""
             SELECT role, content, token_count FROM messages
-            WHERE session_id = ?
+            WHERE session_id = ? OR conversation_id = ?
             ORDER BY id ASC
-        """, (session_id,))
+        """, (session_id, session_id))
         msgs = [dict(r) for r in c.fetchall()]
 
     if not msgs:
@@ -622,16 +633,39 @@ def get_counts() -> dict[str, int]:
 
 
 def add_knowledge(topic: str, lesson: str, code_example: str = "", tags: str = "", source: str = "distilled") -> int:
+    clean_topic = topic.strip()
+    clean_lesson = lesson.strip()
+    clean_code = (code_example or "").strip()
+    clean_tags = (tags or "").strip()
+
     with get_db() as conn:
         c = conn.cursor()
+        # Intelligent de-duplication: check if exact or case-insensitive topic already exists
+        c.execute("SELECT id, lesson, code_example, tags FROM knowledge WHERE lower(topic) = lower(?) LIMIT 1", (clean_topic,))
+        existing = c.fetchone()
+        if existing:
+            kid = int(existing["id"])
+            # If the incoming entry provides missing code or richer content, enrich the existing record
+            if (clean_code and not existing["code_example"]) or (len(clean_lesson) > len(existing["lesson"])):
+                existing_tags = [t.strip() for t in (existing["tags"] or "").split(",") if t.strip()]
+                new_tags = [t.strip() for t in clean_tags.split(",") if t.strip()]
+                merged_tags = ", ".join(sorted(set(existing_tags + new_tags)))
+                chosen_code = clean_code if clean_code else (existing["code_example"] or "")
+                c.execute("""
+                    UPDATE knowledge
+                    SET lesson = ?, code_example = ?, tags = ?, source = ?
+                    WHERE id = ?
+                """, (clean_lesson, chosen_code, merged_tags, source, kid))
+            return kid
+
         c.execute("""
             INSERT INTO knowledge (topic, lesson, code_example, tags, source)
             VALUES (?, ?, ?, ?, ?)
-        """, (topic.strip(), lesson.strip(), code_example.strip() if code_example else "", tags.strip(), source))
+        """, (clean_topic, clean_lesson, clean_code, clean_tags, source))
         kid = int(c.lastrowid or 0)
         c.execute(
             "INSERT INTO audit_log (event_type, details, status) VALUES (?, ?, ?)",
-            ("knowledge_added", f"Assimilated: {topic}", "success")
+            ("knowledge_added", f"Assimilated: {clean_topic}", "success")
         )
         return kid
 
@@ -679,19 +713,35 @@ def search_knowledge(query: str, limit: int = 3) -> list[dict[str, Any]]:
                 FROM knowledge_fts fts
                 JOIN knowledge k ON k.id = fts.rowid
                 WHERE knowledge_fts MATCH ?
+                ORDER BY bm25(knowledge_fts, 5.0, 2.0, 3.0, 1.5)
                 LIMIT ?
             """, (fts_query, limit))
             results = [dict(r) for r in c.fetchall()]
             if results:
                 return results
         except sqlite3.Error:
-            pass
+            # Fallback if bm25 weights or rank not supported
+            try:
+                c.execute("""
+                    SELECT k.id, k.topic, k.lesson, k.code_example, k.tags
+                    FROM knowledge_fts fts
+                    JOIN knowledge k ON k.id = fts.rowid
+                    WHERE knowledge_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                """, (fts_query, limit))
+                results = [dict(r) for r in c.fetchall()]
+                if results:
+                    return results
+            except sqlite3.Error:
+                pass
 
         clauses = []
         params: list[Any] = []
         for tok in tokens[:4]:
-            clauses.append("(topic LIKE ? OR tags LIKE ?)")
-            params.extend([f"%{tok}%", f"%{tok}%"])
+            clauses.append("(topic LIKE ? OR lesson LIKE ? OR tags LIKE ? OR code_example LIKE ?)")
+            pat = f"%{tok}%"
+            params.extend([pat, pat, pat, pat])
 
         sql = f"SELECT id, topic, lesson, code_example, tags FROM knowledge WHERE {' OR '.join(clauses)} ORDER BY id DESC LIMIT ?"
         params.append(limit)
@@ -755,8 +805,9 @@ def set_gap_status(gap_id: int, status: str, error_msg: str = "") -> None:
 
 def delete_gap(gap_id: int) -> bool:
     with get_db() as conn:
-        conn.execute("DELETE FROM gaps WHERE id = ?", (gap_id,))
-        return True
+        c = conn.cursor()
+        c.execute("DELETE FROM gaps WHERE id = ?", (gap_id,))
+        return (c.rowcount or 0) > 0
 
 
 # --- Personal Assistant: Tasks & Notes ---
@@ -790,8 +841,9 @@ def toggle_todo(todo_id: int) -> bool:
 
 def delete_todo(todo_id: int) -> bool:
     with get_db() as conn:
-        conn.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
-        return True
+        c = conn.cursor()
+        c.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
+        return (c.rowcount or 0) > 0
 
 
 def add_note(title: str, content: str, tags: str = "") -> int:
@@ -804,12 +856,13 @@ def add_note(title: str, content: str, tags: str = "") -> int:
 
 def update_note(note_id: int, title: str, content: str, tags: str = "") -> bool:
     with get_db() as conn:
-        conn.execute("""
+        c = conn.cursor()
+        c.execute("""
             UPDATE notes
             SET title = ?, content = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """, (title.strip(), content.strip(), tags.strip(), note_id))
-        return True
+        return (c.rowcount or 0) > 0
 
 
 def get_notes() -> list[dict[str, Any]]:
@@ -821,8 +874,35 @@ def get_notes() -> list[dict[str, Any]]:
 
 def delete_note(note_id: int) -> bool:
     with get_db() as conn:
-        conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
-        return True
+        c = conn.cursor()
+        c.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+        return (c.rowcount or 0) > 0
+
+
+def search_notes(query: str, limit: int = 50) -> list[dict[str, Any]]:
+    """Searches notes by title, content, or tags."""
+    if not query or not query.strip():
+        return get_notes()
+    clean_q = f"%{query.strip()}%"
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, title, content, tags, updated_at
+            FROM notes
+            WHERE title LIKE ? OR content LIKE ? OR tags LIKE ?
+            ORDER BY id DESC
+            LIMIT ?
+        """, (clean_q, clean_q, clean_q, limit))
+        return [dict(r) for r in c.fetchall()]
+
+
+def checkpoint_and_vacuum() -> dict[str, Any]:
+    """Runs SQLite WAL checkpoint and optimization to keep file sizes and lookup latencies optimal."""
+    with get_db() as conn:
+        conn.execute("PRAGMA wal_checkpoint(PASSIVE);")
+        conn.execute("PRAGMA optimize;")
+    log_event("db_maintenance", "Completed SQLite WAL checkpoint and query planner optimization", "info")
+    return {"status": "ok", "message": "Database optimized and WAL checkpointed successfully."}
 
 
 # --- Hardware Diagnostics & Telemetry ---
@@ -953,6 +1033,24 @@ def get_system_telemetry() -> dict[str, str]:
         stats["disk"] = f"{used_gb}GB / {total_gb}GB ({pct}%)"
     except OSError:
         pass
+
+    # GPU Diagnostics
+    stats["gpu"] = "CPU / Host RAM"
+    if os.path.exists("/dev/dri"):
+        render_nodes = [f for f in os.listdir("/dev/dri") if f.startswith("renderD")]
+        if render_nodes:
+            stats["gpu"] = f"Hardware DRI ({', '.join(render_nodes)})"
+    if stats["gpu"].startswith("CPU") and shutil.which("nvidia-smi"):
+        try:
+            import subprocess
+            out = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
+                text=True, timeout=1.5
+            ).strip()
+            if out:
+                stats["gpu"] = f"NVIDIA {out.splitlines()[0]}"
+        except Exception:
+            pass
 
     return stats
 

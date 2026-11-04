@@ -24,8 +24,29 @@ echo "8) Llama-3.2-3B-Instruct         (~2.0 GB) [Meta's fast lightweight assist
 echo "9) Meta-Llama-3.1-8B-Instruct    (~4.9 GB) [Meta's industry standard 8B powerhouse]"
 echo "10) Microsoft Phi-4-14B          (~9.1 GB) [Complex analytical reasoning]"
 echo ""
-read -p "Choose model (default: 1): " choice
+
+if [ -n "$1" ]; then
+    choice="$1"
+elif [ -t 0 ]; then
+    read -p "Choose model (default: 1): " choice
+else
+    choice=1
+fi
 choice=${choice:-1}
+
+# Normalize text choices to option numbers if provided as string
+case "$choice" in
+    *"0.5b"*) choice=2 ;;
+    *"coder-7b"*|*"7b-coder"*) choice=3 ;;
+    *"coder-14b"*|*"14b-coder"*) choice=4 ;;
+    *"r1-1.5b"*|*"deepseek-1.5b"*) choice=5 ;;
+    *"r1-7b"*|*"deepseek-7b"*) choice=6 ;;
+    *"r1-14b"*|*"deepseek-14b"*) choice=7 ;;
+    *"llama-3.2"*|*"3.2-3b"*) choice=8 ;;
+    *"llama-3.1"*|*"3.1-8b"*) choice=9 ;;
+    *"phi-4"*|*"phi4"*) choice=10 ;;
+    *"1.5b"*) choice=1 ;;
+esac
 
 if [ "$choice" == "2" ]; then
     URL="https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf"

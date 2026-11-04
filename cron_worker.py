@@ -11,7 +11,7 @@ from database import (
     init_db,
     log_event,
 )
-from sync_teacher import run_sync
+from sync_teacher import load_saved_api_key, run_sync
 
 LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cron.lock")
 
@@ -83,18 +83,19 @@ def purge_stale_history(retention_days: int = 14) -> None:
     Cleans up old chat records to keep database footprint minimal.
     Cascades across messages, chat_history, and removes orphaned empty sessions.
     """
+    safe_days = max(1, int(retention_days))
     with get_db() as conn:
         c = conn.cursor()
         c.execute("""
             DELETE FROM messages
-            WHERE created_at < datetime('now', '-' || ? || ' days')
-        """, (retention_days,))
+            WHERE datetime(created_at) < datetime('now', '-' || ? || ' days')
+        """, (safe_days,))
         deleted_msgs = c.rowcount
 
         c.execute("""
             DELETE FROM chat_history
-            WHERE created_at < datetime('now', '-' || ? || ' days')
-        """, (retention_days,))
+            WHERE datetime(created_at) < datetime('now', '-' || ? || ' days')
+        """, (safe_days,))
 
         c.execute("""
             DELETE FROM sessions
@@ -116,7 +117,7 @@ def purge_stale_history(retention_days: int = 14) -> None:
         if deleted_msgs > 0 or deleted_sessions > 0:
             log_event(
                 "cron_cleanup",
-                f"Purged {deleted_msgs} stale messages and {deleted_sessions} empty unpinned sessions (older than {retention_days} days)",
+                f"Purged {deleted_msgs} stale messages and {deleted_sessions} empty unpinned sessions (older than {safe_days} days)",
                 "info",
             )
 
@@ -139,13 +140,7 @@ def run_cron_cycle() -> None:
         purge_stale_history(retention_days=14)
 
         is_online = check_internet_connectivity()
-        api_key = (
-            os.getenv("TEACHER_API_KEY")
-            or os.getenv("GEMINI_API_KEY")
-            or os.getenv("GOOGLE_API_KEY")
-            or os.getenv("GROQ_API_KEY")
-            or os.getenv("OPENAI_API_KEY")
-        )
+        api_key = load_saved_api_key()
 
         if is_online:
             if api_key:

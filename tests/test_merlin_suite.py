@@ -9,6 +9,8 @@ Covers Layers 1-4 refactorings:
 import base64
 import os
 import sys
+import threading
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,22 +30,10 @@ def isolated_db(tmp_path, monkeypatch):
     test_db_file = str(tmp_path / "test_merlin.db")
     monkeypatch.setattr(database, "DB_PATH", test_db_file)
     monkeypatch.setattr(database, "_initialized_db_path", None)
-    if getattr(database._local, "conn", None) is not None:
-        try:
-            database._local.conn.close()
-        except Exception:
-            pass
-        database._local.conn = None
-        database._local.conn_path = None
-        database._local.tx_depth = 0
+    database.close_connection()
     database.init_db()
     yield test_db_file
-    if getattr(database._local, "conn", None) is not None:
-        try:
-            database._local.conn.close()
-        except Exception:
-            pass
-        database._local.conn = None
+    database.close_connection()
 
 
 @pytest.fixture()
@@ -279,3 +269,335 @@ def test_upload_validation_and_path_traversal_defense(client):
     # Invalid integer ID on todo toggle must return 400/422 cleanly
     bad_id_res = client.post("/api/todos/toggle", json={"id": "not-an-int"})
     assert bad_id_res.status_code in (400, 422)
+
+
+def test_close_connection_and_reopen(isolated_db):
+    """Verifies closing the thread-local connection and cleanly reopening."""
+    conn = database.get_connection()
+    assert conn is not None
+    database.close_connection()
+    assert getattr(database._local, "conn", None) is None
+    conn2 = database.get_connection()
+    assert conn2 is not None
+
+
+def test_search_knowledge_fallback_fields(isolated_db):
+    """Verifies fallback search finds matches in lesson and code_example when FTS is dropped."""
+    kid = database.add_knowledge(
+        topic="General Topic",
+        lesson="Deep architectural lesson on epoll and event loops",
+        code_example="def run_epoll(): pass",
+        tags="networking",
+    )
+    with database.get_db() as conn:
+        conn.execute("DROP TABLE IF EXISTS knowledge_fts;")
+    results = database.search_knowledge("epoll event loops", limit=5)
+    assert len(results) >= 1
+    assert results[0]["id"] == kid
+
+
+def test_engine_scalar_timeout_support():
+    """Verifies engine stream methods accept scalar float/int timeouts without TypeError."""
+    eng = engine_mod.InferenceEngine(lazy_init=True)
+    eng._init_done_event.set()
+    ev = threading.Event()
+    ev.set()  # immediate abort
+    res_float = list(eng._stream_from_ollama([{"role": "user", "content": "hi"}], abort_event=ev, timeout=5.0))
+    assert isinstance(res_float, list)
+    res_int = list(eng._stream_from_llama_server({"messages": []}, abort_event=ev, timeout=5))
+    assert isinstance(res_int, list)
+
+
+def test_engine_chat_completion_abort_support():
+    """Verifies generate_chat_completion_stream honors pre-aborted abort_event."""
+    eng = engine_mod.InferenceEngine(lazy_init=True)
+    eng._init_done_event.set()
+    eng.backend = "offline_standby"
+    abort_event = threading.Event()
+    abort_event.set()
+    chunks = list(eng.generate_chat_completion_stream(
+        [{"role": "user", "content": "hello"}],
+        abort_event=abort_event,
+    ))
+    assert isinstance(chunks, list)
+
+
+def test_credential_masking():
+    """Verifies that API keys and Bearer tokens are masked in logs and error traces."""
+    from sync_teacher import _sanitize_log_message
+    raw = "Failed connecting to https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyD_SecretKey123 with Bearer sk-12345678"
+    masked = _sanitize_log_message(raw)
+    assert "AIzaSyD_SecretKey123" not in masked
+    assert "sk-12345678" not in masked
+    assert "key=[REDACTED]" in masked
+    assert "Bearer [REDACTED]" in masked
+
+
+def test_import_dataset_schema_resilience():
+    """Verifies parse_record survives malformed conversation and message items."""
+    from import_dataset import parse_record
+    malformed_conv = {
+        "conversations": [
+            "not-a-dict",
+            None,
+            {"from": "user", "value": "Write quicksort algorithm"},
+            {"from": "assistant", "value": "```python\ndef qsort(x):\n    return x\n```"},
+        ]
+    }
+    res = parse_record(malformed_conv)
+    assert res is not None
+    assert "quicksort" in res["topic"].lower()
+    assert "def qsort" in res["code_example"]
+
+    malformed_msg = {
+        "messages": [
+            123,
+            {"role": "user", "content": "Explain raft consensus"},
+            {"role": "assistant", "content": "Raft is a consensus algorithm"},
+        ]
+    }
+    res_msg = parse_record(malformed_msg)
+    assert res_msg is not None
+    assert "raft" in res_msg["topic"].lower()
+
+
+def test_cron_worker_purge_stale_history(isolated_db):
+    """Verifies purge_stale_history cleanly deletes old messages and orphaned sessions."""
+    from cron_worker import purge_stale_history
+    with database.get_db() as conn:
+        conn.execute("""
+            INSERT INTO sessions (id, title, mode, pinned, created_at, updated_at)
+            VALUES ('old_session', 'Old Chat', 'assistant', 0, datetime('now', '-30 days'), datetime('now', '-30 days'))
+        """)
+        conn.execute("""
+            INSERT INTO messages (session_id, conversation_id, role, content, created_at)
+            VALUES ('old_session', 'old_session', 'user', 'Old message', datetime('now', '-30 days'))
+        """)
+    purge_stale_history(retention_days=14)
+    assert database.get_session("old_session") is None
+
+
+def test_notes_search_api(client):
+    """Verifies GET /api/notes/search correctly indexes and filters notes by query."""
+    client.post("/api/notes", json={"title": "Raspberry Pi Pinout", "content": "Pin 1 is 3.3V power", "tags": "hardware,gpio"})
+    client.post("/api/notes", json={"title": "Nginx TLS Config", "content": "ssl_protocols TLSv1.2 TLSv1.3;", "tags": "web,security"})
+
+    # Search for "pinout"
+    res1 = client.get("/api/notes/search?q=Pinout")
+    assert res1.status_code == 200
+    data1 = res1.json()
+    assert len(data1) == 1
+    assert "Raspberry Pi" in data1[0]["title"]
+
+    # Search for tag "security"
+    res2 = client.get("/api/notes/search?q=security")
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert len(data2) == 1
+    assert "Nginx TLS" in data2[0]["title"]
+
+    # Empty query fallback to recent
+    res_empty = client.get("/api/notes/search?q=")
+    assert res_empty.status_code == 200
+    assert len(res_empty.json()) == 2
+
+
+def test_maintenance_vacuum_api(client):
+    """Verifies POST /api/maintenance/vacuum successfully runs SQLite checkpoint & vacuum."""
+    res = client.post("/api/maintenance/vacuum")
+    assert res.status_code == 200
+    data = res.json()
+    assert data.get("status") == "ok"
+    assert "checkpointed" in data.get("message", "").lower()
+
+
+def test_openai_chat_extended_params(client):
+    """Verifies /v1/chat/completions accepts OpenAI extended parameters without schema validation error."""
+    payload = {
+        "model": "merlin-ai",
+        "messages": [{"role": "user", "content": "Ping test"}],
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "frequency_penalty": 0.2,
+        "presence_penalty": 0.1,
+        "max_tokens": 50,
+    }
+    res = client.post("/v1/chat/completions", json=payload)
+    assert res.status_code == 200
+    body = res.json()
+    assert "choices" in body
+    assert len(body["choices"]) > 0
+
+
+def test_extract_json_single_quote_recovery():
+    """Verifies extract_json_from_response parses single-quoted Python dict representations."""
+    from sync_teacher import extract_json_from_response
+    raw_response = "{'topic': 'C11 Lock-Free Ring Buffer', 'lesson': 'Atomic head/tail indices', 'code_example': 'atomic_size_t head;', 'tags': 'c,concurrency'}"
+    parsed = extract_json_from_response(raw_response)
+    assert parsed["topic"] == "C11 Lock-Free Ring Buffer"
+    assert "atomic_size_t" in parsed["code_example"]
+
+
+def test_crud_boolean_returns(isolated_db):
+    """Verifies delete and update operations return precise boolean indicators based on rowcount."""
+    # To-dos
+    tid = database.add_todo("Audit memory safety", "high")
+    assert database.delete_todo(tid) is True
+    assert database.delete_todo(tid) is False  # Already deleted
+
+    # Notes
+    nid = database.add_note("Kernel params", "sysctl -p", "linux")
+    assert database.update_note(nid, "Kernel params", "sysctl -w net.ipv4.ip_forward=1", "linux") is True
+    assert database.delete_note(nid) is True
+    assert database.delete_note(nid) is False
+    assert database.update_note(999999, "Nonexistent", "Empty") is False
+
+    # Gaps
+    gid = database.add_gap("How to tune ZFS arc size?")
+    assert database.delete_gap(gid) is True
+    assert database.delete_gap(gid) is False
+
+
+def test_get_context_window_dual_id_compatibility(isolated_db):
+    """Verifies get_context_window retrieves messages matching either session_id or conversation_id."""
+    database.create_session(title="Test Dual", mode="assistant", session_id="sess_dual_1")
+    database.save_message("sess_dual_1", "user", "Explain SIMD instructions")
+    database.save_message("sess_dual_1", "assistant", "SIMD stands for Single Instruction Multiple Data.")
+
+    ctx = database.get_context_window("sess_dual_1", max_tokens=1000)
+    assert len(ctx) == 2
+    assert ctx[0]["content"] == "Explain SIMD instructions"
+    assert "Single Instruction" in ctx[1]["content"]
+
+
+def test_engine_llama_server_retention():
+    """Verifies auto_select_optimal_model retains llama-server backend without switching."""
+    eng = engine_mod.InferenceEngine(lazy_init=True)
+    eng.backend = "llama-server"
+    eng.active_model_name = "Qwen2.5-Coder via llama-server"
+    eng.auto_select_optimal_model("coder")
+    assert eng.backend == "llama-server"
+    assert eng.active_model_name == "Qwen2.5-Coder via llama-server"
+
+
+def test_cron_worker_load_saved_api_key_integration(tmp_path, monkeypatch):
+    """Verifies cron_worker retrieves persisted credentials via load_saved_api_key."""
+    import cron_worker
+    import sync_teacher
+    test_env = str(tmp_path / ".env")
+    with open(test_env, "w", encoding="utf-8") as f:
+        f.write("GEMINI_API_KEY=AIzaSy_CronIntegrationKey99\n")
+    monkeypatch.setattr(sync_teacher, "ENV_FILE", test_env)
+    for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "TEACHER_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+
+    key = cron_worker.load_saved_api_key()
+    assert key == "AIzaSy_CronIntegrationKey99"
+
+
+def test_cli_task_and_note_management(isolated_db):
+    """Verifies CLI task and note commands interact correctly with database models."""
+    # Create task
+    tid = database.add_todo("Test CLI task", "high")
+    assert tid > 0
+
+    # Toggle task
+    assert database.toggle_todo(tid) is True
+    todos = database.get_todos()
+    assert len(todos) == 1
+    assert todos[0]["completed"] == 1
+
+    # Delete task
+    assert database.delete_todo(tid) is True
+    assert len(database.get_todos()) == 0
+
+    # Create & delete note
+    nid = database.add_note("CLI Note", "Some note content")
+    assert nid > 0
+    assert database.delete_note(nid) is True
+    assert len(database.get_notes()) == 0
+
+
+def test_knowledge_deduplication_and_enrichment(isolated_db):
+    """Verify add_knowledge deduplicates existing topics, merges tags, and enriches code."""
+    k1 = database.add_knowledge(
+        topic="Asyncio Event Loop Tuning",
+        lesson="Configure uvloop policy for high-throughput event loops in Python.",
+        code_example="",
+        tags="asyncio,python",
+    )
+    assert k1 > 0
+
+    # Insert entry with identical topic (case-insensitive) but with code snippet and new tags
+    k2 = database.add_knowledge(
+        topic="asyncio event loop tuning",
+        lesson="Configure uvloop policy with uvloop.install() for low-latency networking.",
+        code_example="import uvloop; uvloop.install()",
+        tags="uvloop,performance",
+    )
+    # Must update existing entry rather than duplicating
+    assert k2 == k1
+    all_k = database.get_all_knowledge()
+    assert len(all_k) == 1
+    entry = all_k[0]
+    assert entry["id"] == k1
+    assert "uvloop.install()" in entry["code_example"]
+    assert "asyncio" in entry["tags"]
+    assert "performance" in entry["tags"]
+
+
+def test_knowledge_fts5_bm25_search(isolated_db):
+    """Verify search_knowledge uses FTS5 BM25 weighted ranking."""
+    database.add_knowledge(
+        topic="Nginx WebSocket Reverse Proxy",
+        lesson="Set proxy_set_header Upgrade $http_upgrade and Connection upgrade.",
+        code_example="proxy_pass http://backend;",
+        tags="nginx,networking",
+    )
+    database.add_knowledge(
+        topic="General Linux Networking",
+        lesson="Use ss -tlpn to check open listening ports and nginx bindings.",
+        code_example="ss -tlpn",
+        tags="linux,ports",
+    )
+
+    results = database.search_knowledge("Nginx WebSocket", limit=5)
+    assert len(results) >= 1
+    # First result should be the topic match
+    assert "WebSocket" in results[0]["topic"]
+
+
+def test_engine_teacher_copilot_detection(monkeypatch):
+    """Verify InferenceEngine detects Teacher AI API key from environment."""
+    eng = engine_mod.InferenceEngine(lazy_init=True)
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("TEACHER_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    # When no keys present and no .env
+    monkeypatch.setattr(engine_mod, "load_saved_api_key", lambda: "")
+    assert eng._has_teacher_api_key() is False
+
+    monkeypatch.setattr(engine_mod, "load_saved_api_key", lambda: "mock-teacher-key-12345")
+    assert eng._has_teacher_api_key() is True
+
+
+def test_engine_offline_standby_immediate_output(isolated_db, monkeypatch):
+    """Verify engine generates zero-delay informative status when offline without teacher key."""
+    eng = engine_mod.InferenceEngine(lazy_init=True)
+    eng.backend = "offline_standby"
+    eng._init_done_event.set()
+    monkeypatch.setattr(eng, "_has_teacher_api_key", lambda: False)
+
+    start_t = time.time()
+    stream = list(eng.generate_stream("What is DNS?", session_id="test-standby"))
+    elapsed = time.time() - start_t
+
+    # Must complete almost instantaneously (no fake sleep delays)
+    assert elapsed < 0.5
+    full_text = "".join(stream)
+    assert "Offline Intelligence Standby" in full_text
+

@@ -14,11 +14,11 @@
        ======================================================================== -->
   <aside id="sidebar">
     <div class="sidebar-header">
-      <button class="btn-new-chat" onclick="createNewChat()">
+      <button class="btn-new-chat" onclick="createNewChat()" aria-label="Create new conversation">
         <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
         New chat
       </button>
-      <button class="icon-btn" onclick="toggleSidebar()" title="Collapse sidebar">
+      <button class="icon-btn" onclick="toggleSidebar()" title="Collapse sidebar" aria-label="Toggle navigation sidebar">
         <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
       </button>
     </div>
@@ -63,7 +63,7 @@
     <!-- Top Navigation Bar -->
     <header class="top-navbar">
       <div class="navbar-left">
-        <button class="icon-btn" onclick="toggleSidebar()" title="Toggle sidebar">
+        <button class="icon-btn" onclick="toggleSidebar()" title="Toggle sidebar" aria-label="Toggle navigation sidebar">
           <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
         </button>
         <div class="brand-title">
@@ -91,16 +91,16 @@
 
       <div class="navbar-right">
 
-        <button class="icon-btn" onclick="openModal('pa-modal')" title="Tasks &amp; Notes">
+        <button class="icon-btn" onclick="openModal('pa-modal')" title="Tasks &amp; Notes" aria-label="Open Tasks and Notes">
           <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
         </button>
-        <button class="icon-btn" onclick="openModal('memory-modal')" title="Record a Knowledge Gap / View Skills">
+        <button class="icon-btn" onclick="openModal('memory-modal')" title="Record a Knowledge Gap / View Skills" aria-label="Open Knowledge Bank and Gaps">
           <svg viewBox="0 0 24 24"><path d="M12 3L1 9l4 2.18v6L12 21l7-3.82v-6l2-1.09V17h2V9L12 3zm6.82 6L12 12.72 5.18 9 12 5.28 18.82 9zM17 15.99l-5 2.73-5-2.73v-3.72L12 15l5-2.73v3.72z"/></svg>
         </button>
-        <button class="icon-btn" onclick="toggleTheme()" id="theme-btn" title="Toggle dark/light mode">
+        <button class="icon-btn" onclick="toggleTheme()" id="theme-btn" title="Toggle dark/light mode" aria-label="Toggle dark and light mode">
           <svg viewBox="0 0 24 24" id="theme-icon"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
         </button>
-        <button class="icon-btn" onclick="openModal('settings-modal')" title="Settings &amp; Hardware">
+        <button class="icon-btn" onclick="openModal('settings-modal')" title="Settings &amp; Hardware" aria-label="Open Settings and Hardware Telemetry">
           <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
         </button>
       </div>
@@ -151,21 +151,21 @@
 
         <div class="input-pill-box">
           <input type="file" id="file-uploader" style="display:none;" onchange="handleFileUpload(event)">
-          <button class="dock-icon-btn" onclick="document.getElementById('file-uploader').click()" title="Attach file, document, image, or code snippet">
+          <button class="dock-icon-btn" onclick="document.getElementById('file-uploader').click()" title="Attach file, document, image, or code snippet" aria-label="Attach file or document">
             <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
           </button>
           
-          <button class="dock-icon-btn" id="btn-mic" onclick="toggleDictation()" title="Voice dictation">
+          <button class="dock-icon-btn" id="btn-mic" onclick="toggleDictation()" title="Voice dictation" aria-label="Voice dictation">
             <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
           </button>
 
-          <textarea id="chat-textarea" placeholder="Ask Merlin anything..." rows="1" oninput="autoResizeTextarea(this)" onkeydown="handleKeyDown(event)"></textarea>
+          <textarea id="chat-textarea" placeholder="Ask Merlin anything..." rows="1" oninput="autoResizeTextarea(this)" onkeydown="handleKeyDown(event)" aria-label="Chat prompt input"></textarea>
 
           <div class="input-controls">
-            <button class="dock-icon-btn btn-stop" id="btn-stop" onclick="stopGeneration()" title="Stop response generation">
+            <button class="dock-icon-btn btn-stop" id="btn-stop" onclick="stopGeneration()" title="Stop response generation" aria-label="Stop response generation">
               <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
             </button>
-            <button class="dock-icon-btn btn-send" id="btn-send" onclick="submitMessage()" title="Send prompt" disabled>
+            <button class="dock-icon-btn btn-send" id="btn-send" onclick="submitMessage()" title="Send prompt" aria-label="Send prompt" disabled>
               <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </div>
@@ -209,6 +209,7 @@
 
       <!-- Notes Section -->
       <div id="pa-tab-notes" style="display:none;">
+        <input type="text" class="form-input" id="notes-search-input" placeholder="Search technical notes by title, content, or tags..." oninput="searchNotesDebounced()" style="margin-bottom:10px;">
         <div class="form-group">
           <input type="hidden" id="note-edit-id" value="">
           <div class="inline-form-row" style="margin-bottom:8px;">
@@ -344,8 +345,11 @@ Content-Type: application/json
         <div class="items-scroll-list" id="audit-log-container" style="max-height:150px;margin-top:8px;"></div>
       </details>
 
-      <div style="display:flex; justify-content:space-between;">
-        <button class="btn-secondary" onclick="clearCurrentChat()">Clear Current Chat</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="clearCurrentChat()">Clear Current Chat</button>
+          <button class="btn-secondary" onclick="runDatabaseVacuum()" id="btn-vacuum-db" title="Run SQLite WAL checkpoint and VACUUM to defragment indexes and reclaim disk space">Optimize Database (Vacuum)</button>
+        </div>
         <button class="btn-primary" onclick="closeModal('settings-modal')">Close</button>
       </div>
     </div>

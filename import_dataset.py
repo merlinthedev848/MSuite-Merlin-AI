@@ -13,6 +13,7 @@ LOCAL_DATASETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "d
 
 # Concurrency & Progress Tracker
 _import_lock = threading.Lock()
+_dataset_file_lock = threading.Lock()
 import_state = {
     "is_importing": False,
     "progress": 0,
@@ -329,16 +330,16 @@ def parse_record(item):
 
     # Schema 1: Agent SFT multi-turn dialogues (openbmb/UltraData-SFT-Agent-2609)
     if "conversations" in item and isinstance(item["conversations"], list):
-        user_turn = next((c.get("value") or c.get("content") for c in item["conversations"] if c.get("from") in ["user", "human"] or c.get("role") in ["user", "human"]), "")
-        asst_turns = [c.get("value") or c.get("content") for c in item["conversations"] if c.get("from") in ["assistant", "gpt", "agent"] or c.get("role") in ["assistant", "gpt", "agent"]]
+        user_turn = next((c.get("value") or c.get("content") for c in item["conversations"] if isinstance(c, dict) and (c.get("from") in ["user", "human"] or c.get("role") in ["user", "human"])), "")
+        asst_turns = [c.get("value") or c.get("content") for c in item["conversations"] if isinstance(c, dict) and (c.get("from") in ["assistant", "gpt", "agent"] or c.get("role") in ["assistant", "gpt", "agent"])]
         topic = str(user_turn) if user_turn else "Agent Task"
         full_asst = "\n\n".join(str(t) for t in asst_turns if t)
         lesson, code = extract_code_and_lesson(full_asst)
         tags = "agent,sft,tool_use,action"
 
     elif "messages" in item and isinstance(item["messages"], list):
-        user_msg = next((m.get("content", "") for m in item["messages"] if m.get("role") in ["user", "human"]), "")
-        asst_msgs = [m.get("content", "") for m in item["messages"] if m.get("role") in ["assistant", "agent", "tool"]]
+        user_msg = next((m.get("content", "") for m in item["messages"] if isinstance(m, dict) and m.get("role") in ["user", "human"]), "")
+        asst_msgs = [m.get("content", "") for m in item["messages"] if isinstance(m, dict) and m.get("role") in ["assistant", "agent", "tool"]]
         topic = str(user_msg) if user_msg else "Agent Interaction"
         full_asst = "\n\n".join(str(m) for m in asst_msgs if m)
         lesson, code = extract_code_and_lesson(full_asst)
@@ -504,6 +505,15 @@ def import_hf_dataset(repo_id=DEFAULT_DATASET, subset=None, limit=0, split="trai
         ds = load_local_dataset(repo_id=repo_id, subset=subset, split=split, streaming=True, token=token)
         count = 0
         raw_samples = []
+        jsonl_buffer: list[str] = []
+
+        def flush_jsonl():
+            if jsonl_buffer:
+                with _dataset_file_lock:
+                    os.makedirs(os.path.dirname(os.path.abspath(DATASET_FILE)), exist_ok=True)
+                    with open(DATASET_FILE, "a", encoding="utf-8") as f:
+                        f.writelines(jsonl_buffer)
+                jsonl_buffer.clear()
 
         for item in ds:
             if not unlimited and count >= limit:
@@ -527,19 +537,22 @@ def import_hf_dataset(repo_id=DEFAULT_DATASET, subset=None, limit=0, split="trai
                 source=source_tag
             )
 
-            # Append to training dataset JSONL
+            # Buffer training dataset sample
             training_sample = {
                 "prompt": parsed["topic"],
                 "response": parsed["code_example"] if parsed["code_example"] else parsed["lesson"]
             }
-            with open(DATASET_FILE, "a", encoding="utf-8") as f:
-                f.write(json.dumps(training_sample) + "\n")
+            jsonl_buffer.append(json.dumps(training_sample) + "\n")
+            if len(jsonl_buffer) >= 50:
+                flush_jsonl()
 
             if save_local:
                 raw_samples.append(item)
 
             count += 1
             import_state["progress"] = count
+
+        flush_jsonl()
 
         if save_local and raw_samples:
             import datasets
