@@ -45,8 +45,10 @@ N_GPU_LAYERS=${N_GPU_LAYERS:-0}
 HOST=${HOST:-127.0.0.1}
 PORT=${PORT:-8080}
 
-if [ "$N_GPU_LAYERS" == "0" ] && command -v nvidia-smi &> /dev/null; then
-    N_GPU_LAYERS=99
+if [ "$N_GPU_LAYERS" == "0" ]; then
+    if command -v nvidia-smi &> /dev/null || [ -e /dev/dri ] || [ -d /dev/kfd ]; then
+        N_GPU_LAYERS=99
+    fi
 fi
 
 # Check if llama-server is already actively running on target port
@@ -92,8 +94,8 @@ exec "$SERVER_BIN" \
     -b 512 \
     -ub 256 \
     "${EXTRA_ARGS[@]}" \
-    -ctk q8_0 \
-    -ctv q8_0 \
+    -ctk f16 \
+    -ctv f16 \
     -ngl "$N_GPU_LAYERS" \
     --parallel 1 \
     --ctx-shift \

@@ -1,4 +1,5 @@
 import atexit
+import datetime
 import json
 import os
 import re
@@ -16,7 +17,7 @@ from database import (
     get_recent_chat,  # noqa: F401
     log_event,
     save_chat_message,
-    search_knowledge,
+    search_knowledge_hybrid,
 )
 from sync_teacher import load_saved_api_key, resolve_teacher_provider, run_sync
 
@@ -455,6 +456,13 @@ class InferenceEngine:
         if any(sig in text for sig in reasoning_signals):
             return "reasoning"
 
+        calendar_signals = (
+            "calendar", "schedule", "appointment", "book", "meeting", "availability",
+            "free slot", "reschedule", "cancel appointment", "what time is it", "current time",
+        )
+        if any(sig in text for sig in calendar_signals):
+            return "calendar"
+
         return "assistant"
 
     def auto_select_optimal_model(self, intent: str) -> None:
@@ -504,6 +512,14 @@ class InferenceEngine:
                 "Write complete, production-ready, bug-free code and clear technical explanations. "
                 "Use markdown code blocks with language tags and never use placeholders."
             )
+        if detected_intent == "calendar" or mode == "calendar":
+            now_str = datetime.datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+            return (
+                f"You are Merlin, an intelligent offline personal assistant and appointment scheduler. "
+                f"The current local date and time is {now_str}. "
+                "You help users check calendar availability and book, list, or cancel appointments. "
+                "Always verify dates, times, and attendee details clearly."
+            )
         return (
             "You are Merlin, an intelligent offline AI assistant and software engineer running locally. "
             "Be clear, direct, helpful, and concise."
@@ -533,6 +549,7 @@ class InferenceEngine:
             req_timeout = float(timeout)
             urllib_timeout = float(timeout)
 
+        num_gpu = int(os.getenv("NUM_GPU", "99"))
         payload_dict = {
             "model": self.active_model_name,
             "messages": messages,
@@ -542,6 +559,8 @@ class InferenceEngine:
                 "num_predict": max_tokens,
                 "num_ctx": num_ctx,
                 "num_thread": get_optimal_threads(),
+                "num_gpu": num_gpu,
+                "f16_kv": True,
                 "stop": stop_list,
             },
             "keep_alive": keep_alive,
@@ -820,8 +839,8 @@ class InferenceEngine:
         intent = self.detect_conversation_intent(prompt) if mode in ("auto", "assistant", "") else mode
         self.auto_select_optimal_model(intent)
 
-        # Retrieve distilled lessons from Teacher LLMs / Hugging Face datasets in SQLite FTS5 memory
-        learned_context = search_knowledge(prompt, limit=2) if len(prompt.strip()) > 12 else []
+        # Retrieve distilled lessons via Hybrid Dense Vector + FTS5 RAG memory
+        learned_context = search_knowledge_hybrid(prompt, limit=2) if len(prompt.strip()) > 12 else []
         memory_parts: list[str] = []
         if learned_context:
             memory_parts.append("[Distilled Knowledge from Teacher Models]:\n")

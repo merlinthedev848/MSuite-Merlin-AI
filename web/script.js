@@ -5,6 +5,7 @@
 let activeConversationId = null;
 let currentMode = "auto";
 let activeEventSource = null;
+let activeWebSocket = null;
 let attachedFile = null;
 let recognition = null;
 let isDictating = false;
@@ -147,6 +148,10 @@ function openModal(id) {
     checkDatasetStatus();
   } else if (id === "argon-modal") {
     initArgonModal();
+  } else if (id === "calendar-modal") {
+    loadCalendarEvents();
+  } else if (id === "telephony-modal") {
+    loadTelephonyStatus();
   }
 }
 
@@ -553,31 +558,91 @@ async function submitMessage() {
     }
   }
 
+  function startSSEStream() {
+    if (activeEventSource) {
+      activeEventSource.close();
+      activeEventSource = null;
+    }
+    const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=auto&session_id=${encodeURIComponent(activeConversationId)}`;
+    activeEventSource = new EventSource(streamUrl);
+
+    activeEventSource.onmessage = function(event) {
+      if (event.data === "[DONE]") {
+        finishStreaming(assistantBubble, fullResponse);
+        return;
+      }
+      try {
+        const data = JSON.parse(event.data);
+        if (data.chunk) {
+          fullResponse += data.chunk;
+          scheduleRender();
+        }
+      } catch (e) {}
+    };
+
+    activeEventSource.onerror = function() {
+      finishStreaming(assistantBubble, fullResponse);
+    };
+  }
+
+  // Attempt zero-overhead WebSocket streaming first, with instantaneous fallback to SSE
+  if (activeWebSocket) {
+    try { activeWebSocket.close(); } catch(e) {}
+    activeWebSocket = null;
+  }
   if (activeEventSource) {
-    activeEventSource.close();
+    try { activeEventSource.close(); } catch(e) {}
     activeEventSource = null;
   }
 
-  const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=auto&session_id=${encodeURIComponent(activeConversationId)}`;
-  activeEventSource = new EventSource(streamUrl);
+  let wsStarted = false;
+  try {
+    const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProto}//${window.location.host}/ws/chat`;
+    const ws = new WebSocket(wsUrl);
+    activeWebSocket = ws;
 
-  activeEventSource.onmessage = function(event) {
-    if (event.data === "[DONE]") {
-      finishStreaming(assistantBubble, fullResponse);
-      return;
-    }
-    try {
-      const data = JSON.parse(event.data);
-      if (data.chunk) {
-        fullResponse += data.chunk;
-        scheduleRender();
+    ws.onopen = function() {
+      wsStarted = true;
+      ws.send(JSON.stringify({
+        prompt: payloadText,
+        session_id: activeConversationId,
+        mode: "auto"
+      }));
+    };
+
+    ws.onmessage = function(event) {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "chunk" && data.delta) {
+          fullResponse += data.delta;
+          scheduleRender();
+        } else if (data.type === "done") {
+          finishStreaming(assistantBubble, fullResponse);
+        } else if (data.type === "error") {
+          fullResponse += `\n[${data.message}]`;
+          scheduleRender();
+        }
+      } catch (e) {}
+    };
+
+    ws.onerror = function() {
+      if (!wsStarted) {
+        startSSEStream();
+      } else {
+        finishStreaming(assistantBubble, fullResponse);
       }
-    } catch (e) {}
-  };
+    };
 
-  activeEventSource.onerror = function() {
-    finishStreaming(assistantBubble, fullResponse);
-  };
+    ws.onclose = function() {
+      if (activeWebSocket === ws) {
+        activeWebSocket = null;
+        finishStreaming(assistantBubble, fullResponse);
+      }
+    };
+  } catch (err) {
+    startSSEStream();
+  }
 }
 
 function toggleStreamingUI(isStreaming) {
@@ -588,6 +653,13 @@ function toggleStreamingUI(isStreaming) {
 }
 
 function stopGeneration() {
+  if (activeWebSocket) {
+    try {
+      activeWebSocket.send(JSON.stringify({ action: "stop", session_id: activeConversationId }));
+      activeWebSocket.close();
+    } catch(e) {}
+    activeWebSocket = null;
+  }
   if (activeEventSource) {
     activeEventSource.close();
     activeEventSource = null;
@@ -604,6 +676,10 @@ function stopGeneration() {
 }
 
 function finishStreaming(bubbleEl, fullResponse) {
+  if (activeWebSocket) {
+    try { activeWebSocket.close(); } catch(e) {}
+    activeWebSocket = null;
+  }
   if (activeEventSource) {
     activeEventSource.close();
     activeEventSource = null;
@@ -1160,6 +1236,11 @@ async function loadModels() {
       bGaps.innerText = d.pending_gaps;
       bGaps.style.display = d.pending_gaps > 0 ? "inline-block" : "none";
     }
+    const bCalendar = document.getElementById("badge-calendar");
+    if (bCalendar && typeof d.calendar_count === "number") {
+      bCalendar.innerText = d.calendar_count;
+      bCalendar.style.display = d.calendar_count > 0 ? "inline-block" : "none";
+    }
 
     const select = document.getElementById("local-model-select");
     if (select) {
@@ -1644,6 +1725,211 @@ async function runDatabaseVacuum() {
 }
 
 // ==========================================================================
+// CALENDAR & APPOINTMENT SCHEDULING UI
+// ==========================================================================
+async function loadCalendarEvents() {
+  const container = document.getElementById("calendar-events-list");
+  if (!container) return;
+  try {
+    const res = await fetch("/api/calendar/events?limit=50");
+    const data = await res.json();
+    const events = data.events || [];
+
+    const badge = document.getElementById("badge-calendar");
+    if (badge) {
+      const activeCount = events.filter(e => e.status === "confirmed").length;
+      badge.innerText = activeCount;
+      badge.style.display = activeCount > 0 ? "inline-block" : "none";
+    }
+
+    if (!events.length) {
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;padding:12px 0;">No appointments scheduled yet.</div>';
+      return;
+    }
+
+    container.innerHTML = events.map(e => `
+      <div style="background:var(--bg-canvas);border:1px solid var(--border-color);border-radius:6px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-weight:600;font-size:0.88rem;">${escapeHtml(e.title)}</span>
+            <span class="nav-badge ${e.status === 'confirmed' ? '' : 'warning'}" style="font-size:0.7rem;">${escapeHtml(e.status.toUpperCase())}</span>
+          </div>
+          <div style="font-size:0.8rem;color:var(--text-muted);margin-top:3px;">
+            🕒 <b>${escapeHtml(e.start_time)}</b> to <b>${escapeHtml(e.end_time)}</b>
+          </div>
+          <div style="font-size:0.78rem;color:var(--text-main);margin-top:2px;">
+            👤 ${escapeHtml(e.attendee_name || "Guest")} ${e.attendee_phone ? '· 📞 ' + escapeHtml(e.attendee_phone) : ''} ${e.attendee_email ? '· ✉️ ' + escapeHtml(e.attendee_email) : ''}
+          </div>
+          ${e.description ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">${escapeHtml(e.description)}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;">
+          ${e.status === 'confirmed' ? `<button class="btn-secondary" style="padding:4px 8px;font-size:0.75rem;" onclick="cancelCalendarEventItem(${e.id})">Cancel</button>` : ''}
+          <button class="btn-secondary" style="padding:4px 8px;font-size:0.75rem;color:#ef4444;" onclick="deleteCalendarEventItem(${e.id})">Delete</button>
+        </div>
+      </div>
+    `).join("");
+  } catch (err) {
+    container.innerHTML = `<div style="color:var(--danger-color);font-size:0.82rem;">Failed to load events: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function checkCalendarSlot() {
+  const start = document.getElementById("cal-check-start").value;
+  const end = document.getElementById("cal-check-end").value;
+  const resEl = document.getElementById("cal-avail-result");
+  if (!start || !end) {
+    showToast("Please select both start and end times to check.", "error");
+    return;
+  }
+  try {
+    const res = await fetch("/api/calendar/availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ start_time: start, end_time: end })
+    });
+    const d = await res.json();
+    if (d.available) {
+      resEl.style.color = "var(--success-color)";
+      resEl.innerText = "✅ Time slot is completely free and available!";
+    } else {
+      resEl.style.color = "var(--danger-color)";
+      resEl.innerText = `❌ Conflicting appointment: ${d.conflicts && d.conflicts[0] ? d.conflicts[0].title : 'Busy'}`;
+    }
+  } catch (err) {
+    resEl.style.color = "var(--danger-color)";
+    resEl.innerText = "Error checking availability.";
+  }
+}
+
+async function bookCalendarAppointmentManual() {
+  const title = document.getElementById("cal-book-title").value.trim();
+  const name = document.getElementById("cal-book-name").value.trim();
+  const start = document.getElementById("cal-book-start").value;
+  const end = document.getElementById("cal-book-end").value;
+  const phone = document.getElementById("cal-book-phone").value.trim();
+  const email = document.getElementById("cal-book-email").value.trim();
+  const desc = document.getElementById("cal-book-desc").value.trim();
+
+  if (!title || !name || !start || !end) {
+    showToast("Title, attendee name, start time, and end time are required.", "error");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/calendar/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title, attendee_name: name, start_time: start, end_time: end,
+        attendee_phone: phone, attendee_email: email, description: desc
+      })
+    });
+    const d = await res.json();
+    if (res.status === 409 || d.status === "conflict") {
+      showToast(`Conflict: ${d.error || 'Slot already booked'}`, "error");
+      return;
+    }
+    showToast(`Appointment booked successfully: ${d.title}`, "success");
+    document.getElementById("cal-book-title").value = "";
+    document.getElementById("cal-book-name").value = "";
+    document.getElementById("cal-book-desc").value = "";
+    loadCalendarEvents();
+  } catch (err) {
+    showToast(`Booking error: ${err.message}`, "error");
+  }
+}
+
+async function cancelCalendarEventItem(id) {
+  try {
+    const res = await fetch("/api/calendar/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event_id: id })
+    });
+    const d = await res.json();
+    if (d.success) {
+      showToast("Appointment cancelled.", "info");
+      loadCalendarEvents();
+    }
+  } catch (err) {
+    showToast("Error cancelling event.", "error");
+  }
+}
+
+async function deleteCalendarEventItem(id) {
+  if (!confirm("Are you sure you want to permanently delete this calendar record?")) return;
+  try {
+    const res = await fetch("/api/calendar/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event_id: id })
+    });
+    const d = await res.json();
+    if (d.success) {
+      showToast("Appointment deleted.", "info");
+      loadCalendarEvents();
+    }
+  } catch (err) {
+    showToast("Error deleting event.", "error");
+  }
+}
+
+// ==========================================================================
+// TELEPHONY & VOIP PBX GATEWAY UI
+// ==========================================================================
+async function loadTelephonyStatus() {
+  const container = document.getElementById("telephony-channels-list");
+  if (!container) return;
+  try {
+    const res = await fetch("/api/telephony/status");
+    const d = await res.json();
+    const calls = d.active_calls || [];
+    if (!calls.length) {
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">No active VoIP channels currently streaming. PBX AudioSocket gateway is ready for incoming connections.</div>';
+      return;
+    }
+    container.innerHTML = calls.map(c => `
+      <div style="background:var(--bg-canvas);border:1px solid var(--border-color);border-radius:6px;padding:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <b style="font-size:0.84rem;">📞 ${escapeHtml(c.caller_number)}</b> (${escapeHtml(c.caller_name)})
+          <div style="font-size:0.75rem;color:var(--text-muted);">Session: ${escapeHtml(c.session_id)}</div>
+        </div>
+        <span class="nav-badge">LIVE</span>
+      </div>
+    `).join("");
+  } catch (err) {
+    container.innerHTML = `<div style="color:var(--danger-color);font-size:0.82rem;">Error: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function simulateTelephonyCall() {
+  const caller = document.getElementById("telephony-caller-id").value.trim() || "+1-555-0199";
+  const query = document.getElementById("telephony-sim-query").value.trim();
+  const respEl = document.getElementById("telephony-sim-response");
+  if (!query) {
+    showToast("Please enter what the caller says.", "error");
+    return;
+  }
+  respEl.style.display = "block";
+  respEl.innerHTML = '<span style="color:var(--text-muted);">📞 Connecting to Merlin Telephony Receptionist...</span>';
+  try {
+    const res = await fetch("/api/telephony/webhook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ caller, query })
+    });
+    const d = await res.json();
+    respEl.innerHTML = `
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;"><b>Merlin Voice Reception:</b></div>
+      <div style="line-height:1.4;">${renderMarkdown(d.reply)}</div>
+    `;
+    loadCalendarEvents();
+  } catch (err) {
+    respEl.innerHTML = `<span style="color:var(--danger-color);">Telephony error: ${escapeHtml(err.message)}</span>`;
+  }
+}
+
+// ==========================================================================
 // APPLICATION BOOTSTRAP
 // ==========================================================================
 window.addEventListener("DOMContentLoaded", () => {
@@ -1651,6 +1937,7 @@ window.addEventListener("DOMContentLoaded", () => {
   loadConversations();
   loadTodos();
   loadModels();
+  loadCalendarEvents();
 
   // Ensure sidebar collapses by default on mobile / small screens
   if (window.innerWidth <= 768) {

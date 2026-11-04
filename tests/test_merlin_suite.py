@@ -601,3 +601,356 @@ def test_engine_offline_standby_immediate_output(isolated_db, monkeypatch):
     full_text = "".join(stream)
     assert "Offline Intelligence Standby" in full_text
 
+
+# =====================================================================
+# 5. Calendar Scheduling & Double-Booking Prevention Tests
+# =====================================================================
+
+def test_calendar_booking_and_conflict_detection(isolated_db):
+    """Verifies appointment booking, slot checking, and collision prevention."""
+    # 1. Book first appointment: 10:00 to 11:00
+    res1 = database.book_calendar_event(
+        title="Client Consultation",
+        start_time="2026-11-05T10:00:00",
+        end_time="2026-11-05T11:00:00",
+        attendee_name="Alice Smith",
+        attendee_phone="+1-555-0100",
+        attendee_email="alice@example.com",
+        description="Architecture Review",
+    )
+    assert res1["status"] == "confirmed"
+    assert res1["event_id"] > 0
+
+    # 2. Check availability: overlapping slot should be unavailable
+    avail = database.check_calendar_availability("2026-11-05T10:30:00", "2026-11-05T11:30:00")
+    assert avail["available"] is False
+    assert len(avail["conflicts"]) == 1
+    assert avail["conflicts"][0]["title"] == "Client Consultation"
+
+    # 3. Check availability: non-overlapping slot should be free
+    avail_free = database.check_calendar_availability("2026-11-05T11:00:00", "2026-11-05T12:00:00")
+    assert avail_free["available"] is True
+
+    # 4. Attempt to double-book overlapping slot: must return conflict error
+    res2 = database.book_calendar_event(
+        title="Conflicting Meeting",
+        start_time="2026-11-05T10:15:00",
+        end_time="2026-11-05T10:45:00",
+        attendee_name="Bob Jones",
+    )
+    assert res2["status"] == "conflict"
+    assert "conflicts with an existing appointment" in res2["error"]
+
+    # 5. Book adjacent non-overlapping appointment
+    res3 = database.book_calendar_event(
+        title="Team Standup",
+        start_time="2026-11-05T11:00:00",
+        end_time="2026-11-05T11:30:00",
+        attendee_name="Dev Team",
+    )
+    assert res3["status"] == "confirmed"
+
+    # 6. List events
+    events = database.get_calendar_events()
+    assert len(events) == 2
+    assert events[0]["title"] == "Client Consultation"
+    assert events[1]["title"] == "Team Standup"
+
+
+def test_calendar_cancel_and_delete(isolated_db):
+    """Verifies cancelling and deleting calendar events frees up time slots."""
+    res = database.book_calendar_event(
+        title="Lunch Meeting",
+        start_time="2026-11-06T12:00:00",
+        end_time="2026-11-06T13:00:00",
+        attendee_name="Charlie Brown",
+    )
+    eid = res["event_id"]
+
+    # Cancel event
+    cancelled = database.cancel_calendar_event(eid)
+    assert cancelled is True
+
+    # Slot should now be available again since cancelled events do not conflict
+    avail = database.check_calendar_availability("2026-11-06T12:00:00", "2026-11-06T13:00:00")
+    assert avail["available"] is True
+
+    # Permanent delete
+    deleted = database.delete_calendar_event(eid)
+    assert deleted is True
+    assert len(database.get_calendar_events()) == 0
+
+
+# =====================================================================
+# 6. Embeddings & Hybrid Vector RAG Tests
+# =====================================================================
+
+def test_embeddings_vector_math_and_chunking():
+    """Verifies deterministic embedding generation, cosine similarity, and text chunking."""
+    import embeddings
+
+    text1 = "FastAPI asynchronous WebSocket streaming endpoint"
+    text2 = "FastAPI async WebSocket streaming route"
+    text3 = "Baking chocolate chip cookies in an oven"
+
+    vec1 = embeddings.generate_fallback_embedding(text1)
+    vec2 = embeddings.generate_fallback_embedding(text2)
+    vec3 = embeddings.generate_fallback_embedding(text3)
+
+    assert len(vec1) == embeddings.FALLBACK_EMBED_DIM
+    # Dot product with self should equal ~1.0
+    sim_self = embeddings.cosine_similarity(vec1, vec1)
+    assert pytest.approx(sim_self, abs=0.001) == 1.0
+
+    # Semantic overlap: text1 and text2 share vocabulary and should have high similarity
+    sim_1_2 = embeddings.cosine_similarity(vec1, vec2)
+    sim_1_3 = embeddings.cosine_similarity(vec1, vec3)
+    assert sim_1_2 > sim_1_3
+    assert sim_1_2 > 0.4
+
+    # Binary pack and unpack roundtrip
+    packed = embeddings.pack_embedding(vec1)
+    unpacked = embeddings.unpack_embedding(packed)
+    assert len(unpacked) == len(vec1)
+    assert pytest.approx(unpacked[0], abs=1e-5) == vec1[0]
+
+    # Chunking long text
+    long_doc = "\n".join([f"Line {i}: Documentation for component step {i}." for i in range(50)])
+    chunks = embeddings.chunk_text(long_doc, chunk_size=300, chunk_overlap=50)
+    assert len(chunks) > 1
+    assert all(len(c) > 0 for c in chunks)
+
+
+def test_hybrid_rag_search(isolated_db):
+    """Verifies Reciprocal Rank Fusion (RRF) search across FTS5 and dense embeddings."""
+    k1 = database.add_knowledge(
+        topic="SQLite WAL Concurrency",
+        lesson="Enable PRAGMA journal_mode=WAL and PRAGMA synchronous=NORMAL for concurrent writers.",
+        code_example="conn.execute('PRAGMA journal_mode=WAL;')",
+        tags="sqlite,concurrency",
+    )
+    database.add_knowledge(
+        topic="Redis In-Memory Caching",
+        lesson="Use Redis strings or hashes to cache session tokens and decrease database query load.",
+        code_example="r.set('session:1', 'active')",
+        tags="redis,cache",
+    )
+
+    # Hybrid search
+    results = database.search_knowledge_hybrid("WAL journal mode concurrency", limit=3)
+    assert len(results) >= 1
+    assert results[0]["id"] == k1
+    assert "WAL" in results[0]["lesson"]
+
+
+# =====================================================================
+# 7. Deterministic Function-Calling Engine Tests
+# =====================================================================
+
+def test_function_calling_deterministic_execution(isolated_db):
+    """Verifies standard tool registry and zero-hallucination function dispatch."""
+    import function_calling
+
+    # 1. get_current_time
+    res_time = function_calling.execute_tool("get_current_time", {})
+    assert res_time["status"] == "success"
+    assert "current_time" in res_time
+    assert "day_of_week" in res_time
+
+    # 2. book_calendar_appointment
+    book_args = {
+        "title": "Dentist Visit",
+        "start_time": "2026-11-10T14:00:00",
+        "end_time": "2026-11-10T15:00:00",
+        "attendee_name": "John Doe",
+        "attendee_phone": "+1-555-9876",
+    }
+    res_book = function_calling.execute_tool("book_calendar_appointment", book_args)
+    assert res_book["status"] == "confirmed"
+    event_id = res_book["event_id"]
+
+    # 3. check_calendar_availability
+    res_avail = function_calling.execute_tool("check_calendar_availability", {
+        "start_time": "2026-11-10T14:30:00",
+        "end_time": "2026-11-10T15:30:00",
+    })
+    assert res_avail["available"] is False
+
+    # 4. list_calendar_events
+    res_list = function_calling.execute_tool("list_calendar_events", {})
+    assert res_list["count"] == 1
+    assert res_list["events"][0]["title"] == "Dentist Visit"
+
+    # 5. cancel_calendar_appointment
+    res_cancel = function_calling.execute_tool("cancel_calendar_appointment", {"event_id": event_id})
+    assert res_cancel["cancelled"] is True
+
+
+def test_function_calling_parser_from_text():
+    """Verifies extraction of JSON tool calls emitted in markdown or XML style."""
+    import function_calling
+
+    sample_md = """
+I will check the calendar for you:
+```json
+{
+  "tool": "check_calendar_availability",
+  "parameters": {
+    "start_time": "2026-11-05T09:00:00",
+    "end_time": "2026-11-05T10:00:00"
+  }
+}
+```
+"""
+    calls = function_calling.extract_text_tool_calls(sample_md)
+    assert len(calls) == 1
+    assert calls[0]["name"] == "check_calendar_availability"
+    assert calls[0]["arguments"]["start_time"] == "2026-11-05T09:00:00"
+
+
+# =====================================================================
+# 8. Telephony AudioSocket Framing & VoIP Gateway Tests
+# =====================================================================
+
+def test_telephony_audiosocket_framing_and_transcoding():
+    """Verifies Asterisk AudioSocket frame packing/unpacking and PCM/µ-law transcoding."""
+    import telephony
+
+    # Test PCM to µ-law and back
+    pcm_in = (b"\x00\x00" * 80) + (b"\x50\x04" * 80)
+    ulaw = telephony.pcm16_to_ulaw(pcm_in)
+    assert len(ulaw) == len(pcm_in) // 2
+
+    pcm_out = telephony.ulaw_to_pcm16(ulaw)
+    assert len(pcm_out) == len(pcm_in)
+
+    # Audio energy
+    energy = telephony.calculate_pcm_energy(pcm_in)
+    assert energy > 0.0
+
+    # Asterisk AudioSocket frame parsing
+    test_payload = b"test_audio_payload_bytes_12345"
+    frame = telephony.build_audiosocket_frame(telephony.AUDIOSOCKET_TYPE_AUDIO, test_payload)
+    frame_type, payload, rest = telephony.parse_audiosocket_frame(frame)
+    assert frame_type == telephony.AUDIOSOCKET_TYPE_AUDIO
+    assert payload == test_payload
+    assert rest == b""
+
+    # WAV header construction
+    wav_bytes = telephony.create_wav_bytes(pcm_in, sample_rate=16000)
+    assert wav_bytes.startswith(b"RIFF")
+    assert b"WAVE" in wav_bytes[:16]
+
+
+def test_telephony_session_voice_state_machine():
+    """Verifies caller session management and Voice Activity Detection (VAD)."""
+    import telephony
+
+    session = telephony.get_or_create_telephony_session(session_id="test-call-1", caller_number="+1-555-3210")
+    assert session.caller_number == "+1-555-3210"
+
+    # Feed voice chunk (energy > threshold)
+    voice_chunk = b"\x20\x4e" * 320  # high amplitude sample
+    session.add_audio_frame(voice_chunk)
+    assert session.speaking is True
+
+    # Feed silence frames to simulate end of speech
+    silence_chunk = b"\x00\x00" * 320
+    for _ in range(16):
+        session.add_audio_frame(silence_chunk)
+
+    assert session.should_trigger_turn() is True
+    utterance = session.extract_utterance()
+    assert len(utterance) > 0
+    assert session.speaking is False
+
+    telephony.close_telephony_session("test-call-1")
+    assert len(telephony.get_active_telephony_sessions()) == 0
+
+
+# =====================================================================
+# 9. FastAPI Calendar & Telephony Endpoints Tests
+# =====================================================================
+
+def test_api_calendar_routes(client):
+    """Verifies REST endpoints for booking, checking availability, and listing events."""
+    # 1. Book appointment via API
+    book_resp = client.post("/api/calendar/book", json={
+        "title": "Onboarding Call",
+        "start_time": "2026-11-12T10:00:00",
+        "end_time": "2026-11-12T11:00:00",
+        "attendee_name": "David Miller",
+        "attendee_phone": "+1-555-4321",
+    })
+    assert book_resp.status_code == 200
+    data = book_resp.json()
+    assert data["status"] == "confirmed"
+    event_id = data["event_id"]
+
+    # 2. Availability check via API
+    avail_resp = client.post("/api/calendar/availability", json={
+        "start_time": "2026-11-12T10:30:00",
+        "end_time": "2026-11-12T11:30:00",
+    })
+    assert avail_resp.status_code == 200
+    assert avail_resp.json()["available"] is False
+
+    # 3. Double-booking conflict returns 409
+    conflict_resp = client.post("/api/calendar/book", json={
+        "title": "Overlapping Call",
+        "start_time": "2026-11-12T10:15:00",
+        "end_time": "2026-11-12T10:45:00",
+        "attendee_name": "Eve Adams",
+    })
+    assert conflict_resp.status_code == 409
+
+    # 4. List events
+    list_resp = client.get("/api/calendar/events")
+    assert list_resp.status_code == 200
+    assert list_resp.json()["count"] >= 1
+
+    # 5. Cancel event
+    cancel_resp = client.post("/api/calendar/cancel", json={"event_id": event_id})
+    assert cancel_resp.status_code == 200
+    assert cancel_resp.json()["success"] is True
+
+
+def test_api_telephony_routes(client):
+    """Verifies Telephony status and PBX dialplan webhook endpoints."""
+    # Status endpoint
+    status_resp = client.get("/api/telephony/status")
+    assert status_resp.status_code == 200
+    assert status_resp.json()["status"] == "online"
+
+    # Inbound PBX Webhook
+    webhook_resp = client.post("/api/telephony/webhook", json={
+        "caller": "+1-555-8888",
+        "query": "Hello, I want to inquire about services.",
+    })
+    assert webhook_resp.status_code == 200
+    w_data = webhook_resp.json()
+    assert w_data["status"] == "success"
+    assert "reply" in w_data
+    assert len(w_data["reply"]) > 0
+
+
+def test_api_knowledge_hybrid_and_reindex(client):
+    """Verifies reindexing embeddings and hybrid search via API."""
+    client.post("/api/knowledge", json={
+        "topic": "Python AsyncIO Tasks",
+        "lesson": "Use asyncio.create_task() to schedule concurrent coroutines on the running event loop.",
+        "code_example": "task = asyncio.create_task(coro())",
+        "tags": "python,asyncio",
+    })
+
+    # Trigger reindexing
+    reindex_resp = client.post("/api/knowledge/index_embeddings")
+    assert reindex_resp.status_code == 200
+    assert reindex_resp.json()["success"] is True
+
+    # Search hybrid
+    search_resp = client.get("/api/knowledge/search?q=asyncio+create_task&hybrid=true")
+    assert search_resp.status_code == 200
+    assert len(search_resp.json()) >= 1
+
+

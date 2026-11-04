@@ -1,8 +1,10 @@
 import asyncio
 import base64
 import json
+import logging
 import os
 import re
+import shutil
 import struct
 import threading
 import time
@@ -11,9 +13,9 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import uvicorn
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,15 +24,20 @@ from database import (
     add_knowledge,
     add_note,
     add_todo,
+    book_calendar_event,
+    cancel_calendar_event,
+    check_calendar_availability,
     checkpoint_and_vacuum,
     clear_session_messages,
     create_session,
+    delete_calendar_event,
     delete_gap,
     delete_knowledge,
     delete_note,
     delete_session,
     delete_todo,
     get_all_knowledge,
+    get_calendar_events,
     get_counts,
     get_last_session_message,
     get_notes,
@@ -41,10 +48,12 @@ from database import (
     get_system_telemetry,
     get_todos,
     get_unresolved_gaps,
+    index_knowledge_embeddings,
     init_db,
     log_event,
     save_message,
     search_knowledge,
+    search_knowledge_hybrid,
     search_notes,
     toggle_todo,
     update_knowledge,
@@ -62,6 +71,21 @@ from sync_teacher import (
     save_persistent_api_key,
     sync_state,
 )
+from telephony import (
+    AUDIOSOCKET_TYPE_AUDIO,
+    AUDIOSOCKET_TYPE_HANGUP,
+    AUDIOSOCKET_TYPE_UUID,
+    TelephonySession,
+    build_audiosocket_frame,
+    close_telephony_session,
+    get_active_telephony_sessions,
+    get_or_create_telephony_session,
+    parse_audiosocket_frame,
+    synthesize_speech,
+    transcribe_audio_chunk,
+)
+
+logger = logging.getLogger("merlin.main")
 
 # Path configurations
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -320,6 +344,25 @@ class ArgonQueryRequest(_BaseContract):
     reasoning_effort: str = "high"
     thinking_budget: int | str | None = 2048
     system_instruction: str | None = None
+
+
+class CalendarBookRequest(_BaseContract):
+    title: str = "Appointment"
+    start_time: str = ""
+    end_time: str = ""
+    attendee_name: str = "Guest"
+    attendee_phone: str = ""
+    attendee_email: str = ""
+    description: str = ""
+
+
+class CalendarAvailabilityRequest(_BaseContract):
+    start_time: str = ""
+    end_time: str = ""
+
+
+class CalendarCancelRequest(_BaseContract):
+    event_id: int | str = 0
 
 
 class ArgonAssimilateRequest(_BaseContract):
@@ -616,6 +659,239 @@ def chat_stop(data: ChatStopRequest):
 
 
 # =====================================================================
+# High-Performance WebSocket Streaming & VoIP Telephony Endpoints
+# =====================================================================
+
+@app.websocket("/ws/chat")
+async def websocket_chat_endpoint(websocket: WebSocket):
+    """
+    Sub-millisecond bidirectional WebSocket streaming endpoint.
+    Client sends JSON:
+        {"prompt": "...", "session_id": "...", "mode": "assistant", "model": "..."}
+        or {"action": "stop", "session_id": "..."}
+    Server emits token chunks:
+        {"type": "chunk", "delta": "...", "session_id": "..."}
+        {"type": "done", "session_id": "..."}
+    """
+    await websocket.accept()
+    eng = get_engine()
+    active_sid = "default"
+    try:
+        while True:
+            raw_msg = await websocket.receive_text()
+            try:
+                data = json.loads(raw_msg)
+            except Exception:
+                await websocket.send_json({"type": "error", "message": "Invalid JSON payload."})
+                continue
+
+            action = data.get("action", "generate")
+            active_sid = data.get("session_id", "default").strip() or "default"
+
+            if action == "stop":
+                stopped = eng.stop_generation(active_sid)
+                await websocket.send_json({"type": "stopped", "session_id": active_sid, "success": stopped})
+                continue
+
+            prompt = (data.get("prompt") or "").strip()
+            if not prompt:
+                await websocket.send_json({"type": "error", "message": "Prompt cannot be empty."})
+                continue
+
+            mode = data.get("mode", "assistant")
+            model = data.get("model")
+            if model:
+                eng.set_active_model(model)
+
+            loop = asyncio.get_event_loop()
+            q: asyncio.Queue[str | None] = asyncio.Queue()
+
+            def _producer(p=prompt, s=active_sid, m=mode, lp=loop, queue=q):
+                try:
+                    for chunk in eng.generate_stream(p, session_id=s, mode=m):
+                        lp.call_soon_threadsafe(queue.put_nowait, chunk)
+                except Exception as ex:
+                    lp.call_soon_threadsafe(queue.put_nowait, f"[Error: {ex}]")
+                finally:
+                    lp.call_soon_threadsafe(queue.put_nowait, None)
+
+            producer_thread = threading.Thread(target=_producer, daemon=True)
+            producer_thread.start()
+
+            while True:
+                chunk = await q.get()
+                if chunk is None:
+                    break
+                await websocket.send_json({"type": "chunk", "delta": chunk, "session_id": active_sid})
+
+            await websocket.send_json({"type": "done", "session_id": active_sid})
+
+    except WebSocketDisconnect:
+        if active_sid:
+            eng.stop_generation(active_sid)
+    except Exception as e:
+        logger.warning(f"WebSocket chat exception: {e}")
+
+
+@app.websocket("/ws/telephony/stream")
+async def websocket_telephony_stream(websocket: WebSocket):
+    """
+    Real-time audio streaming gateway for Asterisk / FreeSWITCH / browser audio.
+    Supports binary AudioSocket frames (type 0x01 UUID, 0x10 Audio) and JSON control events.
+    """
+    await websocket.accept()
+    session: TelephonySession | None = None
+    eng = get_engine()
+
+    try:
+        while True:
+            message = await websocket.receive()
+            if "bytes" in message and message["bytes"]:
+                raw_bytes = message["bytes"]
+                frame_type, payload, _ = parse_audiosocket_frame(raw_bytes)
+                if frame_type == AUDIOSOCKET_TYPE_UUID and len(payload) == 16:
+                    call_uuid = str(uuid.UUID(bytes=payload))
+                    session = get_or_create_telephony_session(session_id=call_uuid)
+                    await websocket.send_json({"type": "connected", "call_uuid": call_uuid})
+                elif frame_type == AUDIOSOCKET_TYPE_AUDIO:
+                    if session is None:
+                        session = get_or_create_telephony_session()
+                    session.add_audio_frame(payload)
+                elif frame_type == AUDIOSOCKET_TYPE_HANGUP:
+                    if session:
+                        close_telephony_session(session.session_id)
+                    break
+                else:
+                    if session is None:
+                        session = get_or_create_telephony_session()
+                    session.add_audio_frame(raw_bytes)
+
+                if session and session.should_trigger_turn():
+                    utterance = session.extract_utterance()
+                    transcription = transcribe_audio_chunk(utterance)
+                    if transcription:
+                        await websocket.send_json({"type": "transcription", "text": transcription})
+                        resp_chunks = []
+                        for chunk in eng.generate_stream(transcription, session_id=session.session_id, mode="calendar"):
+                            resp_chunks.append(chunk)
+                        reply_text = "".join(resp_chunks)
+                        await websocket.send_json({"type": "reply", "text": reply_text})
+                        audio_out = synthesize_speech(reply_text)
+                        if audio_out:
+                            out_frame = build_audiosocket_frame(AUDIOSOCKET_TYPE_AUDIO, audio_out)
+                            await websocket.send_bytes(out_frame)
+
+            elif "text" in message and message["text"]:
+                try:
+                    data = json.loads(message["text"])
+                    event = data.get("event")
+                    if event == "init":
+                        cid = data.get("caller_number", "Unknown")
+                        session = get_or_create_telephony_session(caller_number=cid)
+                        await websocket.send_json({"type": "ready", "session_id": session.session_id})
+                    elif event == "text_query":
+                        q = data.get("text", "")
+                        sid = session.session_id if session else "default"
+                        chunks = list(eng.generate_stream(q, session_id=sid, mode="calendar"))
+                        reply = "".join(chunks)
+                        await websocket.send_json({"type": "reply", "text": reply})
+                except Exception as ex:
+                    await websocket.send_json({"type": "error", "message": str(ex)})
+
+    except WebSocketDisconnect:
+        if session:
+            close_telephony_session(session.session_id)
+    except Exception as e:
+        logger.warning(f"Telephony stream error: {e}")
+
+
+# =====================================================================
+# Telephony VoIP / PBX Gateway Endpoints
+# =====================================================================
+
+@app.get("/api/telephony/status")
+def get_telephony_status_route():
+    return {
+        "status": "online",
+        "gateway": "Asterisk AudioSocket & WebRTC Gateway",
+        "active_calls": get_active_telephony_sessions(),
+        "stt_available": bool(shutil.which("whisper") or shutil.which("whisper-cli") or shutil.which("faster-whisper")),
+        "tts_available": bool(shutil.which("piper")),
+    }
+
+
+@app.post("/api/telephony/webhook")
+async def telephony_webhook_route(request: Request):
+    """
+    PBX Dialplan Webhook (FreePBX / Asterisk ARI / FreeSWITCH curl integration).
+    Returns instructions or answers caller queries.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    caller = body.get("caller", "Unknown")
+    query = body.get("query", "Hello")
+    session = get_or_create_telephony_session(caller_number=caller)
+
+    eng = get_engine()
+    chunks = list(eng.generate_stream(query, session_id=session.session_id, mode="calendar"))
+    reply = "".join(chunks)
+    return {
+        "status": "success",
+        "caller": caller,
+        "reply": reply,
+        "session_id": session.session_id,
+    }
+
+
+# =====================================================================
+# Calendar & Appointment Scheduling Endpoints
+# =====================================================================
+
+@app.get("/api/calendar/events")
+def get_calendar_events_route(start_time: str = "", end_time: str = "", limit: int = 50):
+    events = get_calendar_events(start_time=start_time or None, end_time=end_time or None, limit=limit)
+    return {"status": "success", "count": len(events), "events": events}
+
+
+@app.post("/api/calendar/book")
+def book_calendar_event_route(data: CalendarBookRequest):
+    res = book_calendar_event(
+        title=data.title,
+        start_time=data.start_time,
+        end_time=data.end_time,
+        attendee_name=data.attendee_name,
+        attendee_phone=data.attendee_phone,
+        attendee_email=data.attendee_email,
+        description=data.description,
+    )
+    if res.get("status") == "conflict":
+        return JSONResponse(status_code=409, content=res)
+    return res
+
+
+@app.post("/api/calendar/availability")
+def check_calendar_availability_route(data: CalendarAvailabilityRequest):
+    return check_calendar_availability(data.start_time, data.end_time)
+
+
+@app.post("/api/calendar/cancel")
+def cancel_calendar_event_route(data: CalendarCancelRequest):
+    eid = _parse_int_id(data.event_id)
+    success = cancel_calendar_event(eid)
+    return {"success": success, "event_id": eid}
+
+
+@app.post("/api/calendar/delete")
+def delete_calendar_event_route(data: CalendarCancelRequest):
+    eid = _parse_int_id(data.event_id)
+    success = delete_calendar_event(eid)
+    return {"success": success, "event_id": eid}
+
+
+# =====================================================================
 # Sessions / Conversations Endpoints
 # =====================================================================
 
@@ -698,7 +974,7 @@ def health_check():
 def get_status():
     uptime_sec = int(time.time() - server_start_time)
     eng = get_engine()
-    counts = get_counts()
+    counts = get_counts(include_all=True)
     return {
         "backend": eng.backend,
         "model": eng.active_model_name or "None",
@@ -829,11 +1105,22 @@ def list_knowledge():
 
 
 @app.get("/api/knowledge/search")
-def search_knowledge_route(q: str = "", limit: int = 10):
+def search_knowledge_route(q: str = "", limit: int = 10, hybrid: bool = True):
     safe_limit = max(1, min(limit, 200))
     if not q.strip():
         return get_all_knowledge(limit=safe_limit)
+    if hybrid:
+        return search_knowledge_hybrid(q, limit=safe_limit)
     return search_knowledge(q, limit=safe_limit)
+
+
+@app.post("/api/knowledge/index_embeddings")
+def reindex_all_embeddings_route():
+    all_k = get_all_knowledge(limit=2000)
+    total_indexed = 0
+    for k in all_k:
+        total_indexed += index_knowledge_embeddings(k["id"])
+    return {"success": True, "knowledge_count": len(all_k), "embeddings_indexed": total_indexed}
 
 
 @app.post("/api/knowledge")

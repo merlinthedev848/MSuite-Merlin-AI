@@ -16,6 +16,7 @@ LimitNOFILE=65535
 Environment=N_CTX=2048
 Environment=CONTEXT_BUDGET=1000
 Environment=MAX_TOKENS=512
+Environment=NUM_GPU=99
 
 [Install]
 WantedBy=multi-user.target

@@ -299,6 +299,38 @@ def init_db(force: bool = False) -> None:
             """)
             c.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(id DESC);")
 
+            # 9. Calendar Events (Automated Telephony & Assistant Scheduling)
+            c.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                attendee_name TEXT DEFAULT '',
+                attendee_phone TEXT DEFAULT '',
+                attendee_email TEXT DEFAULT '',
+                status TEXT DEFAULT 'confirmed',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_calendar_start ON calendar_events(start_time ASC);")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_calendar_status_start ON calendar_events(status, start_time ASC);")
+
+            # 10. Dense Vector Knowledge Embeddings (RAG)
+            c.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL REFERENCES knowledge(id) ON DELETE CASCADE,
+                chunk_index INTEGER DEFAULT 0,
+                chunk_text TEXT NOT NULL,
+                embedding BLOB NOT NULL,
+                dimension INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_kid ON knowledge_embeddings(knowledge_id);")
+
         _initialized_db_path = DB_PATH
 
 
@@ -617,19 +649,33 @@ def get_recent_audit_logs(limit: int = 25) -> list[dict[str, Any]]:
 
 # --- Knowledge & Memory Retrieval ---
 
-def get_counts() -> dict[str, int]:
+def get_counts(include_all: bool = False) -> dict[str, int]:
     """O(1) aggregate count query for status endpoint (avoids loading entire tables into RAM)."""
     with get_db() as conn:
         c = conn.cursor()
         c.execute("""
             SELECT
                 (SELECT COUNT(*) FROM knowledge) AS knowledge_count,
-                (SELECT COUNT(*) FROM gaps WHERE status IN ('pending', 'failed')) AS pending_gaps
+                (SELECT COUNT(*) FROM gaps WHERE status IN ('pending', 'failed')) AS pending_gaps,
+                (SELECT COUNT(*) FROM calendar_events WHERE status = 'confirmed') AS calendar_count,
+                (SELECT COUNT(*) FROM knowledge_embeddings) AS embeddings_count
         """)
         row = c.fetchone()
         if row:
-            return {"knowledge_count": int(row["knowledge_count"]), "pending_gaps": int(row["pending_gaps"])}
-        return {"knowledge_count": 0, "pending_gaps": 0}
+            row_dict = dict(row)
+            res = {
+                "knowledge_count": int(row_dict.get("knowledge_count", 0)),
+                "pending_gaps": int(row_dict.get("pending_gaps", 0)),
+            }
+            if include_all:
+                res["calendar_count"] = int(row_dict.get("calendar_count", 0))
+                res["embeddings_count"] = int(row_dict.get("embeddings_count", 0))
+            return res
+        res = {"knowledge_count": 0, "pending_gaps": 0}
+        if include_all:
+            res["calendar_count"] = 0
+            res["embeddings_count"] = 0
+        return res
 
 
 def add_knowledge(topic: str, lesson: str, code_example: str = "", tags: str = "", source: str = "distilled") -> int:
@@ -656,6 +702,10 @@ def add_knowledge(topic: str, lesson: str, code_example: str = "", tags: str = "
                     SET lesson = ?, code_example = ?, tags = ?, source = ?
                     WHERE id = ?
                 """, (clean_lesson, chosen_code, merged_tags, source, kid))
+            try:
+                index_knowledge_embeddings(kid, f"{clean_topic}\n{clean_lesson}\n{chosen_code}")
+            except Exception:
+                pass
             return kid
 
         c.execute("""
@@ -667,6 +717,10 @@ def add_knowledge(topic: str, lesson: str, code_example: str = "", tags: str = "
             "INSERT INTO audit_log (event_type, details, status) VALUES (?, ?, ?)",
             ("knowledge_added", f"Assimilated: {clean_topic}", "success")
         )
+        try:
+            index_knowledge_embeddings(kid, f"{clean_topic}\n{clean_lesson}\n{clean_code}")
+        except Exception:
+            pass
         return kid
 
 
@@ -760,6 +814,247 @@ def get_all_knowledge(limit: int = 100) -> list[dict[str, Any]]:
             FROM knowledge ORDER BY id DESC LIMIT ?
         """, (limit,))
         return [dict(r) for r in c.fetchall()]
+
+
+# --- Dense Vector RAG & Hybrid Search Engine ---
+
+def index_knowledge_embeddings(knowledge_id: int, text: str | None = None) -> int:
+    """
+    Generates and stores dense vector embeddings for a knowledge entry.
+    Chunks longer entries so fine-grained matching is achieved.
+    """
+    try:
+        from embeddings import chunk_text, generate_embedding, pack_embedding
+    except ImportError:
+        return 0
+
+    with get_db() as conn:
+        c = conn.cursor()
+        if text is None:
+            c.execute("SELECT topic, lesson, code_example FROM knowledge WHERE id = ?", (knowledge_id,))
+            row = c.fetchone()
+            if not row:
+                return 0
+            text = f"{row['topic']}\n{row['lesson']}\n{row['code_example']}"
+
+        chunks = chunk_text(text, chunk_size=400, chunk_overlap=60)
+        c.execute("DELETE FROM knowledge_embeddings WHERE knowledge_id = ?", (knowledge_id,))
+        indexed_count = 0
+        for idx, chunk in enumerate(chunks):
+            vec = generate_embedding(chunk)
+            packed = pack_embedding(vec)
+            c.execute("""
+                INSERT INTO knowledge_embeddings (knowledge_id, chunk_index, chunk_text, embedding, dimension)
+                VALUES (?, ?, ?, ?, ?)
+            """, (knowledge_id, idx, chunk, packed, len(vec)))
+            indexed_count += 1
+        return indexed_count
+
+
+def search_knowledge_dense(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    """
+    Executes dense vector search across indexed knowledge chunks using cosine similarity.
+    """
+    try:
+        from embeddings import cosine_similarity, generate_embedding
+    except ImportError:
+        return []
+
+    query_vec = generate_embedding(query)
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT ke.knowledge_id, ke.chunk_text, ke.embedding, k.topic, k.lesson, k.code_example, k.tags
+            FROM knowledge_embeddings ke
+            JOIN knowledge k ON k.id = ke.knowledge_id
+        """)
+        rows = c.fetchall()
+        if not rows:
+            return []
+
+        scored: list[tuple[float, dict[str, Any]]] = []
+        seen_ids: set[int] = set()
+        for r in rows:
+            kid = r["knowledge_id"]
+            sim = cosine_similarity(query_vec, r["embedding"])
+            if kid not in seen_ids or any(item["id"] == kid and sim > s for s, item in scored):
+                seen_ids.add(kid)
+                scored.append((sim, {
+                    "id": kid,
+                    "topic": r["topic"],
+                    "lesson": r["lesson"],
+                    "code_example": r["code_example"],
+                    "tags": r["tags"],
+                    "similarity": round(sim, 4),
+                }))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [item for _, item in scored[:limit]]
+
+
+def search_knowledge_hybrid(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    """
+    Hybrid Reciprocal Rank Fusion (RRF) search:
+    Combines sparse lexical BM25 ranking (knowledge_fts) and dense semantic vector search (knowledge_embeddings).
+    RRF score = 1/(60 + rank_bm25) + 1/(60 + rank_vector).
+    """
+    if not query or not query.strip():
+        return []
+
+    sparse_results = search_knowledge(query, limit=limit * 2)
+    dense_results = search_knowledge_dense(query, limit=limit * 2)
+
+    if not dense_results:
+        return sparse_results[:limit]
+    if not sparse_results:
+        return dense_results[:limit]
+
+    rrf_scores: dict[int, float] = {}
+    items: dict[int, dict[str, Any]] = {}
+
+    for rank, item in enumerate(sparse_results):
+        kid = item["id"]
+        rrf_scores[kid] = rrf_scores.get(kid, 0.0) + 1.0 / (60.0 + rank)
+        items[kid] = item
+
+    for rank, item in enumerate(dense_results):
+        kid = item["id"]
+        rrf_scores[kid] = rrf_scores.get(kid, 0.0) + 1.0 / (60.0 + rank)
+        if kid not in items:
+            items[kid] = item
+
+    sorted_kids = sorted(rrf_scores.keys(), key=lambda k: rrf_scores[k], reverse=True)
+    return [items[k] for k in sorted_kids[:limit]]
+
+
+# --- Calendar Scheduling Management ---
+
+def book_calendar_event(
+    title: str,
+    start_time: str,
+    end_time: str,
+    attendee_name: str,
+    attendee_phone: str = "",
+    attendee_email: str = "",
+    description: str = "",
+) -> dict[str, Any]:
+    """
+    Books an appointment on the calendar.
+    Validates timestamps and enforces double-booking prevention against active confirmed events.
+    """
+    clean_title = (title or "Appointment").strip()
+    clean_start = (start_time or "").strip()
+    clean_end = (end_time or "").strip()
+    clean_name = (attendee_name or "Guest").strip()
+
+    if not clean_start or not clean_end:
+        return {"status": "error", "error": "Both start_time and end_time are required."}
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, title, start_time, end_time, attendee_name
+            FROM calendar_events
+            WHERE status = 'confirmed'
+              AND NOT (end_time <= ? OR start_time >= ?)
+        """, (clean_start, clean_end))
+        conflicts = [dict(r) for r in c.fetchall()]
+        if conflicts:
+            return {
+                "status": "conflict",
+                "error": f"Requested slot conflicts with an existing appointment: '{conflicts[0]['title']}' ({conflicts[0]['start_time']} to {conflicts[0]['end_time']})",
+                "conflicts": conflicts,
+            }
+
+        c.execute("""
+            INSERT INTO calendar_events (title, description, start_time, end_time, attendee_name, attendee_phone, attendee_email, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed')
+        """, (clean_title, description.strip(), clean_start, clean_end, clean_name, (attendee_phone or "").strip(), (attendee_email or "").strip()))
+        event_id = int(c.lastrowid or 0)
+        c.execute(
+            "INSERT INTO audit_log (event_type, details, status) VALUES (?, ?, ?)",
+            ("calendar_booked", f"Booked appointment ID {event_id}: '{clean_title}' for {clean_name} ({clean_start} - {clean_end})", "success")
+        )
+
+        return {
+            "status": "confirmed",
+            "event_id": event_id,
+            "title": clean_title,
+            "start_time": clean_start,
+            "end_time": clean_end,
+            "attendee_name": clean_name,
+            "attendee_phone": attendee_phone,
+            "attendee_email": attendee_email,
+            "description": description,
+        }
+
+
+def check_calendar_availability(start_time: str, end_time: str) -> dict[str, Any]:
+    """Checks whether the specified time window has any conflicting confirmed appointments."""
+    clean_start = (start_time or "").strip()
+    clean_end = (end_time or "").strip()
+    if not clean_start or not clean_end:
+        return {"available": False, "error": "Invalid start or end time specified."}
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, title, start_time, end_time, attendee_name
+            FROM calendar_events
+            WHERE status = 'confirmed'
+              AND NOT (end_time <= ? OR start_time >= ?)
+        """, (clean_start, clean_end))
+        conflicts = [dict(r) for r in c.fetchall()]
+        return {
+            "available": len(conflicts) == 0,
+            "start_time": clean_start,
+            "end_time": clean_end,
+            "conflicts": conflicts,
+        }
+
+
+def get_calendar_events(
+    start_time: str | None = None,
+    end_time: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Retrieves calendar appointments optionally filtered by start / end date."""
+    with get_db() as conn:
+        c = conn.cursor()
+        query = "SELECT * FROM calendar_events WHERE 1=1"
+        params: list[Any] = []
+        if start_time:
+            query += " AND start_time >= ?"
+            params.append(start_time.strip())
+        if end_time:
+            query += " AND start_time <= ?"
+            params.append(end_time.strip())
+        query += " ORDER BY start_time ASC LIMIT ?"
+        params.append(limit)
+        c.execute(query, params)
+        return [dict(r) for r in c.fetchall()]
+
+
+def cancel_calendar_event(event_id: int) -> bool:
+    """Marks a calendar appointment as cancelled."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("UPDATE calendar_events SET status = 'cancelled' WHERE id = ?", (event_id,))
+        if c.rowcount > 0:
+            c.execute(
+                "INSERT INTO audit_log (event_type, details, status) VALUES (?, ?, ?)",
+                ("calendar_cancelled", f"Cancelled event ID {event_id}", "warning")
+            )
+            return True
+        return False
+
+
+def delete_calendar_event(event_id: int) -> bool:
+    """Deletes an event record from the database completely."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM calendar_events WHERE id = ?", (event_id,))
+        return c.rowcount > 0
 
 
 # --- Gaps State Machine ---
