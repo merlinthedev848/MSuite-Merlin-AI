@@ -71,18 +71,37 @@ function setTheme(theme) {
 }
 
 // Collapsible Sidebar with Mobile Backdrop Support
-function toggleSidebar() {
+function openSidebar() {
   const sb = document.getElementById("sidebar");
   const backdrop = document.getElementById("sidebar-backdrop");
   if (sb) {
-    sb.classList.toggle("collapsed");
-    if (backdrop) {
-      if (window.innerWidth <= 768 && !sb.classList.contains("collapsed")) {
-        backdrop.style.display = "block";
-      } else {
-        backdrop.style.display = "none";
-      }
+    sb.classList.remove("collapsed");
+    document.body.classList.add("sidebar-open");
+    if (backdrop && window.innerWidth <= 768) {
+      backdrop.style.display = "block";
     }
+  }
+}
+
+function closeSidebar() {
+  const sb = document.getElementById("sidebar");
+  const backdrop = document.getElementById("sidebar-backdrop");
+  if (sb) {
+    sb.classList.add("collapsed");
+    document.body.classList.remove("sidebar-open");
+    if (backdrop) {
+      backdrop.style.display = "none";
+    }
+  }
+}
+
+function toggleSidebar() {
+  const sb = document.getElementById("sidebar");
+  if (!sb) return;
+  if (sb.classList.contains("collapsed")) {
+    openSidebar();
+  } else {
+    closeSidebar();
   }
 }
 
@@ -106,6 +125,9 @@ function handleKeyDown(e) {
 
 // Modal Helpers
 function openModal(id) {
+  if (window.innerWidth <= 768) {
+    closeSidebar();
+  }
   const m = document.getElementById(id);
   if (m) m.style.display = "flex";
   if (id === "settings-modal") {
@@ -279,6 +301,9 @@ async function loadConversations() {
 }
 
 async function createNewChat() {
+  if (window.innerWidth <= 768) {
+    closeSidebar();
+  }
   const res = await fetch("/api/conversations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -291,6 +316,9 @@ async function createNewChat() {
 }
 
 async function switchConversation(convId) {
+  if (window.innerWidth <= 768) {
+    closeSidebar();
+  }
   if (activeEventSource) {
     stopGeneration();
   }
@@ -1624,6 +1652,45 @@ window.addEventListener("DOMContentLoaded", () => {
   loadTodos();
   loadModels();
 
+  // Ensure sidebar collapses by default on mobile / small screens
+  if (window.innerWidth <= 768) {
+    closeSidebar();
+  }
+
+  // Synchronize sidebar backdrop and responsive classes on window resize
+  window.addEventListener("resize", () => {
+    const backdrop = document.getElementById("sidebar-backdrop");
+    const sb = document.getElementById("sidebar");
+    if (window.innerWidth > 768) {
+      if (backdrop) backdrop.style.display = "none";
+      document.body.classList.remove("sidebar-open");
+    } else {
+      if (sb && sb.classList.contains("collapsed") && backdrop) {
+        backdrop.style.display = "none";
+      }
+    }
+  });
+
+  // Mobile Touch Swipe-to-Close gesture for sidebar
+  const sb = document.getElementById("sidebar");
+  if (sb) {
+    let touchStartX = 0;
+    let touchStartY = 0;
+    sb.addEventListener("touchstart", (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+      touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+    sb.addEventListener("touchend", (e) => {
+      const diffX = e.changedTouches[0].screenX - touchStartX;
+      const diffY = e.changedTouches[0].screenY - touchStartY;
+      if (diffX < -50 && Math.abs(diffX) > Math.abs(diffY)) {
+        if (window.innerWidth <= 768) {
+          closeSidebar();
+        }
+      }
+    }, { passive: true });
+  }
+
   // Global Keyboard Shortcuts
   window.addEventListener("keydown", (e) => {
     // Ctrl+N or Cmd+N: New Chat
@@ -1634,8 +1701,13 @@ window.addEventListener("DOMContentLoaded", () => {
         createNewChat();
       }
     }
-    // Escape: Close open modals
+    // Escape: Close sidebar on mobile if open, or close open modals
     if (e.key === "Escape") {
+      const sbEl = document.getElementById("sidebar");
+      if (window.innerWidth <= 768 && sbEl && !sbEl.classList.contains("collapsed")) {
+        closeSidebar();
+        return;
+      }
       const openModals = document.querySelectorAll(".modal-backdrop");
       openModals.forEach(m => {
         if (m.style.display === "flex" && m.id) {

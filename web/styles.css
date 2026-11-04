@@ -56,9 +56,14 @@ body { background-color: var(--bg-app); color: var(--text-main); height: 100vh; 
   display: none;
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.5);
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  background: rgba(0, 0, 0, 0.6);
   z-index: 45;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  cursor: pointer;
 }
 
 /* ==========================================================================
@@ -71,14 +76,17 @@ body { background-color: var(--bg-app); color: var(--text-main); height: 100vh; 
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.25s ease;
   z-index: 50;
   position: relative;
+  overflow: hidden;
 }
 #sidebar.collapsed {
-  width: 0px;
-  transform: translateX(-100%);
-  border-right: none;
+  width: 0px !important;
+  transform: translateX(-100%) !important;
+  border-right: none !important;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .sidebar-header {
@@ -957,12 +965,33 @@ code { font-family: inherit; font-size: inherit; }
     top: 0;
     left: 0;
     bottom: 0;
+    width: min(300px, 85vw);
+    max-width: 85vw;
     height: 100%;
-    z-index: 50;
+    height: 100dvh;
+    z-index: 100;
     box-shadow: var(--shadow-lg);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), width 0.25s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.25s ease;
   }
-  #sidebar:not(.collapsed) ~ .sidebar-backdrop {
+  #sidebar.collapsed {
+    width: 0 !important;
+    transform: translateX(-100%) !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    box-shadow: none !important;
+    border-right: none !important;
+  }
+  .sidebar-backdrop {
+    z-index: 95;
+  }
+  #sidebar:not(.collapsed) + .sidebar-backdrop,
+  #sidebar:not(.collapsed) ~ .sidebar-backdrop,
+  body.sidebar-open .sidebar-backdrop {
     display: block;
+  }
+  #main-canvas {
+    width: 100% !important;
+    min-width: 0 !important;
   }
   #messages-viewport {
     padding: 14px 14px 160px 14px;
