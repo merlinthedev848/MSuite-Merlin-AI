@@ -1314,6 +1314,70 @@ def test_guest_mode_no_saved_conversations_but_learned(isolated_db):
     assert len(database.get_session_messages(auth_sid)) == 2
 
 
+def test_frontend_markdown_code_block_contract():
+    """Validates that web/script.js contains robust code block markdown rendering:
+    - Normalizes Windows CRLF line breaks
+    - Handles line-based fenced code block extraction
+    - Handles language tags and unclosed streaming blocks
+    - Wraps in .code-container with copy-btn and pre code
+    """
+    import subprocess
+    script_path = os.path.join(ROOT_DIR, "web", "script.js")
+    assert os.path.isfile(script_path), "web/script.js must exist"
+
+    with open(script_path, encoding="utf-8") as f:
+        js_code = f.read()
+
+    assert "function renderMarkdown" in js_code
+    assert "replace(/\\r\\n/g, \"\\n\")" in js_code or 'replace(/\\r\\n/g, "\\n")' in js_code
+    assert "code-container" in js_code
+    assert "streaming-code" in js_code
+
+    # Test execution in Node with minimal browser globals stubbed
+    test_runner = f"""
+    const window = {{
+        speechSynthesis: {{ getVoices: () => [], onvoiceschanged: null, speak: () => {{}}, cancel: () => {{}} }},
+        location: {{ hostname: 'localhost', port: '8000', protocol: 'http:' }},
+        addEventListener: () => {{}}
+    }};
+    const document = {{
+        addEventListener: () => {{}},
+        getElementById: () => null,
+        querySelector: () => null,
+        querySelectorAll: () => []
+    }};
+    const navigator = {{ clipboard: {{}} }};
+
+    {js_code}
+
+    // Test 1: User TensorFlow snippet
+    const userPrompt = "Here's the optimized code:\\r\\n\\r\\n```python\\r\\nimport tensorflow as tf\\r\\nimport numpy as np\\r\\n\\r\\nmodel = tf.keras.Sequential()\\r\\n```";
+    const res1 = renderMarkdown(userPrompt);
+    if (!res1.includes('<div class="code-container">') || !res1.includes('<div class="code-header-bar"><span>python</span>') || !res1.includes('import tensorflow as tf')) {{
+        process.exit(1);
+    }}
+
+    // Test 2: Unclosed streaming snippet
+    const streamPrompt = "```python\\nmodel.add(tf.keras.layers.Dense(64))";
+    const res2 = renderMarkdown(streamPrompt);
+    if (!res2.includes('<div class="code-container streaming-code">') || !res2.includes('Dense(64)')) {{
+        process.exit(2);
+    }}
+
+    // Test 3: Multiple code blocks
+    const multiPrompt = "```bash\\npip install merlin\\n```\\n```python\\nimport merlin\\n```";
+    const res3 = renderMarkdown(multiPrompt);
+    if ((res3.match(/<div class="code-container">/g) || []).length !== 2) {{
+        process.exit(3);
+    }}
+
+    process.exit(0);
+    """
+    res = subprocess.run(["node", "-"], input=test_runner, capture_output=True, text=True)
+    assert res.returncode == 0, f"Node markdown test failed: {res.stderr}\n{res.stdout}"
+
+
+
 
 
 

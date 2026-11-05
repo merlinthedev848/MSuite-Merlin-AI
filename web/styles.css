@@ -909,6 +909,12 @@ body.admin-logged-in .admin-only-inline {
   border-radius: 12px;
   margin: 14px 0;
   overflow: hidden;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.25s ease;
+}
+.code-container.streaming-code {
+  border-color: rgba(229, 9, 20, 0.55);
+  box-shadow: 0 0 16px rgba(229, 9, 20, 0.2);
 }
 .code-header-bar {
   display: flex;
@@ -919,6 +925,21 @@ body.admin-logged-in .admin-only-inline {
   font-size: 0.75rem;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border-subtle);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
+.code-container.streaming-code .code-header-bar span::after {
+  content: " (streaming...)";
+  color: #ff4d5a;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  font-style: italic;
+  animation: pulse-live 1.4s ease-in-out infinite;
+}
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 .copy-btn {
   background: transparent;

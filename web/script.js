@@ -195,7 +195,11 @@ function closeModal(id) {
 // Rich Markdown and LaTeX Math Parser (Preserves code blocks from prose regex corruption)
 function renderMarkdown(rawText) {
   if (!rawText) return "";
-  let txt = String(rawText)
+  // Normalize Windows CRLF and CR line endings
+  let txt = String(rawText).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // Escape HTML entities to prevent XSS
+  txt = txt
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
@@ -210,14 +214,52 @@ function renderMarkdown(rawText) {
     });
   }
 
-  // 1. Extract fenced code blocks into placeholders so prose regexes never corrupt code
+  // 1. Robust line-based extraction of fenced code blocks
+  // Avoids regex delimiter-overlap bugs, supports CRLF, open/streaming fences, any backtick count (``` or ````), spaces, and any language tag
+  const lines = txt.split("\n");
+  const proseLines = [];
   const codeBlocks = [];
-  txt = txt.replace(/```([a-zA-Z0-9_\-\+]*)\n([\s\S]*?)```/g, (match, lang, code) => {
-    const langLabel = escapeHtml(lang.trim() || "code");
-    const html = `<div class="code-container"><div class="code-header-bar"><span>${langLabel}</span><button class="copy-btn" onclick="copyCode(this)"><svg style="width:13px;height:13px;fill:currentColor;" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>Copy</button></div><pre><code>${code.trim()}</code></pre></div>`;
+  let inCode = false;
+  let codeFence = "";
+  let currentLang = "";
+  let currentCodeLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const fenceMatch = line.match(/^[ \t]*(`{3,})([a-zA-Z0-9_\-\+\#]*)[^\n`]*$/);
+
+    if (!inCode) {
+      if (fenceMatch) {
+        inCode = true;
+        codeFence = fenceMatch[1];
+        currentLang = fenceMatch[2] || "code";
+        currentCodeLines = [];
+      } else {
+        proseLines.push(line);
+      }
+    } else {
+      // Check if closing fence matches
+      if (line.trim().startsWith(codeFence)) {
+        inCode = false;
+        const codeText = currentCodeLines.join("\n").replace(/\n+$/, "");
+        const html = `<div class="code-container"><div class="code-header-bar"><span>${escapeHtml(currentLang)}</span><button class="copy-btn" onclick="copyCode(this)"><svg style="width:13px;height:13px;fill:currentColor;" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>Copy</button></div><pre><code>${codeText}</code></pre></div>`;
+        const idx = codeBlocks.push(html) - 1;
+        proseLines.push(`\x00CODEBLOCK_${idx}\x00`);
+      } else {
+        currentCodeLines.push(line);
+      }
+    }
+  }
+
+  // Unclosed fence (e.g. active token stream or truncated generation)
+  if (inCode) {
+    const codeText = currentCodeLines.join("\n").replace(/\n+$/, "");
+    const html = `<div class="code-container streaming-code"><div class="code-header-bar"><span>${escapeHtml(currentLang)}</span><button class="copy-btn" onclick="copyCode(this)"><svg style="width:13px;height:13px;fill:currentColor;" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>Copy</button></div><pre><code>${codeText}</code></pre></div>`;
     const idx = codeBlocks.push(html) - 1;
-    return `\x00CODEBLOCK_${idx}\x00`;
-  });
+    proseLines.push(`\x00CODEBLOCK_${idx}\x00`);
+  }
+
+  txt = proseLines.join("\n");
 
   // 2. Extract inline code spans into placeholders
   const inlineCodes = [];
@@ -242,6 +284,11 @@ function renderMarkdown(rawText) {
   // 4. Restore inline code and fenced code blocks untouched
   txt = txt.replace(/\x00INLINECODE_(\d+)\x00/g, (_, i) => inlineCodes[Number(i)]);
   txt = txt.replace(/\x00CODEBLOCK_(\d+)\x00/g, (_, i) => codeBlocks[Number(i)]);
+
+  // Clean redundant line breaks around code blocks for clean margins
+  txt = txt.replace(/(?:<br>)+\s*(<div class="code-container)/g, "$1");
+  txt = txt.replace(/(<\/div>)\s*(?:<br>)+/g, "$1");
+
   return txt;
 }
 
