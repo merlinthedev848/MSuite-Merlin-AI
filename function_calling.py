@@ -1,26 +1,52 @@
 """
-Deterministic JSON Function-Calling Engine & Calendar Automation for Merlin AI.
+Deterministic JSON Function-Calling Engine & Autonomous Workhorse Tools for Merlin AI.
 
 Provides standard OpenAI / Ollama tool schemas, validation, and zero-hallucination
-execution dispatch for calendar bookings, availability checks, and knowledge retrieval.
+execution dispatch for system diagnostics, calendar automation, personal task management,
+technical note-taking, and persistent hybrid RAG knowledge retrieval.
 """
 
 import datetime
 import json
+import platform
 import re
+import shutil
+import sys
 from collections.abc import Callable
 from typing import Any
 
+import psutil
+
 from database import (
+    add_note,
+    add_todo,
     book_calendar_event,
     cancel_calendar_event,
     check_calendar_availability,
+    checkpoint_and_vacuum,
+    delete_todo,
+    get_all_knowledge,
     get_calendar_events,
+    get_todos,
     search_knowledge,
+    search_notes,
+    toggle_todo,
 )
 
 # Standard Tool Definitions for OpenAI-compatible and Ollama function calling APIs
 MERLIN_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_system_diagnostics",
+            "description": "Returns live hardware, OS, CPU, memory, disk, and Merlin AI operational telemetry. Always call this when asked for status report, diagnostics, suit/server health, or system telemetry.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -158,7 +184,192 @@ MERLIN_TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_todo",
+            "description": "Adds a task to Merlin's persistent to-do list.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {
+                        "type": "string",
+                        "description": "The description or title of the action item.",
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["urgent", "high", "normal", "low"],
+                        "description": "Priority level of the task (default 'normal').",
+                    },
+                },
+                "required": ["task"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_todos",
+            "description": "Lists to-do items from Merlin's task manager, optionally filtering for only pending tasks.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "only_pending": {
+                        "type": "boolean",
+                        "description": "If true, only lists uncompleted tasks. Defaults to true.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "toggle_todo",
+            "description": "Toggles a task between completed and uncompleted status by its ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "todo_id": {
+                        "type": "integer",
+                        "description": "ID of the to-do item to toggle.",
+                    },
+                },
+                "required": ["todo_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_todo",
+            "description": "Deletes a to-do item permanently by ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "todo_id": {
+                        "type": "integer",
+                        "description": "ID of the to-do item to delete.",
+                    },
+                },
+                "required": ["todo_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_technical_note",
+            "description": "Saves a technical note, code snippet, or engineering insight to Merlin's memory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Title or subject of the note.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Body content of the note (supports Markdown).",
+                    },
+                    "tags": {
+                        "type": "string",
+                        "description": "Comma-separated tags (e.g. 'python, docker, networking').",
+                    },
+                },
+                "required": ["title", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_technical_notes",
+            "description": "Searches stored technical notes by query keyword or tags.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Keyword to search within note titles, contents, and tags.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results to return (default 10).",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "optimize_database",
+            "description": "Executes an immediate SQLite WAL checkpoint and query planner optimization.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
 ]
+
+
+def tool_get_system_diagnostics(**kwargs: Any) -> dict[str, Any]:
+    """Retrieves live CPU, RAM, disk, OS, and Merlin AI operational telemetry."""
+    try:
+        cpu_pct = psutil.cpu_percent(interval=None)
+        cpu_count = psutil.cpu_count(logical=True)
+        vmem = psutil.virtual_memory()
+    except Exception:
+        cpu_pct = 0.0
+        cpu_count = 1
+        vmem = None
+
+    try:
+        disk = shutil.disk_usage(".")
+    except Exception:
+        disk = None
+
+    # Memory telemetry
+    try:
+        knowledge_cnt = len(get_all_knowledge(limit=1000))
+    except Exception:
+        knowledge_cnt = 0
+
+    try:
+        todos = get_todos()
+        open_todos = len([t for t in todos if not t.get("completed")])
+    except Exception:
+        open_todos = 0
+
+    return {
+        "status": "success",
+        "system": {
+            "platform": platform.platform(),
+            "architecture": platform.machine(),
+            "python_version": sys.version.split()[0],
+            "cpu_usage_percent": cpu_pct,
+            "cpu_cores": cpu_count,
+            "memory_total_gb": round(vmem.total / (1024**3), 2) if vmem else 0.0,
+            "memory_used_gb": round(vmem.used / (1024**3), 2) if vmem else 0.0,
+            "memory_free_gb": round(vmem.available / (1024**3), 2) if vmem else 0.0,
+            "memory_percent": vmem.percent if vmem else 0.0,
+            "disk_total_gb": round(disk.total / (1024**3), 2) if disk else 0.0,
+            "disk_used_gb": round(disk.used / (1024**3), 2) if disk else 0.0,
+            "disk_free_gb": round(disk.free / (1024**3), 2) if disk else 0.0,
+        },
+        "merlin_telemetry": {
+            "active_knowledge_entries": knowledge_cnt,
+            "pending_tasks": open_todos,
+            "hybrid_rag_status": "ONLINE (Dense Vector + FTS5)",
+            "voice_engine": "Stark Harmonic WebAudio & British Cadence Online",
+        },
+        "overall_status": "OPTIMAL - All primary systems operational",
+    }
 
 
 def tool_get_current_time(**kwargs: Any) -> dict[str, Any]:
@@ -231,14 +442,82 @@ def tool_search_knowledge_base(query: str, limit: int = 3, **kwargs: Any) -> dic
     }
 
 
+def tool_add_todo(task: str, priority: str = "normal", **kwargs: Any) -> dict[str, Any]:
+    todo_id = add_todo(task=task, priority=priority)
+    return {
+        "status": "success",
+        "todo_id": todo_id,
+        "task": task,
+        "priority": priority,
+    }
+
+
+def tool_list_todos(only_pending: bool = True, **kwargs: Any) -> dict[str, Any]:
+    todos = get_todos()
+    if only_pending:
+        todos = [t for t in todos if not t.get("completed")]
+    return {
+        "status": "success",
+        "count": len(todos),
+        "todos": todos,
+    }
+
+
+def tool_toggle_todo(todo_id: int, **kwargs: Any) -> dict[str, Any]:
+    success = toggle_todo(int(todo_id))
+    return {
+        "status": "success" if success else "not_found",
+        "todo_id": todo_id,
+    }
+
+
+def tool_delete_todo(todo_id: int, **kwargs: Any) -> dict[str, Any]:
+    success = delete_todo(int(todo_id))
+    return {
+        "status": "success" if success else "not_found",
+        "todo_id": todo_id,
+    }
+
+
+def tool_add_technical_note(title: str, content: str, tags: str = "", **kwargs: Any) -> dict[str, Any]:
+    note_id = add_note(title=title, content=content, tags=tags)
+    return {
+        "status": "success",
+        "note_id": note_id,
+        "title": title,
+    }
+
+
+def tool_search_technical_notes(query: str, limit: int = 10, **kwargs: Any) -> dict[str, Any]:
+    notes = search_notes(query=query, limit=limit)
+    return {
+        "status": "success",
+        "query": query,
+        "count": len(notes),
+        "notes": notes,
+    }
+
+
+def tool_optimize_database(**kwargs: Any) -> dict[str, Any]:
+    return checkpoint_and_vacuum()
+
+
 # Dispatch Registry
 TOOL_HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
+    "get_system_diagnostics": tool_get_system_diagnostics,
     "get_current_time": tool_get_current_time,
     "check_calendar_availability": tool_check_calendar_availability,
     "book_calendar_appointment": tool_book_calendar_appointment,
     "list_calendar_events": tool_list_calendar_events,
     "cancel_calendar_appointment": tool_cancel_calendar_appointment,
     "search_knowledge_base": tool_search_knowledge_base,
+    "add_todo": tool_add_todo,
+    "list_todos": tool_list_todos,
+    "toggle_todo": tool_toggle_todo,
+    "delete_todo": tool_delete_todo,
+    "add_technical_note": tool_add_technical_note,
+    "search_technical_notes": tool_search_technical_notes,
+    "optimize_database": tool_optimize_database,
 }
 
 

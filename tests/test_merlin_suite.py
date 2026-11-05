@@ -1195,5 +1195,62 @@ def test_merlin_wake_word_intent_and_persona(isolated_db):
     assert "You are Merlin" in mode_prompt
 
 
+def test_workhorse_tools_and_system_diagnostics(isolated_db):
+    """Verifies that all workhorse tools execute deterministically and return live telemetry."""
+    import function_calling
+
+    # 1. System diagnostics
+    diag = function_calling.execute_tool("get_system_diagnostics", {})
+    assert diag["status"] == "success"
+    assert "cpu_usage_percent" in diag["system"]
+    assert "memory_total_gb" in diag["system"]
+    assert "active_knowledge_entries" in diag["merlin_telemetry"]
+
+    # 2. To-do management tools
+    t_add = function_calling.execute_tool("add_todo", {"task": "Build Mark 85 micro-thruster", "priority": "urgent"})
+    assert t_add["status"] == "success"
+    assert t_add["todo_id"] > 0
+
+    t_list = function_calling.execute_tool("list_todos", {"only_pending": True})
+    assert t_list["status"] == "success"
+    assert any(t["task"] == "Build Mark 85 micro-thruster" for t in t_list["todos"])
+
+    t_toggle = function_calling.execute_tool("toggle_todo", {"todo_id": t_add["todo_id"]})
+    assert t_toggle["status"] == "success"
+
+    # 3. Technical note tools
+    n_add = function_calling.execute_tool("add_technical_note", {
+        "title": "Vibranium Alloy Synthesis",
+        "content": "Combine vibranium lattice with carbon nanotubes.",
+        "tags": "materials, alloy"
+    })
+    assert n_add["status"] == "success"
+    assert n_add["note_id"] > 0
+
+    n_search = function_calling.execute_tool("search_technical_notes", {"query": "Vibranium"})
+    assert n_search["status"] == "success"
+    assert len(n_search["notes"]) >= 1
+
+
+def test_live_diagnostics_and_telemetry_streaming(isolated_db, monkeypatch):
+    """Verifies that diagnostics queries stream live telemetry with Stark persona."""
+    from engine import InferenceEngine
+
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+
+    eng = InferenceEngine(lazy_init=True)
+    monkeypatch.setattr(eng, "_has_teacher_api_key", lambda: False)
+
+    stream = list(eng.generate_stream("Merlin, give me a status report and system diagnostics", session_id="test-diag-session", mode="merlin"))
+    full_output = "".join(stream)
+
+    assert len(full_output) > 50
+    assert "Diagnostic Status Report" in full_output or "Host Platform" in full_output or "CPU" in full_output
+    assert "Sir" in full_output
+
+
+
 
 

@@ -714,6 +714,12 @@ function toggleStreamingUI(isStreaming) {
 }
 
 function stopGeneration() {
+  if (window.speechSynthesis) {
+    try { window.speechSynthesis.cancel(); } catch(e) {}
+  }
+  if (isMerlinVoiceActive || isJarvisVoiceActive) {
+    setMerlinHudState("idle", "INTERRUPTED // STANDBY");
+  }
   if (activeWebSocket) {
     try {
       activeWebSocket.send(JSON.stringify({ action: "stop", session_id: activeConversationId }));
@@ -758,12 +764,16 @@ function finishStreaming(bubbleEl, fullResponse) {
   loadConversations();
 
   if ((isMerlinVoiceActive || isJarvisVoiceActive) && fullResponse && fullResponse.trim()) {
+    setMerlinHudState("speaking");
     speakMerlinText(fullResponse, () => {
       if (isMerlinVoiceActive || isJarvisVoiceActive) {
         playMerlinChime("wake");
+        setMerlinHudState("listening");
         startMerlinListening();
       }
     });
+  } else if (isMerlinVoiceActive || isJarvisVoiceActive) {
+    setMerlinHudState("listening");
   }
 }
 
@@ -878,6 +888,29 @@ let isMerlinVoiceActive = false;
 let isJarvisVoiceActive = false; // Backward-compatibility alias
 let merlinAudioCtx = null;
 
+function setMerlinHudState(state = "listening", customText = "") {
+  const hud = document.getElementById("merlin-arc-hud");
+  const statusEl = document.getElementById("arc-hud-status");
+  if (!hud) return;
+
+  hud.classList.remove("listening", "processing", "speaking");
+  if (state !== "idle") hud.classList.add(state);
+
+  if (statusEl) {
+    if (customText) {
+      statusEl.innerHTML = customText;
+    } else if (state === "listening") {
+      statusEl.innerHTML = 'LISTENING &bull; WAKE WORD: "MERLIN"';
+    } else if (state === "processing") {
+      statusEl.innerHTML = "ANALYZING DIRECTIVE...";
+    } else if (state === "speaking") {
+      statusEl.innerHTML = "TRANSMITTING SYNTHESIS...";
+    } else {
+      statusEl.innerHTML = "MERLIN ONLINE // STANDBY";
+    }
+  }
+}
+
 function playMerlinChime(type = "wake") {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -912,6 +945,21 @@ function playMerlinChime(type = "wake") {
       osc2.start(now);
       osc1.stop(now + 0.30);
       osc2.stop(now + 0.30);
+    } else if (type === "ack") {
+      // Dual-ping acknowledgment: G5 (783.99Hz) -> C6 (1046.50Hz)
+      osc1.type = "sine";
+      osc1.frequency.setValueAtTime(783.99, now);
+      osc1.frequency.setValueAtTime(1046.50, now + 0.08);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.14, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.20);
+
+      osc1.connect(gain);
+      gain.connect(merlinAudioCtx.destination);
+
+      osc1.start(now);
+      osc1.stop(now + 0.22);
     } else {
       // Confirmation pulse: A5 (880Hz) -> D6 (1174.66Hz)
       osc1.type = "sine";
@@ -952,6 +1000,7 @@ function speakMerlinText(text, onComplete) {
     return;
   }
 
+  setMerlinHudState("speaking");
   const utterance = new SpeechSynthesisUtterance(cleanText);
   const voices = window.speechSynthesis.getVoices();
   // Prefer British English voice for authentic Merlin persona
@@ -964,9 +1013,11 @@ function speakMerlinText(text, onComplete) {
   utterance.pitch = 0.95;
 
   utterance.onend = () => {
+    setMerlinHudState("listening");
     if (onComplete) onComplete();
   };
   utterance.onerror = () => {
+    setMerlinHudState("listening");
     if (onComplete) onComplete();
   };
   window.speechSynthesis.speak(utterance);
@@ -975,6 +1026,7 @@ const speakJarvisText = speakMerlinText;
 
 function toggleMerlinVoice() {
   const micBtn = document.getElementById("btn-mic");
+  const hud = document.getElementById("merlin-arc-hud");
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
     showToast("Speech Recognition is not supported in this browser.", "warning");
     return;
@@ -993,6 +1045,7 @@ function toggleMerlinVoice() {
       micBtn.classList.remove("merlin-voice-active", "jarvis-active");
       micBtn.style.color = "var(--text-muted)";
     }
+    if (hud) hud.style.display = "none";
     playMerlinChime("finish");
     showToast("Merlin Voice Mode Standby.", "info");
     return;
@@ -1003,6 +1056,8 @@ function toggleMerlinVoice() {
   if (micBtn) {
     micBtn.classList.add("merlin-voice-active", "jarvis-active");
   }
+  if (hud) hud.style.display = "flex";
+  setMerlinHudState("listening");
   playMerlinChime("wake");
   showToast("Merlin Voice Mode Online. At your service, Sir.", "success");
   startMerlinListening();
@@ -1022,11 +1077,51 @@ function startMerlinListening() {
   recognition.onstart = () => {
     const micBtn = document.getElementById("btn-mic");
     if (micBtn) micBtn.classList.add("merlin-voice-active", "jarvis-active");
+    setMerlinHudState("listening");
+  };
+
+  recognition.onspeechstart = () => {
+    // Natural Barge-In: if Merlin is synthesizing speech, speaking halts immediately
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setMerlinHudState("listening");
+    }
   };
 
   recognition.onresult = async (event) => {
     let transcript = (event.results[0][0].transcript || "").trim();
     if (!transcript) return;
+
+    // Barge-in check
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+    }
+
+    const lower = transcript.toLowerCase();
+
+    // 1. Direct Voice Directive: Stop / Cancel
+    if (/^(merlin|hey merlin)?[,\s]*(stop|shut up|be quiet|silence|hold on|pause)$/i.test(lower) || lower === "stop") {
+      stopGeneration();
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+      playMerlinChime("finish");
+      setMerlinHudState("idle", "INTERRUPTED // STANDBY");
+      showToast("Merlin standing by.", "info");
+      return;
+    }
+
+    // 2. Direct Voice Directive: Clear Screen
+    if (/^(merlin|hey merlin)?[,\s]*(clear screen|clear chat|new chat)$/i.test(lower)) {
+      createNewChat();
+      playMerlinChime("ack");
+      speakMerlinText("Screen cleared, Sir.");
+      return;
+    }
+
+    // 3. Direct Voice Directive: Standby
+    if (/^(merlin|hey merlin)?[,\s]*(standby|sleep|go to sleep|mute)$/i.test(lower)) {
+      toggleMerlinVoice();
+      return;
+    }
 
     // Wake-word checking and cleansing for "Merlin"
     const wakePatterns = [
@@ -1051,6 +1146,7 @@ function startMerlinListening() {
       return;
     }
 
+    setMerlinHudState("processing");
     const ta = document.getElementById("chat-textarea");
     ta.value = strippedPrompt;
     autoResizeTextarea(ta);

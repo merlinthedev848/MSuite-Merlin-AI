@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Merlin AI — Offline Assistant &amp; Self-Learning Coder</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23a8c7fa' d='M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/styles.css?v=2.3.0">
+  <link rel="stylesheet" href="/styles.css?v=2.4.0">
 </head>
 <body>
 
@@ -152,6 +152,24 @@
 
       <!-- Messages Stream List -->
       <div class="conversation-container" id="messages-list" style="display:none;"></div>
+    </div>
+
+    <!-- Merlin Holographic Arc Reactor HUD -->
+    <div id="merlin-arc-hud" class="merlin-arc-hud" style="display:none;">
+      <div class="arc-core-wrapper">
+        <div class="arc-reactor-ring outer"></div>
+        <div class="arc-reactor-ring middle"></div>
+        <div class="arc-reactor-ring inner"></div>
+        <div class="arc-reactor-core"></div>
+      </div>
+      <div class="arc-hud-info">
+        <div class="arc-hud-title">MERLIN // PROTOCOL ONLINE</div>
+        <div class="arc-hud-status" id="arc-hud-status">LISTENING &bull; WAKE WORD: "MERLIN"</div>
+      </div>
+      <div class="arc-hud-actions">
+        <button class="arc-hud-btn" onclick="stopGeneration(); if(window.speechSynthesis) window.speechSynthesis.cancel();" title="Interrupt / Stop">■</button>
+        <button class="arc-hud-btn" onclick="toggleMerlinVoice();" title="Standby Voice Mode">✕</button>
+      </div>
     </div>
 
     <!-- Floating Input Dock -->
@@ -811,6 +829,6 @@ Content-Type: application/json
   <!-- ========================================================================
        CLIENT APPLICATION LOGIC
        ======================================================================== -->
-  <script src="/script.js?v=2.3.0"></script>
+  <script src="/script.js?v=2.4.0"></script>
 </body>
 </html>

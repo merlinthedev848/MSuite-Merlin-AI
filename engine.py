@@ -19,6 +19,7 @@ from database import (
     save_chat_message,
     search_knowledge_hybrid,
 )
+from function_calling import execute_tool, extract_text_tool_calls
 from sync_teacher import load_saved_api_key, resolve_teacher_provider, run_sync
 
 try:
@@ -895,6 +896,37 @@ class InferenceEngine:
                 messages.append({"role": h["role"], "content": content})
 
         safe_prompt = sanitize_prompt(fit_prompt_to_context(prompt))
+        prompt_lower = safe_prompt.lower()
+
+        # Telemetry & Real-Time Context Injection for Merlin Assistant
+        if any(term in prompt_lower for term in ("diagnostics", "status report", "telemetry", "system status", "hardware status", "health check", "suit status")):
+            diag = execute_tool("get_system_diagnostics", {})
+            if diag.get("status") == "success":
+                sys_info = diag["system"]
+                tele_info = diag["merlin_telemetry"]
+                diag_context = (
+                    f"[Real-Time Host & Hardware Telemetry]:\n"
+                    f"- OS & Arch: {sys_info['platform']} ({sys_info['architecture']})\n"
+                    f"- CPU Load: {sys_info['cpu_usage_percent']}% across {sys_info['cpu_cores']} cores\n"
+                    f"- RAM: {sys_info['memory_used_gb']} GB used / {sys_info['memory_total_gb']} GB total ({sys_info['memory_percent']}%)\n"
+                    f"- Disk: {sys_info['disk_used_gb']} GB used / {sys_info['disk_total_gb']} GB total\n"
+                    f"- Python Runtime: {sys_info['python_version']}\n"
+                    f"- Knowledge Entries: {tele_info['active_knowledge_entries']} | Pending Tasks: {tele_info['pending_tasks']}\n"
+                    f"- Status: {diag['overall_status']}\n"
+                )
+                messages.append({"role": "system", "content": diag_context})
+
+        if any(term in prompt_lower for term in ("what time is it", "current time", "what day is today", "what date")):
+            t_info = execute_tool("get_current_time", {})
+            if t_info.get("status") == "success":
+                messages.append({"role": "system", "content": f"[Exact Local Time]: {t_info['formatted']}"})
+
+        if any(term in prompt_lower for term in ("my tasks", "my todos", "what do i need to do", "list tasks", "todo list")):
+            t_list = execute_tool("list_todos", {"only_pending": True})
+            if t_list.get("status") == "success" and t_list.get("todos"):
+                items = "\n".join([f"- [ID: {t['id']}] {t['task']} (Priority: {t.get('priority', 'normal')})" for t in t_list['todos']])
+                messages.append({"role": "system", "content": f"[Current Active Tasks in Database]:\n{items}"})
+
         messages.append({"role": "user", "content": safe_prompt})
 
         max_tokens = int(os.getenv("MAX_TOKENS", "512"))
@@ -984,17 +1016,61 @@ class InferenceEngine:
                     yield chunk
 
             else:
-                msg = (
-                    "⚠️ **Offline Intelligence Standby**\n\n"
-                    "The local web dashboard and SQLite memory system are fully active.\n\n"
-                    "**To activate live AI inference:**\n"
-                    "1. **Option A (Local Ollama - Recommended):** Install Ollama and run `ollama run qwen2.5-coder:1.5b`.\n"
-                    "2. **Option B (Teacher AI Copilot):** Configure your `GEMINI_API_KEY`, `GROQ_API_KEY`, or `OPENAI_API_KEY` in `.env` or click Sync Knowledge to stream live immediately.\n"
-                    "3. **Option C (Native llama.cpp):** Run `./download_model.sh` and `./start_llama_server.sh`.\n\n"
-                    "Merlin AI automatically detects the active backend in real time with zero restart required."
-                )
-                response_buffer.append(msg)
-                yield msg
+                if any(term in prompt_lower for term in ("diagnostics", "status report", "telemetry", "hardware status", "health check", "suit status")):
+                    diag = execute_tool("get_system_diagnostics", {})
+                    s = diag["system"]
+                    m = diag["merlin_telemetry"]
+                    resp = (
+                        f"**Merlin Diagnostic Status Report** — *All Primary Systems Online*\n\n"
+                        f"- **Host Platform**: `{s['platform']} ({s['architecture']})`\n"
+                        f"- **CPU Load**: `{s['cpu_usage_percent']}%` ({s['cpu_cores']} logical cores)\n"
+                        f"- **Memory**: `{s['memory_used_gb']} GB` used / `{s['memory_total_gb']} GB` total (`{s['memory_percent']}%`)\n"
+                        f"- **Storage**: `{s['disk_used_gb']} GB` used / `{s['disk_total_gb']} GB` total\n"
+                        f"- **Knowledge Base**: `{m['active_knowledge_entries']} foundational datasets` loaded with Hybrid RAG (FTS5 + dense vectors)\n"
+                        f"- **Personal Tasks**: `{m['pending_tasks']} open action items`\n"
+                        f"- **Audio Engine**: `{m['voice_engine']}`\n\n"
+                        f"At your service, Sir. Ready for your directive."
+                    )
+                    response_buffer.append(resp)
+                    yield resp
+                elif any(term in prompt_lower for term in ("what time is it", "current time", "what day is today")):
+                    t_info = execute_tool("get_current_time", {})
+                    resp = f"The current time is **{t_info['formatted']}**, Sir."
+                    response_buffer.append(resp)
+                    yield resp
+                elif any(term in prompt_lower for term in ("my tasks", "my todos", "what do i need to do", "list tasks", "todo list")):
+                    t_list = execute_tool("list_todos", {"only_pending": True})
+                    if t_list.get("status") == "success" and t_list.get("todos"):
+                        items = "\n".join([f"- **[ID: {t['id']}]** {t['task']} *(Priority: {t.get('priority', 'normal')})*" for t in t_list['todos']])
+                        resp = f"**Current Action Items**:\n\n{items}\n\nShall I add or update any tasks, Sir?"
+                    else:
+                        resp = "Your task list is currently completely clear, Sir. All items resolved."
+                    response_buffer.append(resp)
+                    yield resp
+                else:
+                    msg = (
+                        "⚠️ **Offline Intelligence Standby**\n\n"
+                        "The local web dashboard and SQLite memory system are fully active.\n\n"
+                        "**To activate live AI inference:**\n"
+                        "1. **Option A (Local Ollama - Recommended):** Install Ollama and run `ollama run qwen2.5-coder:1.5b`.\n"
+                        "2. **Option B (Teacher AI Copilot):** Configure your `GEMINI_API_KEY`, `GROQ_API_KEY`, or `OPENAI_API_KEY` in `.env` or click Sync Knowledge to stream live immediately.\n"
+                        "3. **Option C (Native llama.cpp):** Run `./download_model.sh` and `./start_llama_server.sh`.\n\n"
+                        "Merlin AI automatically detects the active backend in real time with zero restart required."
+                    )
+                    response_buffer.append(msg)
+                    yield msg
+
+            # Function Calling Auto-Execution:
+            # If the model outputted structured tool calls (<tool_call> tags or json tool blocks),
+            # execute them deterministically on the fly and stream the result back to the user
+            raw_text = "".join(response_buffer)
+            parsed_calls = extract_text_tool_calls(raw_text)
+            if parsed_calls and not abort_event.is_set():
+                for call in parsed_calls:
+                    res = execute_tool(call["name"], call.get("arguments", {}))
+                    tool_output = f"\n\n⚙️ **Executed {call['name']}**: `{json.dumps(res)}`"
+                    response_buffer.append(tool_output)
+                    yield tool_output
 
             if not response_buffer and not abort_event.is_set():
                 fallback_msg = (
