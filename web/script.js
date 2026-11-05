@@ -483,7 +483,11 @@ function showConversationMessages(convId, messages) {
     return;
   }
 
-  list.style.display = "flex";
+  if (document.body && document.body.classList.contains("voice-mode-active")) {
+    list.style.display = "none";
+  } else {
+    list.style.display = "flex";
+  }
 
   messages.forEach(m => {
     const displayContent = m.role === "user" ? formatDisplayedUserMessage(m.content) : m.content;
@@ -495,8 +499,10 @@ function showConversationMessages(convId, messages) {
 function appendMessageElement(role, content) {
   const list = document.getElementById("messages-list");
   const hero = document.getElementById("hero-view");
-  if (hero) hero.style.display = "flex"; // Pure focused Tesla Sentinel Eye remains front and center!
-  if (list) list.style.display = "flex";
+  if (hero) hero.style.display = "flex"; // Cyber AI HUD remains permanently centered!
+  if (list && (!document.body || !document.body.classList.contains("voice-mode-active"))) {
+    list.style.display = "flex";
+  }
 
   const block = document.createElement("div");
   block.className = `message-block ${role}`;
@@ -578,9 +584,143 @@ function promptHero(text) {
 }
 
 // ==========================================================================
+// REAL-TIME STREAMING TTS PIPELINE (SUB-500MS SENTENCE CHUNKING)
+// ==========================================================================
+let ttsStreamingQueue = [];
+let ttsIsSpeakingChunk = false;
+let ttsTextBuffer = "";
+let ttsStreamActive = false;
+
+function resetSpeechStream() {
+  ttsStreamingQueue = [];
+  ttsIsSpeakingChunk = false;
+  ttsTextBuffer = "";
+  ttsStreamActive = false;
+  if ('speechSynthesis' in window) {
+    try { window.speechSynthesis.cancel(); } catch(e) {}
+  }
+  const cap = document.getElementById("sentinel-voice-caption");
+  if (cap) {
+    cap.style.display = "none";
+    cap.textContent = "";
+  }
+}
+
+function processIncomingSpeechChunk(tokenChunk, isFinal = false) {
+  if (!isMerlinVoiceActive && !isJarvisVoiceActive) return;
+  ttsStreamActive = !isFinal;
+  if (tokenChunk) ttsTextBuffer += tokenChunk;
+
+  // Real-time sentence chunking: detect punctuation (. ! ?) followed by whitespace or line breaks
+  while (ttsTextBuffer.length > 0) {
+    const match = ttsTextBuffer.match(/^([\s\S]*?[.!?]+(?:\s+|\n+))([\s\S]*)$/);
+    if (match) {
+      const sentence = match[1].trim();
+      ttsTextBuffer = match[2];
+      if (sentence) queueSentenceForSpeech(sentence);
+      continue;
+    }
+    // Clause break fallback for long streaming segments (>80 chars) without punctuation
+    if (ttsTextBuffer.length > 80) {
+      const clauseMatch = ttsTextBuffer.match(/^([\s\S]*?[,;:\n]+(?:\s+|\n+))([\s\S]*)$/);
+      if (clauseMatch) {
+        const clause = clauseMatch[1].trim();
+        ttsTextBuffer = clauseMatch[2];
+        if (clause) queueSentenceForSpeech(clause);
+        continue;
+      }
+    }
+    break;
+  }
+
+  // On stream done, flush any remaining text in the buffer immediately
+  if (isFinal && ttsTextBuffer.trim()) {
+    queueSentenceForSpeech(ttsTextBuffer.trim());
+    ttsTextBuffer = "";
+  }
+}
+
+function queueSentenceForSpeech(sentence) {
+  const clean = prepareTextForSpeech(sentence);
+  if (!clean) return;
+  ttsStreamingQueue.push(clean);
+  playNextSpeechChunk();
+}
+
+function playNextSpeechChunk() {
+  if (ttsIsSpeakingChunk || ttsStreamingQueue.length === 0) return;
+  if (!('speechSynthesis' in window)) return;
+
+  const nextSentence = ttsStreamingQueue.shift();
+  if (!nextSentence) return;
+
+  ttsIsSpeakingChunk = true;
+  isMerlinSpeaking = true;
+  lastSpokenText = nextSentence.toLowerCase();
+  lastSpokenTime = Date.now();
+  setMerlinHudState("speaking");
+
+  // Show live subtitle caption directly on HUD
+  const captionEl = document.getElementById("sentinel-voice-caption");
+  if (captionEl) {
+    captionEl.style.display = "inline-block";
+    captionEl.innerHTML = `&bull; MERLIN: "${escapeHtml(nextSentence)}"`;
+  }
+  const subEl = document.getElementById("sentinel-sub-text");
+  if (subEl) {
+    subEl.textContent = `MERLIN: "${nextSentence}"`;
+  }
+
+  // Instantly mute microphone while synthesizing speech to avoid acoustic feedback echo
+  if (recognition) {
+    try { recognition.abort(); } catch(e) {}
+  }
+
+  if (!bestVoice) updateBestVoice();
+
+  const utterance = new SpeechSynthesisUtterance(nextSentence);
+  if (bestVoice) utterance.voice = bestVoice;
+  utterance.rate = 1.05;
+  utterance.pitch = 0.98;
+
+  utterance.onend = () => {
+    ttsIsSpeakingChunk = false;
+    lastSpokenTime = Date.now();
+    if (ttsStreamingQueue.length > 0) {
+      playNextSpeechChunk();
+    } else if (!ttsStreamActive) {
+      // Entire streaming response completed!
+      isMerlinSpeaking = false;
+      refreshConversationSession(35000);
+      setMerlinHudState("active_dialogue");
+      updateWakePillUI(true, "Active Dialogue (Speak freely)");
+      // Re-enable microphone after room echo clears (650ms)
+      setTimeout(() => {
+        if (isMerlinVoiceActive && !isMerlinSpeaking && !isRecognitionRunning) {
+          startMerlinListening();
+        }
+      }, 650);
+    }
+  };
+
+  utterance.onerror = (err) => {
+    console.warn("TTS utterance stream error:", err);
+    ttsIsSpeakingChunk = false;
+    if (ttsStreamingQueue.length > 0) {
+      playNextSpeechChunk();
+    } else {
+      isMerlinSpeaking = false;
+      startMerlinListening();
+    }
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// ==========================================================================
 // REAL-TIME TOKEN STREAMING & GENERATION
 // ==========================================================================
-async function submitMessage() {
+async function submitMessage(fromVoice = false) {
   const ta = document.getElementById("chat-textarea");
   const promptText = ta.value.trim();
   if (!promptText && !attachedFile) return;
@@ -588,6 +728,9 @@ async function submitMessage() {
   if (!activeConversationId) {
     await createNewChat();
   }
+
+  const isVoiceMode = isMerlinVoiceActive || fromVoice;
+  resetSpeechStream();
 
   const currentAttachment = attachedFile;
   let payloadText = promptText;
@@ -612,13 +755,28 @@ async function submitMessage() {
   clearAttachment();
   autoResizeTextarea(ta);
 
-  // Render User Message
-  appendMessageElement("user", displayUserText);
+  let assistantBubble;
+  if (!isVoiceMode) {
+    // Normal Text Mode: Render message bubbles in scrolling conversation list
+    appendMessageElement("user", displayUserText);
+    assistantBubble = appendMessageElement("assistant", "");
+    assistantBubble.innerHTML = '<span class="status-thinking" style="color:var(--text-muted);font-size:0.88rem;display:inline-flex;align-items:center;gap:6px;">⚡ Generating response...</span>';
+    assistantBubble.classList.add("streaming-cursor");
+  } else {
+    // Full Voice Mode: Pure Cyber HUD! Hide scrolling message list; display query directly on HUD
+    const statusEl = document.getElementById("sentinel-status-text");
+    const subEl = document.getElementById("sentinel-sub-text");
+    const cap = document.getElementById("sentinel-voice-caption");
+    if (statusEl) statusEl.innerHTML = `YOU &bull; "${escapeHtml(promptText)}"`;
+    if (subEl) subEl.textContent = "SYNAPSE // EXECUTING DIRECTIVE";
+    if (cap) {
+      cap.style.display = "inline-block";
+      cap.innerHTML = `&bull; YOU: "${escapeHtml(promptText)}"`;
+    }
+    // Detached dummy element so markdown rendering / backend DB logging function seamlessly
+    assistantBubble = document.createElement("div");
+  }
 
-  // Prepare Assistant UI
-  const assistantBubble = appendMessageElement("assistant", "");
-  assistantBubble.innerHTML = '<span class="status-thinking" style="color:var(--text-muted);font-size:0.88rem;display:inline-flex;align-items:center;gap:6px;">⚡ Generating response...</span>';
-  assistantBubble.classList.add("streaming-cursor");
   toggleStreamingUI(true);
 
   let fullResponse = "";
@@ -628,8 +786,10 @@ async function submitMessage() {
     if (!renderScheduled) {
       renderScheduled = true;
       requestAnimationFrame(() => {
-        assistantBubble.innerHTML = renderMarkdown(fullResponse);
-        scrollViewportToBottom();
+        if (!isVoiceMode) {
+          assistantBubble.innerHTML = renderMarkdown(fullResponse);
+          scrollViewportToBottom();
+        }
         renderScheduled = false;
       });
     }
@@ -658,7 +818,8 @@ async function submitMessage() {
 
     activeEventSource.onmessage = function(event) {
       if (event.data === "[DONE]") {
-        finishStreaming(assistantBubble, fullResponse);
+        processIncomingSpeechChunk("", true);
+        finishStreaming(assistantBubble, fullResponse, isVoiceMode);
         return;
       }
       try {
@@ -666,6 +827,9 @@ async function submitMessage() {
         if (data.chunk) {
           fullResponse += data.chunk;
           scheduleRender();
+          if (isVoiceMode) {
+            processIncomingSpeechChunk(data.chunk, false);
+          }
         }
       } catch (e) {}
     };
@@ -675,7 +839,8 @@ async function submitMessage() {
         activeEventSource.close();
         activeEventSource = null;
       }
-      finishStreaming(assistantBubble, fullResponse);
+      processIncomingSpeechChunk("", true);
+      finishStreaming(assistantBubble, fullResponse, isVoiceMode);
     };
   }
 
@@ -717,8 +882,12 @@ async function submitMessage() {
         if (data.type === "chunk" && data.delta) {
           fullResponse += data.delta;
           scheduleRender();
+          if (isVoiceMode) {
+            processIncomingSpeechChunk(data.delta, false);
+          }
         } else if (data.type === "done") {
-          finishStreaming(assistantBubble, fullResponse);
+          processIncomingSpeechChunk("", true);
+          finishStreaming(assistantBubble, fullResponse, isVoiceMode);
         } else if (data.type === "error") {
           fullResponse += `\n[${data.message}]`;
           scheduleRender();
@@ -731,7 +900,8 @@ async function submitMessage() {
         activeWebSocket = null;
         startSSEStream();
       } else if (!sseStarted) {
-        finishStreaming(assistantBubble, fullResponse);
+        processIncomingSpeechChunk("", true);
+        finishStreaming(assistantBubble, fullResponse, isVoiceMode);
       }
     };
 
@@ -746,7 +916,8 @@ async function submitMessage() {
       }
       if (activeWebSocket === ws) {
         activeWebSocket = null;
-        finishStreaming(assistantBubble, fullResponse);
+        processIncomingSpeechChunk("", true);
+        finishStreaming(assistantBubble, fullResponse, isVoiceMode);
       }
     };
   } catch (err) {
@@ -762,6 +933,7 @@ function toggleStreamingUI(isStreaming) {
 }
 
 function stopGeneration() {
+  resetSpeechStream();
   if (window.speechSynthesis) {
     try { window.speechSynthesis.cancel(); } catch(e) {}
   }
@@ -790,7 +962,7 @@ function stopGeneration() {
   toggleStreamingUI(false);
 }
 
-function finishStreaming(bubbleEl, fullResponse) {
+function finishStreaming(bubbleEl, fullResponse, isVoiceMode = false) {
   if (activeWebSocket) {
     try { activeWebSocket.close(); } catch(e) {}
     activeWebSocket = null;
@@ -800,29 +972,18 @@ function finishStreaming(bubbleEl, fullResponse) {
     activeEventSource = null;
   }
   bubbleEl.classList.remove("streaming-cursor");
-  if (!fullResponse || !fullResponse.trim()) {
-    bubbleEl.innerHTML = '<span style="color:var(--text-muted);font-style:italic;">⚠️ No response generated by local inference engine. Ensure Ollama or local LLM server is running.</span>';
-  } else {
-    bubbleEl.innerHTML = renderMarkdown(fullResponse);
-    appendMessageActions(bubbleEl, fullResponse);
+  if (!isVoiceMode) {
+    if (!fullResponse || !fullResponse.trim()) {
+      bubbleEl.innerHTML = '<span style="color:var(--text-muted);font-style:italic;">⚠️ No response generated by local inference engine. Ensure Ollama or local LLM server is running.</span>';
+    } else {
+      bubbleEl.innerHTML = renderMarkdown(fullResponse);
+      appendMessageActions(bubbleEl, fullResponse);
+    }
   }
   toggleStreamingUI(false);
   // Note: engine.generate_stream() already saves both the user prompt and the assistant response
   // in SQLite on the backend. Refreshing the conversation list updates the auto-derived title.
   loadConversations();
-
-  if ((isMerlinVoiceActive || isJarvisVoiceActive) && fullResponse && fullResponse.trim()) {
-    setMerlinHudState("speaking");
-    speakMerlinText(fullResponse, () => {
-      if (isMerlinVoiceActive || isJarvisVoiceActive) {
-        playMerlinChime("wake");
-        setMerlinHudState("listening");
-        startMerlinListening();
-      }
-    });
-  } else if (isMerlinVoiceActive || isJarvisVoiceActive) {
-    setMerlinHudState("listening");
-  }
 }
 
 // ==========================================================================
@@ -1260,6 +1421,10 @@ function toggleMerlinVoice(forceState) {
     isMerlinVoiceActive = false;
     isMerlinConversationActive = false;
     isMerlinSpeaking = false;
+    resetSpeechStream();
+    if (document.body) document.body.classList.remove("voice-mode-active");
+    const list = document.getElementById("messages-list");
+    if (list && list.children.length > 0) list.style.display = "flex";
     localStorage.setItem("merlin_handsfree_wake", "false");
     if (conversationActiveTimer) {
       clearTimeout(conversationActiveTimer);
@@ -1277,12 +1442,15 @@ function toggleMerlinVoice(forceState) {
     }
     updateWakePillUI(false);
     playMerlinChime("finish");
-    showToast("Merlin Microphone Paused.", "info");
+    showToast("Merlin Microphone Paused (Text mode active).", "info");
     return;
   }
 
   isMerlinVoiceActive = true;
   isMerlinSpeaking = false;
+  if (document.body) document.body.classList.add("voice-mode-active");
+  const list = document.getElementById("messages-list");
+  if (list) list.style.display = "none";
   localStorage.setItem("merlin_handsfree_wake", "true");
   if (micBtn) {
     micBtn.classList.add("merlin-voice-active", "jarvis-active");
@@ -1472,6 +1640,9 @@ function toggleDictation() {
 function initAlwaysListeningMerlin() {
   if (('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window)) {
     isMerlinVoiceActive = true;
+    if (document.body) document.body.classList.add("voice-mode-active");
+    const list = document.getElementById("messages-list");
+    if (list) list.style.display = "none";
     updateWakePillUI(true);
     startMerlinListening();
   }

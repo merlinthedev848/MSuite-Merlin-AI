@@ -1335,12 +1335,15 @@ def test_frontend_markdown_code_block_contract():
 
     # Test execution in Node with minimal browser globals stubbed
     test_runner = f"""
+    class SpeechSynthesisUtterance {{ constructor(t) {{ this.text = t; }} }}
     const window = {{
         speechSynthesis: {{ getVoices: () => [], onvoiceschanged: null, speak: () => {{}}, cancel: () => {{}} }},
         location: {{ hostname: 'localhost', port: '8000', protocol: 'http:' }},
-        addEventListener: () => {{}}
+        addEventListener: () => {{}},
+        SpeechSynthesisUtterance: SpeechSynthesisUtterance
     }};
     const document = {{
+        body: {{ classList: {{ add: () => {{}}, remove: () => {{}}, contains: () => false }} }},
         addEventListener: () => {{}},
         getElementById: () => null,
         querySelector: () => null,
@@ -1371,10 +1374,55 @@ def test_frontend_markdown_code_block_contract():
         process.exit(3);
     }}
 
+    // Test 4: Real-time sentence streaming TTS chunking contract
+    if (typeof processIncomingSpeechChunk !== "function") {{
+        process.exit(4);
+    }}
+    resetSpeechStream();
+    processIncomingSpeechChunk("Hello world! ");
+    // It should immediately begin speaking the first sentence chunk with zero delay
+    if (!ttsIsSpeakingChunk || lastSpokenText !== "hello world!") {{
+        process.exit(5);
+    }}
+
     process.exit(0);
     """
     res = subprocess.run(["node", "-"], input=test_runner, capture_output=True, text=True)
     assert res.returncode == 0, f"Node markdown test failed: {res.stderr}\n{res.stdout}"
+
+
+def test_voice_mode_pure_hud_contract():
+    """Validates that in full voice mode:
+    - Scrolling conversation block is hidden (body.voice-mode-active #messages-list is display: none)
+    - The animated HUD core remains permanently centered and never scrolls away
+    - Real-time sentence chunking streams TTS without waiting for full text completion
+    """
+    css_path = os.path.join(ROOT_DIR, "web", "styles.css")
+    js_path = os.path.join(ROOT_DIR, "web", "script.js")
+    html_path = os.path.join(ROOT_DIR, "web", "index.html")
+
+    with open(css_path, encoding="utf-8") as f:
+        css = f.read()
+    with open(js_path, encoding="utf-8") as f:
+        js = f.read()
+    with open(html_path, encoding="utf-8") as f:
+        html = f.read()
+
+    # 1. CSS rules for pure HUD voice mode
+    assert "body.voice-mode-active #messages-list" in css
+    assert "display: none !important" in css
+    assert "body.voice-mode-active #messages-viewport" in css
+    assert "overflow-y: hidden !important" in css or "overflow: hidden" in css
+
+    # 2. JS streaming sentence TTS functions
+    assert "processIncomingSpeechChunk" in js
+    assert "ttsStreamingQueue" in js
+    assert "playNextSpeechChunk" in js
+    assert "voice-mode-active" in js
+
+    # 3. HTML live captioning container
+    assert 'id="sentinel-voice-caption"' in html
+
 
 
 

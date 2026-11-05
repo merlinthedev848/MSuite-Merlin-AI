@@ -423,6 +423,46 @@ body.admin-logged-in .admin-only-inline {
    CYBER AI HUD HERO CANVAS & ANIMATED NEURAL CORE (Images 1, 2 & 3)
    High-Tech Holographic AI Hub with Radiating PCB Circuit Traces
    ========================================================================== */
+body.voice-mode-active #messages-list {
+  display: none !important;
+}
+
+body.voice-mode-active #messages-viewport {
+  overflow-y: hidden !important;
+  justify-content: center !important;
+  align-items: center !important;
+  padding: 10px 20px 100px 20px !important;
+}
+
+body.voice-mode-active .sentinel-hero-container {
+  min-height: calc(100vh - 150px) !important;
+  justify-content: center !important;
+  align-items: center !important;
+  margin: auto !important;
+}
+
+.sentinel-voice-caption {
+  margin-top: 10px;
+  max-width: 760px;
+  padding: 8px 18px;
+  border-radius: 9999px;
+  background: rgba(0, 240, 255, 0.06);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  color: #00f0ff;
+  text-align: center;
+  display: none;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.15);
+  animation: captionFadeIn 0.3s ease-out;
+}
+@keyframes captionFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .sentinel-hero-container {
   display: flex;
   flex-direction: column;
