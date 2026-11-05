@@ -155,6 +155,10 @@ function openModal(id) {
     loadTelemetry();
     loadModels();
     loadAuditLogs();
+    const soundChk = document.getElementById("setting-sound-chimes");
+    if (soundChk) {
+      soundChk.checked = localStorage.getItem("merlin_sound_chimes") === "true";
+    }
   } else if (id === "pa-modal") {
     loadTodos();
     loadNotes();
@@ -751,9 +755,11 @@ async function submitMessage(fromVoice = false) {
     }
   }
 
+  ta.setAttribute("data-last-prompt", promptText);
   ta.value = "";
   clearAttachment();
   autoResizeTextarea(ta);
+  dismissJarvisHudDisplay();
 
   let assistantBubble;
   if (!isVoiceMode) {
@@ -763,16 +769,13 @@ async function submitMessage(fromVoice = false) {
     assistantBubble.innerHTML = '<span class="status-thinking" style="color:var(--text-muted);font-size:0.88rem;display:inline-flex;align-items:center;gap:6px;">⚡ Generating response...</span>';
     assistantBubble.classList.add("streaming-cursor");
   } else {
-    // Full Voice Mode: Pure Cyber HUD! Hide scrolling message list; display query directly on HUD
+    // Full Voice Mode: Pure Cyber HUD! Hide scrolling message list & all text subtitles for True Jarvis feel
     const statusEl = document.getElementById("sentinel-status-text");
     const subEl = document.getElementById("sentinel-sub-text");
     const cap = document.getElementById("sentinel-voice-caption");
-    if (statusEl) statusEl.innerHTML = `YOU &bull; "${escapeHtml(promptText)}"`;
-    if (subEl) subEl.textContent = "SYNAPSE // EXECUTING DIRECTIVE";
-    if (cap) {
-      cap.style.display = "inline-block";
-      cap.innerHTML = `&bull; YOU: "${escapeHtml(promptText)}"`;
-    }
+    if (statusEl) statusEl.style.display = "none";
+    if (subEl) subEl.style.display = "none";
+    if (cap) cap.style.display = "none";
     // Detached dummy element so markdown rendering / backend DB logging function seamlessly
     assistantBubble = document.createElement("div");
   }
@@ -979,11 +982,44 @@ function finishStreaming(bubbleEl, fullResponse, isVoiceMode = false) {
       bubbleEl.innerHTML = renderMarkdown(fullResponse);
       appendMessageActions(bubbleEl, fullResponse);
     }
+  } else {
+    // True Jarvis on-demand display: ONLY project on screen when user asks to see code/data/lists/tables
+    const displayPanel = document.getElementById("jarvis-hud-display");
+    const ta = document.getElementById("chat-textarea");
+    const lastPrompt = (ta && ta.getAttribute("data-last-prompt") ? ta.getAttribute("data-last-prompt") : "").toLowerCase();
+    const hasCodeOrTable = fullResponse.includes("```") || fullResponse.includes("<table") || fullResponse.includes("|---");
+    const userAskedToDisplay = /\b(show|display|render|write|draw|print|list|table|code|script|schema|json|html|css|sql|python|c\+\+|rust|javascript)\b/i.test(lastPrompt);
+
+    if ((hasCodeOrTable || userAskedToDisplay) && fullResponse && fullResponse.trim()) {
+      if (displayPanel) {
+        displayPanel.innerHTML = `
+          <div class="hud-display-header">
+            <div class="hud-display-title">
+              <span class="hud-display-indicator"></span>
+              <span>HUD VISUAL PROJECTION</span>
+            </div>
+            <button class="hud-display-close" onclick="dismissJarvisHudDisplay()" title="Close holographic display (or say 'dismiss')">✕ Close</button>
+          </div>
+          <div class="hud-display-content">${renderMarkdown(fullResponse)}</div>
+        `;
+        displayPanel.style.display = "block";
+        appendMessageActions(displayPanel.querySelector(".hud-display-content"), fullResponse);
+      }
+    } else if (displayPanel) {
+      displayPanel.style.display = "none";
+    }
   }
   toggleStreamingUI(false);
   // Note: engine.generate_stream() already saves both the user prompt and the assistant response
   // in SQLite on the backend. Refreshing the conversation list updates the auto-derived title.
   loadConversations();
+}
+
+function dismissJarvisHudDisplay() {
+  const displayPanel = document.getElementById("jarvis-hud-display");
+  if (displayPanel) {
+    displayPanel.style.display = "none";
+  }
 }
 
 // ==========================================================================
@@ -1241,6 +1277,8 @@ function setMerlinHudState(state = "listening", customText = "") {
 }
 
 function playMerlinChime(type = "wake") {
+  // Silent by default: only play audio chime if explicitly enabled in Settings
+  if (localStorage.getItem("merlin_sound_chimes") !== "true") return;
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
@@ -1310,6 +1348,11 @@ function playMerlinChime(type = "wake") {
   }
 }
 const playJarvisChime = playMerlinChime;
+
+function toggleSoundChimes(enabled) {
+  localStorage.setItem("merlin_sound_chimes", enabled ? "true" : "false");
+  showToast(enabled ? "Wake word audio chime enabled." : "Wake word audio chime silenced.", "info");
+}
 
 function speakMerlinText(text, onComplete) {
   if (!('speechSynthesis' in window)) {
@@ -1399,6 +1442,7 @@ function toggleMerlinVoice(forceState) {
     isMerlinConversationActive = false;
     isMerlinSpeaking = false;
     resetSpeechStream();
+    dismissJarvisHudDisplay();
     if (document.body) document.body.classList.remove("voice-mode-active");
     const list = document.getElementById("messages-list");
     if (list && list.children.length > 0) list.style.display = "flex";
@@ -1425,6 +1469,7 @@ function toggleMerlinVoice(forceState) {
 
   isMerlinVoiceActive = true;
   isMerlinSpeaking = false;
+  dismissJarvisHudDisplay();
   if (document.body) document.body.classList.add("voice-mode-active");
   const list = document.getElementById("messages-list");
   if (list) list.style.display = "none";
@@ -1501,15 +1546,17 @@ function startMerlinListening() {
       stopGeneration();
       if (window.speechSynthesis) window.speechSynthesis.cancel();
       isMerlinSpeaking = false;
+      dismissJarvisHudDisplay();
       endConversationSession("Standing by, Sir.");
       return;
     }
 
-    // 4. Direct Voice Directive: Clear Screen
-    if (/^(merlin|hey merlin)?[,\s]*(clear screen|clear chat|new chat)$/i.test(lower)) {
+    // 4. Direct Voice Directive: Clear Screen / Dismiss On-Demand Display
+    if (/^(merlin|hey merlin)?[,\s]*(clear screen|clear chat|new chat|dismiss|hide display|close display|clear display|hide window)$/i.test(lower)) {
+      dismissJarvisHudDisplay();
       createNewChat();
       playMerlinChime("ack");
-      speakMerlinText("Screen cleared, Sir.");
+      speakMerlinText("Display cleared, Sir.");
       refreshConversationSession();
       return;
     }
@@ -1640,6 +1687,34 @@ const ensureListeningOnGesture = () => {
 window.addEventListener("click", ensureListeningOnGesture, { passive: true });
 window.addEventListener("keydown", ensureListeningOnGesture, { passive: true });
 window.addEventListener("touchstart", ensureListeningOnGesture, { passive: true });
+
+// True Jarvis Auto-Hiding Input Dock in Voice Mode:
+// Dock stays completely hidden to leave only the central cyber core animation on screen;
+// Reveals smoothly on mousemove near bottom of viewport or keyboard input.
+let dockHideTimeout = null;
+function revealDockTemporarily() {
+  if (!document.body.classList.contains("voice-mode-active")) return;
+  document.body.classList.add("show-dock");
+  clearTimeout(dockHideTimeout);
+  dockHideTimeout = setTimeout(() => {
+    const ta = document.getElementById("chat-textarea");
+    if (document.activeElement !== ta) {
+      document.body.classList.remove("show-dock");
+    }
+  }, 4000);
+}
+
+window.addEventListener("mousemove", (e) => {
+  if (e.clientY >= window.innerHeight - 75) {
+    revealDockTemporarily();
+  }
+}, { passive: true });
+
+window.addEventListener("keydown", (e) => {
+  if (!['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
+    revealDockTemporarily();
+  }
+}, { passive: true });
 
 // ==========================================================================
 // PERSONAL ASSISTANT: TO-DOS & TECHNICAL NOTES

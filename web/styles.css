@@ -428,17 +428,138 @@ body.voice-mode-active #messages-list {
 }
 
 body.voice-mode-active #messages-viewport {
-  overflow-y: hidden !important;
+  overflow-y: auto !important;
   justify-content: center !important;
   align-items: center !important;
-  padding: 10px 20px 100px 20px !important;
+  padding: 10px 20px 80px 20px !important;
 }
 
 body.voice-mode-active .sentinel-hero-container {
-  min-height: calc(100vh - 150px) !important;
+  min-height: calc(100vh - 120px) !important;
   justify-content: center !important;
   align-items: center !important;
   margin: auto !important;
+}
+
+/* True Jarvis Minimalist Cyber HUD: Pure focus on animation; hide all telemetry text & strips */
+body.voice-mode-active .hud-telemetry-strip,
+body.voice-mode-active .hud-bracket,
+body.voice-mode-active .sentinel-hud-telemetry,
+body.voice-mode-active .sentinel-voice-caption {
+  display: none !important;
+}
+
+/* Dim top navbar during voice interaction to give pure focus to the AI HUD animation */
+body.voice-mode-active .top-navbar {
+  opacity: 0.12;
+  transition: opacity 0.35s ease;
+}
+body.voice-mode-active .top-navbar:hover,
+body.voice-mode-active .top-navbar:focus-within {
+  opacity: 1;
+}
+
+/* Hide floating pill dock during voice communication; reveals smoothly on hover at bottom or keypress */
+body.voice-mode-active #input-dock {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(45px);
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+body.voice-mode-active.show-dock #input-dock,
+body.voice-mode-active #input-dock:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Holographic On-Demand Visual HUD Panel */
+.jarvis-hud-display {
+  display: none;
+  width: 100%;
+  max-width: 860px;
+  max-height: 56vh;
+  overflow-y: auto;
+  margin: 16px auto 0 auto;
+  padding: 18px 24px;
+  background: rgba(6, 11, 22, 0.90);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.75), 0 0 25px rgba(0, 240, 255, 0.22);
+  border-radius: 14px;
+  backdrop-filter: blur(20px);
+  color: #e2e8f0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  z-index: 25;
+  animation: hudPanelSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes hudPanelSlideUp {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.jarvis-hud-display::-webkit-scrollbar {
+  width: 6px;
+}
+.jarvis-hud-display::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.35);
+  border-radius: 4px;
+}
+
+.hud-display-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+}
+
+.hud-display-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+  color: #00f0ff;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.hud-display-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00f0ff;
+  box-shadow: 0 0 8px #00f0ff;
+}
+
+.hud-display-close {
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  color: #00f0ff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.hud-display-close:hover {
+  background: rgba(0, 240, 255, 0.2);
+  color: #fff;
+  border-color: #00f0ff;
+}
+
+.hud-display-content {
+  color: #cbd5e1;
+}
+.hud-display-content pre {
+  margin: 12px 0;
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  background: rgba(3, 7, 18, 0.85);
+  border-radius: 8px;
 }
 
 .sentinel-voice-caption {
@@ -1476,6 +1597,46 @@ code { font-family: inherit; font-size: inherit; }
   background: rgba(129, 201, 149, 0.15);
   color: var(--success);
   letter-spacing: 0.04em;
+}
+
+/* Settings Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: var(--border-subtle);
+  transition: 0.25s ease;
+  border-radius: 24px;
+}
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #ffffff;
+  transition: 0.25s ease;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--accent-primary);
+}
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(20px);
 }
 
 .modal-box-wide {

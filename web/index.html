@@ -310,6 +310,9 @@
           </div>
         </div>
 
+        <!-- Holographic On-Demand Visual HUD Panel (Appears ONLY when requested or displaying code/data) -->
+        <div id="jarvis-hud-display" class="jarvis-hud-display" style="display:none;"></div>
+
         <!-- Messages Stream List: Positioned directly beneath the Cyber HUD Core -->
         <div class="conversation-container" id="messages-list" style="display:none;"></div>
       </div>
@@ -497,6 +500,18 @@
         <p style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;">
           Merlin dynamically tunes generation parameters and routes technical tasks to the best offline model automatically.
         </p>
+      </div>
+
+      <div class="sidebar-section-title" style="padding-left:0;">Audio &amp; Voice Settings</div>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-bottom:14px; background:var(--bg-app); border:1px solid var(--border-subtle); border-radius:10px;">
+        <div>
+          <div style="font-size:0.86rem; font-weight:600; color:var(--text-main);">Wake Word Audio Chime</div>
+          <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Play synthetic audio blip when listening or wake word is recognized (Default: Off)</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="setting-sound-chimes" onchange="toggleSoundChimes(this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
       </div>
 
       <div class="sidebar-section-title" style="padding-left:0;">Live Hardware Telemetry</div>
