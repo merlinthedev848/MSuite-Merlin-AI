@@ -12,6 +12,7 @@ import math
 import os
 import re
 import struct
+import time
 import urllib.error
 import urllib.request
 
@@ -90,6 +91,27 @@ def generate_fallback_embedding(text: str, dim: int = FALLBACK_EMBED_DIM) -> lis
     return l2_normalize(vec)
 
 
+_ollama_available: bool = False
+_last_ollama_check: float = 0.0
+
+
+def is_ollama_running(cache_sec: float = 5.0) -> bool:
+    """Fast non-blocking probe to verify if local Ollama daemon is active."""
+    global _ollama_available, _last_ollama_check
+    now = time.time()
+    if (now - _last_ollama_check) < cache_sec:
+        return _ollama_available
+    _last_ollama_check = now
+    try:
+        url = f"{get_ollama_url()}/api/tags"
+        req = urllib.request.Request(url, headers={"User-Agent": "Merlin-AI/1.0"})
+        with urllib.request.urlopen(req, timeout=0.25) as resp:
+            _ollama_available = (resp.status == 200)
+    except Exception:
+        _ollama_available = False
+    return _ollama_available
+
+
 def generate_embedding(
     text: str,
     model: str = DEFAULT_EMBED_MODEL,
@@ -103,6 +125,9 @@ def generate_embedding(
     cleaned = (text or "").strip()
     if not cleaned:
         return [0.0] * FALLBACK_EMBED_DIM
+
+    if not is_ollama_running():
+        return generate_fallback_embedding(cleaned)
 
     ollama_url = get_ollama_url()
     # Attempt Ollama /api/embeddings

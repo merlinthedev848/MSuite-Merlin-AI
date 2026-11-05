@@ -429,13 +429,13 @@ function showConversationMessages(convId, messages) {
   const list = document.getElementById("messages-list");
   list.innerHTML = "";
 
+  if (hero) hero.style.display = "flex"; // Tesla Sentinel Eye is ALWAYS front and center!
+
   if (!messages || !messages.length) {
-    hero.style.display = "flex";
     list.style.display = "none";
     return;
   }
 
-  hero.style.display = "none";
   list.style.display = "flex";
 
   messages.forEach(m => {
@@ -447,8 +447,9 @@ function showConversationMessages(convId, messages) {
 
 function appendMessageElement(role, content) {
   const list = document.getElementById("messages-list");
-  document.getElementById("hero-view").style.display = "none";
-  list.style.display = "flex";
+  const hero = document.getElementById("hero-view");
+  if (hero) hero.style.display = "flex"; // Pure focused Tesla Sentinel Eye remains front and center!
+  if (list) list.style.display = "flex";
 
   const block = document.createElement("div");
   block.className = `message-block ${role}`;
@@ -2461,7 +2462,13 @@ async function checkAuthStatus() {
     if (badge) badge.classList.remove("logged-in");
     if (nameLabel) nameLabel.innerText = "Sign In";
     if (avatarIcon) avatarIcon.innerText = "👤";
-    if (sidebarTitle) sidebarTitle.innerText = "Guest Chats (Live AI)";
+    if (sidebarTitle) sidebarTitle.innerText = "Guest Mode (Sign in to save)";
+    const guestBadge = document.getElementById("sentinel-guest-badge");
+    if (guestBadge) {
+      guestBadge.style.display = "block";
+      guestBadge.innerHTML = 'GUEST MODE (EPHEMERAL) &bull; ZERO CHATS STORED &bull; AUTONOMOUS LEARNING ACTIVE';
+      guestBadge.style.color = "#ff9100";
+    }
   }
 
   if (!token) {
@@ -2485,7 +2492,13 @@ async function checkAuthStatus() {
         if (avatarIcon) avatarIcon.innerText = "⭐";
         if (nameLabel) nameLabel.innerText = currentUser.display_name || currentUser.username;
       }
-      if (sidebarTitle) sidebarTitle.innerText = `${currentUser.display_name || currentUser.username}'s Chats`;
+      if (sidebarTitle) sidebarTitle.innerText = `${currentUser.display_name || currentUser.username}'s Saved Chats`;
+      const guestBadge = document.getElementById("sentinel-guest-badge");
+      if (guestBadge) {
+        guestBadge.style.display = "block";
+        guestBadge.innerHTML = `OPERATOR ONLINE: @${currentUser.username} &bull; CONVERSATIONS SAVED TO ACCOUNT`;
+        guestBadge.style.color = "#4ade80";
+      }
     } else {
       localStorage.removeItem("merlin_auth_token");
       setLoggedOutState();

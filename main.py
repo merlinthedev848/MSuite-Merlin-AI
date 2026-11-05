@@ -609,9 +609,10 @@ async def chat_stream(
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
     user = extract_auth_user(authorization, request)
-    if user:
+    user_id = user["id"] if user else None
+    if user_id:
         try:
-            associate_session_with_user(session_id, user["id"])
+            associate_session_with_user(session_id, user_id)
         except Exception:
             pass
 
@@ -630,7 +631,7 @@ async def chat_stream(
 
     def stream_worker():
         try:
-            for chunk in eng.generate_stream(prompt, session_id=session_id, mode=mode):
+            for chunk in eng.generate_stream(prompt, session_id=session_id, mode=mode, user_id=user_id):
                 if abort_event.is_set():
                     break
                 while queue.qsize() > 400 and not abort_event.is_set():
@@ -744,13 +745,13 @@ async def websocket_chat_endpoint(websocket: WebSocket):
                 continue
 
             auth_token = data.get("token")
-            if auth_token:
-                user = get_user_by_token(auth_token)
-                if user:
-                    try:
-                        associate_session_with_user(active_sid, user["id"])
-                    except Exception:
-                        pass
+            user = get_user_by_token(auth_token) if auth_token else None
+            user_id = user["id"] if user else None
+            if user_id:
+                try:
+                    associate_session_with_user(active_sid, user_id)
+                except Exception:
+                    pass
 
             mode = data.get("mode", "assistant")
             model = data.get("model")
@@ -763,9 +764,9 @@ async def websocket_chat_endpoint(websocket: WebSocket):
                 loop = asyncio.get_event_loop()
             q: asyncio.Queue[str | None] = asyncio.Queue()
 
-            def _producer(p=prompt, s=active_sid, m=mode, lp=loop, queue=q):
+            def _producer(p=prompt, s=active_sid, m=mode, lp=loop, queue=q, uid=user_id):
                 try:
-                    for chunk in eng.generate_stream(p, session_id=s, mode=m):
+                    for chunk in eng.generate_stream(p, session_id=s, mode=m, user_id=uid):
                         lp.call_soon_threadsafe(queue.put_nowait, chunk)
                 except Exception as ex:
                     lp.call_soon_threadsafe(queue.put_nowait, f"[Error: {ex}]")
@@ -1011,8 +1012,9 @@ def claim_session_route(data: AssociateSessionRequest, request: Request, authori
 @app.get("/api/sessions")
 def list_conversations(request: Request, authorization: str | None = Header(default=None)):
     user = extract_auth_user(authorization, request)
-    user_id = user["id"] if user else None
-    return get_sessions(user_id=user_id, guest_only=(user is None))
+    if not user:
+        return []
+    return get_sessions(user_id=user["id"])
 
 
 @app.post("/api/conversations")
@@ -1060,14 +1062,21 @@ def clear_conversation_route(conv_id: str):
 
 @app.post("/api/conversations/{conv_id}/messages")
 @app.post("/api/sessions/{conv_id}/messages")
-def append_conversation_message(conv_id: str, data: MessageAppendRequest):
+def append_conversation_message(
+    conv_id: str,
+    data: MessageAppendRequest,
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    user = extract_auth_user(authorization, request)
+    user_id = user["id"] if user else None
     role = data.role.strip() or "user"
     content = data.content
     metadata = data.metadata or {}
     last_msg = get_last_session_message(conv_id)
     if last_msg and last_msg["role"] == role and last_msg["content"] == content:
         return {"success": True, "id": last_msg["id"], "deduplicated": True}
-    mid = save_message(conv_id, role, content, metadata=metadata)
+    mid = save_message(conv_id, role, content, metadata=metadata, user_id=user_id)
     return {"success": True, "id": mid}
 
 

@@ -74,20 +74,22 @@ def test_reentrant_get_db_atomic_transaction(isolated_db):
 
 
 def test_sessions_and_last_message_o1_lookup(isolated_db):
-    """Verifies indexed get_sessions() and O(1) get_last_session_message()."""
-    conv = database.create_session(title="New Chat", mode="auto")
+    """Verifies indexed get_sessions() and O(1) get_last_session_message() for signed-in accounts."""
+    user = database.create_user("alice", "pass123")
+    uid = user["id"]
+    conv = database.create_session(title="New Chat", mode="auto", user_id=uid)
     sid = conv["id"]
     assert database.get_last_session_message(sid) is None
 
-    database.save_message(sid, "user", "How do I configure an Nginx reverse proxy?")
-    database.save_message(sid, "assistant", "Use proxy_pass and proxy_http_version 1.1.")
+    database.save_message(sid, "user", "How do I configure an Nginx reverse proxy?", user_id=uid)
+    database.save_message(sid, "assistant", "Use proxy_pass and proxy_http_version 1.1.", user_id=uid)
 
     last_msg = database.get_last_session_message(sid)
     assert last_msg is not None
     assert last_msg["role"] == "assistant"
     assert "proxy_pass" in last_msg["content"]
 
-    sessions = database.get_sessions()
+    sessions = database.get_sessions(user_id=uid)
     assert len(sessions) == 1
     assert sessions[0]["id"] == sid
     assert sessions[0]["message_count"] == 2
@@ -190,30 +192,34 @@ def test_health_and_head_probes(client):
 
 
 def test_conversation_lifecycle_and_deduplication(client):
-    """Verifies conversation creation, message deduplication, pinning, and deletion."""
-    res = client.post("/api/conversations", json={"title": "Test Session", "mode": "auto"})
+    """Verifies conversation creation, message deduplication, pinning, and deletion for signed-in accounts."""
+    u_reg = client.post("/api/auth/register", json={"username": "lifecycle_user", "password": "Password123!"})
+    token = u_reg.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = client.post("/api/conversations", json={"title": "Test Session", "mode": "auto"}, headers=headers)
     assert res.status_code == 200
     conv_id = res.json()["id"]
 
     # Append message twice — second identical append must be deduplicated via O(1) lookup
     msg_payload = {"role": "user", "content": "Hello Merlin"}
-    r1 = client.post(f"/api/conversations/{conv_id}/messages", json=msg_payload)
-    r2 = client.post(f"/api/conversations/{conv_id}/messages", json=msg_payload)
+    r1 = client.post(f"/api/conversations/{conv_id}/messages", json=msg_payload, headers=headers)
+    r2 = client.post(f"/api/conversations/{conv_id}/messages", json=msg_payload, headers=headers)
     assert r1.json()["success"] is True
     assert r2.json().get("deduplicated") is True
 
-    detail = client.get(f"/api/conversations/{conv_id}").json()
+    detail = client.get(f"/api/conversations/{conv_id}", headers=headers).json()
     assert len(detail["messages"]) == 1
 
     # Pin and rename
-    upd = client.post(f"/api/conversations/{conv_id}", json={"title": "Renamed Chat", "pinned": 1})
+    upd = client.post(f"/api/conversations/{conv_id}", json={"title": "Renamed Chat", "pinned": 1}, headers=headers)
     assert upd.json()["success"] is True
-    detail2 = client.get(f"/api/conversations/{conv_id}").json()
+    detail2 = client.get(f"/api/conversations/{conv_id}", headers=headers).json()
     assert detail2["conversation"]["title"] == "Renamed Chat"
     assert detail2["conversation"]["pinned"] == 1
 
     # Delete
-    del_res = client.post(f"/api/conversations/{conv_id}/delete")
+    del_res = client.post(f"/api/conversations/{conv_id}/delete", headers=headers)
     assert del_res.json()["success"] is True
 
 
@@ -460,9 +466,9 @@ def test_crud_boolean_returns(isolated_db):
 
 def test_get_context_window_dual_id_compatibility(isolated_db):
     """Verifies get_context_window retrieves messages matching either session_id or conversation_id."""
-    database.create_session(title="Test Dual", mode="assistant", session_id="sess_dual_1")
-    database.save_message("sess_dual_1", "user", "Explain SIMD instructions")
-    database.save_message("sess_dual_1", "assistant", "SIMD stands for Single Instruction Multiple Data.")
+    database.create_session(title="Test Dual", mode="assistant", session_id="sess_dual_1", user_id="uid_dual_1")
+    database.save_message("sess_dual_1", "user", "Explain SIMD instructions", user_id="uid_dual_1")
+    database.save_message("sess_dual_1", "assistant", "SIMD stands for Single Instruction Multiple Data.", user_id="uid_dual_1")
 
     ctx = database.get_context_window("sess_dual_1", max_tokens=1000)
     assert len(ctx) == 2
@@ -1096,12 +1102,9 @@ def test_per_user_and_guest_conversation_isolation(client):
     assert c1["id"] not in ids2
     assert cguest["id"] not in ids2
 
-    # 8. Verify Guest sees only Guest chat
+    # 8. Verify Guest mode stores no conversations (returns empty list)
     list_guest = client.get("/api/conversations").json()
-    ids_guest = [c["id"] for c in list_guest]
-    assert cguest["id"] in ids_guest
-    assert c1["id"] not in ids_guest
-    assert c2["id"] not in ids_guest
+    assert list_guest == []
 
     # 9. User 1 claims guest session
     claim_resp = client.post("/api/auth/claim_session", json={"session_id": cguest["id"]}, headers={"Authorization": f"Bearer {t1}"})
@@ -1250,6 +1253,66 @@ def test_live_diagnostics_and_telemetry_streaming(isolated_db, monkeypatch):
     assert len(full_output) > 50
     assert "Diagnostic Status Report" in full_output or "Host Platform" in full_output or "CPU" in full_output
     assert "Sir" in full_output
+
+
+def test_guest_mode_no_saved_conversations_but_learned(isolated_db):
+    """
+    Verifies the Strict Guest Mode Rule:
+    1. Unauthenticated (guest) chats are NOT persisted to sessions, conversations, or messages.
+    2. Gaps and autonomous knowledge distillation STILL learn from substantive technical queries.
+    3. Only signed-in users have conversations saved in SQLite.
+    """
+    # 1. Guest creates a session and sends messages
+    guest_conv = database.create_session(title="Transient Guest Chat", user_id=None)
+    guest_sid = guest_conv["id"]
+    assert guest_conv.get("guest") is True
+    assert guest_conv["user_id"] is None
+
+    mid_user = database.save_message(guest_sid, "user", "How do I optimize CUDA shared memory bank conflicts?", user_id=None)
+    mid_asst = database.save_message(guest_sid, "assistant", "Pad arrays by 1 float or reorganize access strides.", user_id=None)
+
+    assert mid_user == 0
+    assert mid_asst == 0
+
+    # Ensure no rows in messages or sessions
+    assert database.get_session_messages(guest_sid) == []
+    assert database.get_sessions(user_id=None) == []
+
+    # 2. Autonomous Learning STILL functions for guest queries!
+    gid = database.add_gap("How do I optimize CUDA shared memory bank conflicts?", context="Auto-captured from guest query")
+    assert gid > 0
+
+    kid = database.add_knowledge(
+        topic="CUDA Shared Memory Bank Conflict Avoidance",
+        lesson="Stride memory access or pad 2D tile dimensions (e.g. TILE_DIM + 1) to eliminate 32-way bank stalls.",
+        tags="cuda,gpu,optimization,concurrency",
+        source="distilled"
+    )
+    assert kid > 0
+
+    # Verify RAG retrieval works from the shared neural knowledge bank
+    results = database.search_knowledge("CUDA bank conflicts", limit=3)
+    assert len(results) >= 1
+    assert "Shared Memory" in results[0]["topic"]
+
+    # 3. Signed In user chats ARE persisted
+    user = database.create_user("stark", "ironman3000")
+    uid = user["id"]
+
+    auth_conv = database.create_session(title="Stark Quantum Core", user_id=uid)
+    auth_sid = auth_conv["id"]
+
+    m1 = database.save_message(auth_sid, "user", "Merlin, calculate arc reactor efficiency.", user_id=uid)
+    m2 = database.save_message(auth_sid, "assistant", "Output is running at 99.4% efficiency, Sir.", user_id=uid)
+
+    assert m1 > 0
+    assert m2 > 0
+
+    auth_sessions = database.get_sessions(user_id=uid)
+    assert len(auth_sessions) == 1
+    assert auth_sessions[0]["id"] == auth_sid
+    assert len(database.get_session_messages(auth_sid)) == 2
+
 
 
 

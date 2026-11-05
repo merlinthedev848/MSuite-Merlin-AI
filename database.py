@@ -507,11 +507,26 @@ def delete_user_token(token: str) -> bool:
 
 
 def associate_session_with_user(session_id: str, user_id: str) -> bool:
-    """Assigns an existing session to a user account."""
+    """Assigns a session to a user account, persisting it if it was a transient guest session."""
+    if not user_id:
+        return False
     with get_db() as conn:
         c = conn.cursor()
-        c.execute("UPDATE sessions SET user_id = ? WHERE id = ?", (user_id, session_id))
-        c.execute("UPDATE conversations SET user_id = ? WHERE id = ?", (user_id, session_id))
+        c.execute("SELECT id FROM sessions WHERE id = ?", (session_id,))
+        row = c.fetchone()
+        now = datetime.datetime.now().isoformat()
+        if row:
+            c.execute("UPDATE sessions SET user_id = ?, updated_at = ? WHERE id = ?", (user_id, now, session_id))
+            c.execute("UPDATE conversations SET user_id = ?, updated_at = ? WHERE id = ?", (user_id, now, session_id))
+        else:
+            c.execute("""
+                INSERT OR REPLACE INTO sessions (id, title, mode, pinned, user_id, created_at, updated_at)
+                VALUES (?, 'Claimed Chat', 'assistant', 0, ?, ?, ?)
+            """, (session_id, user_id, now, now))
+            c.execute("""
+                INSERT OR REPLACE INTO conversations (id, title, mode, pinned, user_id, created_at, updated_at)
+                VALUES (?, 'Claimed Chat', 'assistant', 0, ?, ?, ?)
+            """, (session_id, user_id, now, now))
         return True
 
 
@@ -546,6 +561,20 @@ def create_session(
     sid = session_id or conv_id or str(uuid.uuid4())[:8]
     clean_title = (title or "New Chat").strip() or "New Chat"
     now = datetime.datetime.now().isoformat()
+    if not user_id:
+        # STRICT GUEST MODE: No conversation should be stored in guest mode!
+        # Return a transient in-memory session object without persisting to database.
+        return {
+            "id": sid,
+            "title": clean_title,
+            "mode": mode,
+            "pinned": 0,
+            "user_id": None,
+            "created_at": now,
+            "updated_at": now,
+            "guest": True,
+        }
+
     with get_db() as conn:
         conn.execute("""
             INSERT OR REPLACE INTO sessions (id, title, mode, pinned, user_id, created_at, updated_at)
@@ -560,44 +589,23 @@ def create_session(
 
 def get_sessions(limit: int = 100, user_id: str | None = None, guest_only: bool = False) -> list[dict[str, Any]]:
     """Fetches sessions using indexed session_id lookup. Scoped per user when user_id is provided."""
+    if not user_id:
+        # In Guest mode, no saved conversations exist or should be returned
+        return []
+
     with get_db() as conn:
         c = conn.cursor()
-        where_clause = ""
-        params: list[Any] = []
-
-        if user_id:
-            where_clause = "WHERE s.user_id = ?"
-            params.append(user_id)
-        elif guest_only:
-            where_clause = "WHERE s.user_id IS NULL"
-
-        sql_sess = f"""
+        sql_sess = """
             SELECT s.id, s.title, s.mode, s.pinned, s.user_id, s.created_at, s.updated_at,
                    (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) as message_count,
                    (SELECT content FROM messages m WHERE m.session_id = s.id ORDER BY m.id DESC LIMIT 1) as last_message
             FROM sessions s
-            {where_clause}
+            WHERE s.user_id = ?
             ORDER BY s.pinned DESC, s.updated_at DESC
             LIMIT ?
         """
-        c.execute(sql_sess, params + [limit])
-        rows = [dict(r) for r in c.fetchall()]
-
-        if not rows and not user_id:
-            where_conv = "WHERE c.user_id IS NULL" if guest_only else ""
-            sql_conv = f"""
-                SELECT c.id, c.title, c.mode, c.pinned, c.user_id, c.created_at, c.updated_at,
-                       (SELECT COUNT(*) FROM messages m WHERE m.session_id = c.id) as message_count,
-                       (SELECT content FROM messages m WHERE m.session_id = c.id ORDER BY m.id DESC LIMIT 1) as last_message
-                FROM conversations c
-                {where_conv}
-                ORDER BY c.pinned DESC, c.updated_at DESC
-                LIMIT ?
-            """
-            c.execute(sql_conv, [limit])
-            rows = [dict(r) for r in c.fetchall()]
-
-        return rows
+        c.execute(sql_sess, (user_id, limit))
+        return [dict(r) for r in c.fetchall()]
 
 
 def get_session(session_id: str) -> dict[str, Any] | None:
@@ -662,29 +670,43 @@ delete_conversation = delete_session
 
 # --- Messages & Context Management ---
 
-def save_message(session_id: str, role: str, content: str, metadata: dict | None = None) -> int:
+def save_message(
+    session_id: str,
+    role: str,
+    content: str,
+    metadata: dict | None = None,
+    user_id: str | None = None,
+) -> int:
     token_count = estimate_tokens(content)
     meta_json = json.dumps(metadata or {})
 
     with get_db() as conn:
         c = conn.cursor()
-        c.execute("SELECT id, title FROM sessions WHERE id = ?", (session_id,))
+        c.execute("SELECT id, title, user_id FROM sessions WHERE id = ?", (session_id,))
         existing_row = c.fetchone()
         if not existing_row:
-            c.execute("SELECT id, title FROM conversations WHERE id = ?", (session_id,))
+            c.execute("SELECT id, title, user_id FROM conversations WHERE id = ?", (session_id,))
             existing_row = c.fetchone()
+
+        resolved_user_id = user_id or (existing_row["user_id"] if existing_row else None)
+
+        # STRICT GUEST MODE RULE:
+        # No conversation should be stored in "guest mode" (resolved_user_id is None).
+        # Only conversations can be saved in Signed in mode.
+        if not resolved_user_id:
+            return 0
 
         if not existing_row:
             title = _derive_session_title(content) if role == "user" else "New Chat"
             now = datetime.datetime.now().isoformat()
             c.execute("""
-                INSERT OR REPLACE INTO sessions (id, title, mode, pinned, created_at, updated_at)
-                VALUES (?, ?, 'assistant', 0, ?, ?)
-            """, (session_id, title, now, now))
+                INSERT OR REPLACE INTO sessions (id, title, mode, pinned, user_id, created_at, updated_at)
+                VALUES (?, ?, 'assistant', 0, ?, ?, ?)
+            """, (session_id, title, resolved_user_id, now, now))
             c.execute("""
-                INSERT OR REPLACE INTO conversations (id, title, mode, pinned, created_at, updated_at)
-                VALUES (?, ?, 'assistant', 0, ?, ?)
-            """, (session_id, title, now, now))
+                INSERT OR REPLACE INTO conversations (id, title, mode, pinned, user_id, created_at, updated_at)
+                VALUES (?, ?, 'assistant', 0, ?, ?, ?)
+            """, (session_id, title, resolved_user_id, now, now))
         else:
             if role == "user" and (existing_row["title"] in ("New Chat", "", None)):
                 new_title = _derive_session_title(content)

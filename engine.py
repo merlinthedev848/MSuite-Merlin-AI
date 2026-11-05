@@ -855,13 +855,15 @@ class InferenceEngine:
                 if not abort_event.is_set():
                     yield f"[Teacher AI Stream Error: {e}]"
 
-    def generate_stream(self, prompt: str, session_id: str = "default", mode: str = "assistant") -> Iterator[str]:
+    def generate_stream(
+        self, prompt: str, session_id: str = "default", mode: str = "assistant", user_id: str | None = None
+    ) -> Iterator[str]:
         """
         Thread-safe live LLM token generator.
         Every prompt goes directly to the active AI inference backend (zero static/canned responses).
         """
         abort_event = self._register_abort_event(session_id)
-        save_chat_message(session_id, "user", prompt)
+        save_chat_message(session_id, "user", prompt, user_id=user_id)
 
         # Wait if lazy background model initialization is still in progress
         if not self._init_done_event.is_set():
@@ -1089,21 +1091,22 @@ class InferenceEngine:
 
             full_response = "".join(response_buffer)
             if full_response:
-                save_chat_message(session_id, "assistant", full_response)
+                save_chat_message(session_id, "assistant", full_response, user_id=user_id)
                 elapsed = time.time() - t_start
                 token_count = len(response_buffer)
                 tps = round(token_count / max(elapsed, 0.001), 1)
                 log_event("inference_stream", f"Completed generation: {token_count} chunks ({tps} chunks/s) via {self.backend}", "info")
 
                 # Autonomous Self-Improvement Loop:
+                # Even in Guest Mode, Merlin learns from substantive queries without storing chat history!
                 # If this was a substantive technical/reasoning query not yet in FTS5 memory,
                 # record a knowledge gap and trigger background Teacher LLM distillation if an API key is configured.
-                if not learned_context and intent in ("coder", "reasoning") and len(safe_prompt) >= 20:
+                if not learned_context and (intent in ("coder", "reasoning", "merlin", "assistant") and len(safe_prompt) >= 18):
                     uncertainty_markers = (
                         "i'm not sure", "i am not sure", "i don't know", "i do not know",
                         "cannot verify", "as a small", "beyond my knowledge",
                     )
-                    should_learn = any(m in full_response.lower() for m in uncertainty_markers) or len(safe_prompt) >= 35
+                    should_learn = any(m in full_response.lower() for m in uncertainty_markers) or len(safe_prompt) >= 30 or intent in ("coder", "reasoning")
                     if should_learn:
                         try:
                             add_gap(safe_prompt[:300], context=f"Auto-captured from {intent} session ({self.active_model_name})")
