@@ -1045,12 +1045,30 @@ function setMerlinHudState(state = "listening", customText = "") {
   const eye = document.getElementById("sentinel-eye");
   const statusEl = document.getElementById("sentinel-status-text");
   const subEl = document.getElementById("sentinel-sub-text");
+  const coreAiText = document.getElementById("core-ai-text");
+  const coreAiSub = document.getElementById("core-ai-subtext");
 
   if (eye) {
     eye.classList.remove("sentinel-listening", "sentinel-processing", "sentinel-speaking");
     if (state === "listening" || state === "active_dialogue") eye.classList.add("sentinel-listening");
     else if (state === "processing") eye.classList.add("sentinel-processing");
     else if (state === "speaking") eye.classList.add("sentinel-speaking");
+  }
+
+  if (coreAiText && coreAiSub) {
+    if (state === "listening" || state === "active_dialogue") {
+      coreAiText.textContent = "AI";
+      coreAiSub.textContent = "LISTENING";
+    } else if (state === "processing") {
+      coreAiText.textContent = "AI";
+      coreAiSub.textContent = "SYNAPSE";
+    } else if (state === "speaking") {
+      coreAiText.textContent = "AI";
+      coreAiSub.textContent = "VOICE";
+    } else {
+      coreAiText.textContent = "AI";
+      coreAiSub.textContent = "MERLIN";
+    }
   }
 
   if (statusEl) {

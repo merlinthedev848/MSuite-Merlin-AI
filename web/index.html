@@ -130,52 +130,194 @@
 
     <!-- Message Viewport -->
     <div id="messages-viewport">
-      <!-- Tesla Sentinel Eye Hero Canvas: Pure Focused Sentry Mode for Merlin -->
+      <!-- Cyber AI HUD Hero Canvas: High-Tech Neural Core with Radiating Circuit Traces -->
       <div id="hero-view" class="sentinel-hero-container">
-        <div class="sentinel-frame" onclick="toggleMerlinVoice()" title="Click to engage Merlin Sentinel (Wake word: 'Merlin')">
-          <!-- Background Atmospheric Radar Rings -->
-          <div class="sentinel-radar-ring outer-radar"></div>
-          <div class="sentinel-radar-ring mid-radar"></div>
+        <div class="sentinel-frame cyber-hud-frame" onclick="toggleMerlinVoice()" title="Click to engage Merlin Neural Core (Wake word: 'Merlin')">
+          <!-- Tactical HUD Corner Brackets -->
+          <div class="hud-bracket top-left"></div>
+          <div class="hud-bracket top-right"></div>
+          <div class="hud-bracket bottom-left"></div>
+          <div class="hud-bracket bottom-right"></div>
 
-          <!-- Main Tesla Sentinel Eye -->
-          <div class="sentinel-eye" id="sentinel-eye">
-            <!-- Telemetry Reticle Rings -->
-            <div class="sentinel-ring reticle-outer">
-              <span class="sentinel-tick tick-top">000</span>
-              <span class="sentinel-tick tick-right">090</span>
-              <span class="sentinel-tick tick-bottom">180</span>
-              <span class="sentinel-tick tick-left">270</span>
+          <!-- Tactical HUD Telemetry Header Strip -->
+          <div class="hud-telemetry-strip">
+            <span class="hud-telemetry-tag">[ HUD // MERLIN A25X ]</span>
+            <span class="hud-telemetry-mid">SECTOR-02 &bull; QUANTUM BUS ONLINE</span>
+            <span class="hud-telemetry-right">FREQ: 432Hz &bull; 100% LOCAL</span>
+          </div>
+
+          <!-- Radiating Neural PCB Circuit Board SVG -->
+          <svg class="circuit-svg-bg" viewBox="0 0 960 480" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <filter id="glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="3.5" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            <!-- NORTH BUS: Flowing Upwards -->
+            <path class="circuit-trace bright" d="M 480 115 L 480 35 L 440 35" />
+            <path class="circuit-trace" d="M 465 118 L 465 60 L 430 60 L 410 40 L 330 40" />
+            <path class="circuit-trace bright" d="M 495 118 L 495 60 L 530 60 L 550 40 L 630 40" />
+            <path class="circuit-trace" d="M 450 125 L 450 80 L 380 80 L 360 60" />
+            <path class="circuit-trace" d="M 510 125 L 510 80 L 580 80 L 600 60" />
+
+            <!-- SOUTH BUS: Flowing Downwards -->
+            <path class="circuit-trace bright" d="M 480 365 L 480 445 L 520 445" />
+            <path class="circuit-trace" d="M 465 362 L 465 420 L 430 420 L 410 440 L 330 440" />
+            <path class="circuit-trace bright" d="M 495 362 L 495 420 L 530 420 L 550 440 L 630 440" />
+
+            <!-- WEST BUS: Flowing Leftward -->
+            <path class="circuit-trace bright" d="M 355 240 L 220 240 L 190 270 L 90 270" />
+            <path class="circuit-trace" d="M 358 225 L 240 225 L 210 195 L 110 195" />
+            <path class="circuit-trace" d="M 358 255 L 240 255 L 210 285 L 110 285" />
+            <path class="circuit-trace bright" d="M 365 205 L 270 205 L 240 175 L 130 175" />
+            <path class="circuit-trace" d="M 365 275 L 270 275 L 240 305 L 130 305" />
+
+            <!-- EAST BUS: Flowing Rightward -->
+            <path class="circuit-trace bright" d="M 605 240 L 740 240 L 770 210 L 870 210" />
+            <path class="circuit-trace" d="M 602 225 L 720 225 L 750 195 L 850 195" />
+            <path class="circuit-trace" d="M 602 255 L 720 255 L 750 285 L 850 285" />
+            <path class="circuit-trace bright" d="M 595 205 L 690 205 L 720 175 L 830 175" />
+            <path class="circuit-trace" d="M 595 275 L 690 275 L 720 305 L 830 305" />
+
+            <!-- DIAGONAL BUSSES: NW, NE, SW, SE -->
+            <path class="circuit-trace bright" d="M 390 150 L 290 50 L 200 50" />
+            <path class="circuit-trace" d="M 400 140 L 320 60 L 250 60" />
+            <path class="circuit-trace bright" d="M 570 150 L 670 50 L 760 50" />
+            <path class="circuit-trace" d="M 560 140 L 640 60 L 710 60" />
+            <path class="circuit-trace bright" d="M 390 330 L 290 430 L 200 430" />
+            <path class="circuit-trace bright" d="M 570 330 L 670 430 L 760 430" />
+
+            <!-- MICROCHIP PACKAGES (Image 1 IC Nodes) -->
+            <!-- Top Left Chip -->
+            <rect class="chip-package" x="175" y="75" width="34" height="34" rx="4" />
+            <circle class="chip-pin" cx="185" cy="85" r="2.2" />
+            <circle class="chip-pin" cx="185" cy="99" r="2.2" />
+            <circle class="chip-pin" cx="199" cy="85" r="2.2" />
+            <circle class="chip-pin" cx="199" cy="99" r="2.2" />
+            <path class="circuit-trace" d="M 175 92 L 145 92 L 125 112" />
+            <path class="circuit-trace" d="M 209 92 L 235 92" />
+
+            <!-- Top Right Chip -->
+            <rect class="chip-package" x="751" y="75" width="34" height="34" rx="4" />
+            <circle class="chip-pin" cx="761" cy="85" r="2.2" />
+            <circle class="chip-pin" cx="761" cy="99" r="2.2" />
+            <circle class="chip-pin" cx="775" cy="85" r="2.2" />
+            <circle class="chip-pin" cx="775" cy="99" r="2.2" />
+            <path class="circuit-trace" d="M 751 92 L 725 92" />
+            <path class="circuit-trace" d="M 785 92 L 815 92 L 835 112" />
+
+            <!-- Bottom Left Chip -->
+            <rect class="chip-package" x="175" y="370" width="34" height="34" rx="4" />
+            <circle class="chip-pin" cx="185" cy="380" r="2.2" />
+            <circle class="chip-pin" cx="185" cy="394" r="2.2" />
+            <circle class="chip-pin" cx="199" cy="380" r="2.2" />
+            <circle class="chip-pin" cx="199" cy="394" r="2.2" />
+
+            <!-- Bottom Right Chip -->
+            <rect class="chip-package" x="751" y="370" width="34" height="34" rx="4" />
+            <circle class="chip-pin" cx="761" cy="380" r="2.2" />
+            <circle class="chip-pin" cx="761" cy="394" r="2.2" />
+            <circle class="chip-pin" cx="775" cy="380" r="2.2" />
+            <circle class="chip-pin" cx="775" cy="394" r="2.2" />
+
+            <!-- Solder Pads / Bus Terminal Nodes -->
+            <circle class="circuit-pad" cx="440" cy="35" r="3" />
+            <circle class="circuit-pad" cx="520" cy="445" r="3" />
+            <circle class="circuit-pad" cx="330" cy="40" r="2.5" />
+            <circle class="circuit-pad" cx="630" cy="40" r="2.5" />
+            <circle class="circuit-pad" cx="330" cy="440" r="2.5" />
+            <circle class="circuit-pad" cx="630" cy="440" r="2.5" />
+            <circle class="circuit-pad" cx="90" cy="270" r="3" />
+            <circle class="circuit-pad" cx="870" cy="210" r="3" />
+            <circle class="circuit-pad" cx="110" cy="195" r="2.5" />
+            <circle class="circuit-pad" cx="110" cy="285" r="2.5" />
+            <circle class="circuit-pad" cx="850" cy="195" r="2.5" />
+            <circle class="circuit-pad" cx="850" cy="285" r="2.5" />
+            <circle class="circuit-pad" cx="200" cy="50" r="2.5" />
+            <circle class="circuit-pad" cx="760" cy="50" r="2.5" />
+            <circle class="circuit-pad" cx="200" cy="430" r="2.5" />
+            <circle class="circuit-pad" cx="760" cy="430" r="2.5" />
+
+            <!-- Radial Sentry Boundary Nodes -->
+            <circle class="circuit-pad" cx="480" cy="115" r="3.2" />
+            <circle class="circuit-pad" cx="480" cy="365" r="3.2" />
+            <circle class="circuit-pad" cx="355" cy="240" r="3.2" />
+            <circle class="circuit-pad" cx="605" cy="240" r="3.2" />
+            <circle class="circuit-pad" cx="390" cy="150" r="3.2" />
+            <circle class="circuit-pad" cx="570" cy="150" r="3.2" />
+            <circle class="circuit-pad" cx="390" cy="330" r="3.2" />
+            <circle class="circuit-pad" cx="570" cy="330" r="3.2" />
+
+            <!-- Flowing Neural Data Pulse Packets -->
+            <circle class="data-pulse" r="2.5">
+              <animateMotion path="M 355 240 L 220 240 L 190 270 L 90 270" dur="2.4s" repeatCount="indefinite" />
+            </circle>
+            <circle class="data-pulse" r="2.5">
+              <animateMotion path="M 605 240 L 740 240 L 770 210 L 870 210" dur="2.8s" repeatCount="indefinite" />
+            </circle>
+            <circle class="data-pulse" r="2.5">
+              <animateMotion path="M 480 115 L 480 35 L 440 35" dur="2s" repeatCount="indefinite" />
+            </circle>
+            <circle class="data-pulse" r="2.5">
+              <animateMotion path="M 480 365 L 480 445 L 520 445" dur="2.2s" repeatCount="indefinite" />
+            </circle>
+            <circle class="data-pulse" r="2.5">
+              <animateMotion path="M 390 150 L 290 50 L 200 50" dur="3s" repeatCount="indefinite" />
+            </circle>
+            <circle class="data-pulse" r="2.5">
+              <animateMotion path="M 570 330 L 670 430 L 760 430" dur="2.6s" repeatCount="indefinite" />
+            </circle>
+          </svg>
+
+          <!-- Main Animated Concentric Ring AI Core (Images 1 & 2) -->
+          <div class="sentinel-eye cyber-ai-core" id="sentinel-eye">
+            <!-- Ambient Cyan Energy Glow Field -->
+            <div class="core-ambient-aura"></div>
+
+            <!-- Outer Telemetry Reticle with Degree Ticks and Satellite Nodes -->
+            <div class="sentinel-ring reticle-outer cyber-reticle">
+              <span class="sentinel-tick tick-top">000&deg;</span>
+              <span class="sentinel-tick tick-right">090&deg;</span>
+              <span class="sentinel-tick tick-bottom">180&deg;</span>
+              <span class="sentinel-tick tick-left">270&deg;</span>
+              <span class="telemetry-node n-top"></span>
+              <span class="telemetry-node n-right"></span>
+              <span class="telemetry-node n-bottom"></span>
+              <span class="telemetry-node n-left"></span>
             </div>
             
-            <div class="sentinel-ring aperture-track"></div>
-            <div class="sentinel-ring aperture-blades"></div>
+            <!-- Segmented Orbital Track -->
+            <div class="sentinel-ring aperture-track cyber-segmented-ring"></div>
+            <!-- Counter-rotating Aperture Blades -->
+            <div class="sentinel-ring aperture-blades cyber-aperture-ring"></div>
+            <!-- Radiant Neon Arc Ring -->
+            <div class="sentinel-ring cyber-neon-arc"></div>
             
             <!-- Laser Radar Scan Sweep -->
-            <div class="sentinel-sweep"></div>
+            <div class="sentinel-sweep cyber-sweep"></div>
             
-            <!-- Ocular Glowing Iris -->
-            <div class="sentinel-iris">
-              <div class="sentinel-iris-inner"></div>
-              <!-- Glowing Sentry Core Pupil -->
-              <div class="sentinel-pupil" id="sentinel-pupil">
-                <div class="sentinel-pupil-flare"></div>
-              </div>
+            <!-- Holographic Central AI Core Hub (Image 2) -->
+            <div class="core-center-hub" id="core-center-hub">
+              <div class="core-ai-text" id="core-ai-text">AI</div>
+              <div class="core-ai-subtext" id="core-ai-subtext">MERLIN</div>
             </div>
-            
-            <!-- Glass Lens Optical Highlight -->
-            <div class="sentinel-lens-reflection"></div>
           </div>
 
           <!-- Futuristic HUD Telemetry Readouts -->
           <div class="sentinel-hud-telemetry">
-            <div class="sentinel-badge-top">MERLIN // TESLA SENTINEL ACTIVE</div>
+            <div class="sentinel-badge-top">MERLIN // NEURAL CORE ONLINE</div>
             <div class="sentinel-badge-main" id="sentinel-status-text">STANDBY &bull; WAKE WORD: "MERLIN"</div>
             <div class="sentinel-badge-sub" id="sentinel-sub-text">QUANTUM NEURAL CORE ONLINE &bull; 100% LOCAL</div>
             <div class="sentinel-badge-guest" id="sentinel-guest-badge">GUEST MODE (EPHEMERAL) &bull; ZERO CHATS STORED &bull; AUTONOMOUS LEARNING ACTIVE</div>
           </div>
         </div>
 
-        <!-- Messages Stream List: Positioned directly beneath the Tesla Sentinel Eye -->
+        <!-- Messages Stream List: Positioned directly beneath the Cyber HUD Core -->
         <div class="conversation-container" id="messages-list" style="display:none;"></div>
       </div>
     </div>
