@@ -503,7 +503,7 @@
       </div>
 
       <div class="sidebar-section-title" style="padding-left:0;">Audio &amp; Voice Settings</div>
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-bottom:14px; background:var(--bg-app); border:1px solid var(--border-subtle); border-radius:10px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-bottom:10px; background:var(--bg-app); border:1px solid var(--border-subtle); border-radius:10px;">
         <div>
           <div style="font-size:0.86rem; font-weight:600; color:var(--text-main);">Wake Word Audio Chime</div>
           <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Play synthetic audio blip when listening or wake word is recognized (Default: Off)</div>
@@ -512,6 +512,34 @@
           <input type="checkbox" id="setting-sound-chimes" onchange="toggleSoundChimes(this.checked)">
           <span class="toggle-slider"></span>
         </label>
+      </div>
+
+      <!-- TTS Voice Personality & System Voice Selector -->
+      <div style="padding:12px 14px; margin-bottom:14px; background:var(--bg-app); border:1px solid var(--border-subtle); border-radius:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <div>
+            <div style="font-size:0.86rem; font-weight:600; color:var(--text-main);">Voice Persona &amp; Tone</div>
+            <div style="font-size:0.75rem; color:var(--text-muted);">Baritone cadence and pitch tuning</div>
+          </div>
+          <select class="form-select" id="setting-voice-style" onchange="changeVoiceStyle(this.value)" style="width:240px; font-size:0.82rem; padding:6px 10px;">
+            <option value="freeman">Morgan Freeman (Deep Baritone Narrator)</option>
+            <option value="deep">Deep Resonant Bass (0.78 Pitch)</option>
+            <option value="jarvis">British Transatlantic AI (Jarvis)</option>
+          </select>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding-top:10px; border-top:1px solid var(--border-subtle);">
+          <div>
+            <div style="font-size:0.86rem; font-weight:600; color:var(--text-main);">Synthesizer Voice Engine</div>
+            <div style="font-size:0.75rem; color:var(--text-muted);">Male voice device preference</div>
+          </div>
+          <select class="form-select" id="setting-voice-device" onchange="changeVoiceDevice(this.value)" style="width:240px; font-size:0.82rem; padding:6px 10px;">
+            <option value="">Auto-Select Deep Male Voice</option>
+          </select>
+        </div>
+        <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+          <button class="btn-secondary" style="font-size:0.76rem; padding:5px 12px;" onclick="testMerlinVoice()">▶ Test Voice</button>
+        </div>
       </div>
 
       <div class="sidebar-section-title" style="padding-left:0;">Live Hardware Telemetry</div>

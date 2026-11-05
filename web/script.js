@@ -159,6 +159,11 @@ function openModal(id) {
     if (soundChk) {
       soundChk.checked = localStorage.getItem("merlin_sound_chimes") === "true";
     }
+    const styleSel = document.getElementById("setting-voice-style");
+    if (styleSel) {
+      styleSel.value = localStorage.getItem("merlin_voice_style") || "freeman";
+    }
+    populateVoiceSelect();
   } else if (id === "pa-modal") {
     loadTodos();
     loadNotes();
@@ -684,8 +689,9 @@ function playNextSpeechChunk() {
 
   const utterance = new SpeechSynthesisUtterance(nextSentence);
   if (bestVoice) utterance.voice = bestVoice;
-  utterance.rate = 1.05;
-  utterance.pitch = 0.98;
+  const voiceCfg = getVoiceStyleConfig();
+  utterance.rate = voiceCfg.rate;
+  utterance.pitch = voiceCfg.pitch;
 
   utterance.onend = () => {
     ttsIsSpeakingChunk = false;
@@ -1170,34 +1176,153 @@ function endConversationSession(spokenResponse = null) {
   }
 }
 
+function getVoiceStyleConfig() {
+  let style = "freeman";
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.getItem) {
+      style = localStorage.getItem("merlin_voice_style") || "freeman";
+    }
+  } catch(e) {}
+
+  if (style === "freeman") {
+    // Warm, deep resonant baritone narration (Morgan Freeman style)
+    return { pitch: 0.84, rate: 0.94 };
+  } else if (style === "deep") {
+    // Deep bass resonance
+    return { pitch: 0.78, rate: 0.90 };
+  } else if (style === "jarvis") {
+    // British transatlantic AI
+    return { pitch: 0.96, rate: 1.02 };
+  }
+  return { pitch: 0.84, rate: 0.94 };
+}
+
 function updateBestVoice() {
   if (!('speechSynthesis' in window)) return;
   const voices = window.speechSynthesis.getVoices();
   if (!voices || !voices.length) return;
 
-  // 1. Natural / Neural British English voices (Microsoft Ryan Online, Microsoft Oliver Online, Google UK English Male)
-  const topTier = voices.find(v => 
+  let savedVoiceURI = null;
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.getItem) {
+      savedVoiceURI = localStorage.getItem("merlin_selected_voice_uri");
+    }
+  } catch(e) {}
+
+  if (savedVoiceURI) {
+    const saved = voices.find(v => v.voiceURI === savedVoiceURI || v.name === savedVoiceURI);
+    if (saved) {
+      bestVoice = saved;
+      populateVoiceSelect();
+      return;
+    }
+  }
+
+  // Common female name/indicator filter
+  const femalePattern = /\b(female|zira|susan|hazel|catherine|linda|jenny|aria|samantha|victoria|karen|moira|fiona|tessa|ava|emma|olivia|sophia|chloe|sonia|natasha|ana)\b/i;
+
+  const englishVoices = voices.filter(v => v.lang.startsWith("en") && !femalePattern.test(v.name));
+
+  // Priority 1: Resonant American baritone male voices (Guy, Christopher, Andrew, David, Mark)
+  const usNarratorMale = englishVoices.find(v => 
+    (v.lang === "en-US" || v.lang === "en_US") &&
+    (v.name.includes("Guy") || v.name.includes("Christopher") || v.name.includes("Andrew") || v.name.includes("David") || v.name.includes("Mark"))
+  );
+  if (usNarratorMale) { bestVoice = usNarratorMale; populateVoiceSelect(); return; }
+
+  // Priority 2: Natural / Neural male English voices
+  const neuralMale = englishVoices.find(v => 
+    (v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Online")) &&
+    (/\b(male|guy|christopher|andrew|david|ryan|george|oliver|daniel)\b/i.test(v.name) || !femalePattern.test(v.name))
+  );
+  if (neuralMale) { bestVoice = neuralMale; populateVoiceSelect(); return; }
+
+  // Priority 3: Any American English male voice (David, Mark, Alex, etc.)
+  const anyUSMale = englishVoices.find(v => 
+    v.lang.startsWith("en-US") &&
+    (/\b(male|david|mark|alex|brian|eric|charles)\b/i.test(v.name) || !femalePattern.test(v.name))
+  );
+  if (anyUSMale) { bestVoice = anyUSMale; populateVoiceSelect(); return; }
+
+  // Priority 4: High quality British male voices (Ryan, George, Arthur, Oliver, Daniel)
+  const gbMale = englishVoices.find(v => 
     (v.lang === "en-GB" || v.lang === "en_GB") &&
-    (v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Online") || v.name.includes("Google"))
+    (v.name.includes("Ryan") || v.name.includes("George") || v.name.includes("Arthur") || v.name.includes("Oliver") || v.name.includes("Daniel") || v.name.includes("Male"))
   );
-  if (topTier) { bestVoice = topTier; return; }
+  if (gbMale) { bestVoice = gbMale; populateVoiceSelect(); return; }
 
-  // 2. High quality British English voices (Daniel, George, Arthur, Oliver, Male)
-  const gbMale = voices.find(v => 
-    (v.lang === "en-GB" || v.lang.startsWith("en-GB")) &&
-    (v.name.includes("Daniel") || v.name.includes("George") || v.name.includes("Arthur") || v.name.includes("Oliver") || v.name.includes("Male"))
-  );
-  if (gbMale) { bestVoice = gbMale; return; }
+  // Priority 5: Any non-female English voice
+  if (englishVoices.length > 0) {
+    bestVoice = englishVoices[0];
+    populateVoiceSelect();
+    return;
+  }
 
-  // 3. Any British English voice
-  const anyGB = voices.find(v => v.lang.startsWith("en-GB"));
-  if (anyGB) { bestVoice = anyGB; return; }
-
-  // 4. Any Natural/Neural English voice
-  const anyNatural = voices.find(v => v.lang.startsWith("en") && (v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Online")));
-  if (anyNatural) { bestVoice = anyNatural; return; }
-
+  // Fallback
   bestVoice = voices.find(v => v.lang.startsWith("en")) || voices[0];
+  populateVoiceSelect();
+}
+
+function populateVoiceSelect() {
+  const select = document.getElementById("setting-voice-device");
+  if (!select || !('speechSynthesis' in window)) return;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices || !voices.length) return;
+
+  let currentVal = "";
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.getItem) {
+      currentVal = localStorage.getItem("merlin_selected_voice_uri") || "";
+    }
+  } catch(e) {}
+  if (!currentVal && bestVoice) currentVal = bestVoice.voiceURI;
+
+  select.innerHTML = '<option value="">Auto-Select Deep Male Voice</option>';
+
+  const femalePattern = /\b(female|zira|susan|hazel|catherine|linda|jenny|aria|samantha|victoria|karen|moira|fiona|tessa|ava|emma|olivia|sophia|chloe|sonia|natasha|ana)\b/i;
+
+  const sorted = [...voices].sort((a, b) => {
+    const aMale = !femalePattern.test(a.name) && a.lang.startsWith("en");
+    const bMale = !femalePattern.test(b.name) && b.lang.startsWith("en");
+    if (aMale && !bMale) return -1;
+    if (!aMale && bMale) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  for (const v of sorted) {
+    const opt = document.createElement("option");
+    opt.value = v.voiceURI;
+    const isM = !femalePattern.test(v.name) ? " [Male]" : "";
+    opt.textContent = `${v.name} (${v.lang})${isM}`;
+    if (v.voiceURI === currentVal || (bestVoice && v.voiceURI === bestVoice.voiceURI)) {
+      opt.selected = true;
+    }
+    select.appendChild(opt);
+  }
+}
+
+function changeVoiceDevice(voiceURI) {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.setItem) {
+      if (!voiceURI) localStorage.removeItem("merlin_selected_voice_uri");
+      else localStorage.setItem("merlin_selected_voice_uri", voiceURI);
+    }
+  } catch(e) {}
+  updateBestVoice();
+  showToast("Synthesizer voice updated.", "info");
+}
+
+function changeVoiceStyle(style) {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.setItem) {
+      localStorage.setItem("merlin_voice_style", style);
+    }
+  } catch(e) {}
+  showToast(`Voice style set to ${style === "freeman" ? "Morgan Freeman (Deep Baritone)" : style}.`, "info");
+}
+
+function testMerlinVoice() {
+  speakMerlinText("Good evening. I am Merlin, your autonomous artificial intelligence. All systems are operational.");
 }
 
 if ('speechSynthesis' in window) {
@@ -1408,8 +1533,9 @@ function speakMerlinText(text, onComplete) {
 
     const utterance = new SpeechSynthesisUtterance(currentSentence);
     if (bestVoice) utterance.voice = bestVoice;
-    utterance.rate = 1.0;
-    utterance.pitch = 0.98;
+    const voiceCfg = getVoiceStyleConfig();
+    utterance.rate = voiceCfg.rate;
+    utterance.pitch = voiceCfg.pitch;
 
     utterance.onend = () => {
       setTimeout(speakNext, 40);
