@@ -885,13 +885,46 @@ async function analyzeAttachedMultimodal() {
 // MERLIN AUDIO CHIME & ULTRA-SMOOTH SPOKEN VOICE ENGINE
 // Autonomous Conversational Communicator & Engineering Workhorse
 // ==========================================================================
-let isMerlinVoiceActive = false;
-let isJarvisVoiceActive = false; // Backward-compatibility alias
+let isMerlinVoiceActive = true;
+let isJarvisVoiceActive = true; // Backward-compatibility alias
+let isMerlinConversationActive = false; // Active continuous dialogue state
+let conversationActiveTimer = null;
+let isRecognitionRunning = false;
 let merlinAudioCtx = null;
 let isMerlinSpeaking = false;
 let lastSpokenText = "";
 let lastSpokenTime = 0;
 let bestVoice = null;
+
+function refreshConversationSession(durationMs = 35000) {
+  isMerlinConversationActive = true;
+  if (conversationActiveTimer) {
+    clearTimeout(conversationActiveTimer);
+  }
+  setMerlinHudState("active_dialogue");
+  updateWakePillUI(true, "Active Dialogue (Speak freely)");
+  conversationActiveTimer = setTimeout(() => {
+    isMerlinConversationActive = false;
+    setMerlinHudState("listening");
+    updateWakePillUI(true, "Wake Word: Merlin (Always Listening)");
+    console.debug("Merlin active conversation session timed out; returning to wake-word standby.");
+  }, durationMs);
+}
+
+function endConversationSession(spokenResponse = null) {
+  isMerlinConversationActive = false;
+  if (conversationActiveTimer) {
+    clearTimeout(conversationActiveTimer);
+    conversationActiveTimer = null;
+  }
+  setMerlinHudState("listening", 'STANDBY &bull; WAKE WORD: "MERLIN"');
+  updateWakePillUI(true, "Wake Word: Merlin (Always Listening)");
+  if (spokenResponse) {
+    speakMerlinText(spokenResponse);
+  } else {
+    playMerlinChime("finish");
+  }
+}
 
 function updateBestVoice() {
   if (!('speechSynthesis' in window)) return;
@@ -948,16 +981,16 @@ function prepareTextForSpeech(raw) {
     .trim();
 }
 
-function updateWakePillUI(active) {
+function updateWakePillUI(active, customLabel = "") {
   const pill = document.getElementById("wake-word-pill");
   const label = document.getElementById("wake-pill-label");
   if (!pill) return;
   if (active) {
     pill.classList.add("active");
-    if (label) label.textContent = "Wake Word: 'Merlin' (Listening)";
+    if (label) label.textContent = customLabel || (isMerlinConversationActive ? "Active Dialogue (Speak freely)" : "Wake Word: Merlin (Always Listening)");
   } else {
     pill.classList.remove("active");
-    if (label) label.textContent = "Wake Word: Merlin (Standby)";
+    if (label) label.textContent = customLabel || "Wake Word: Merlin (Paused)";
   }
 }
 
@@ -968,7 +1001,7 @@ function setMerlinHudState(state = "listening", customText = "") {
 
   if (eye) {
     eye.classList.remove("sentinel-listening", "sentinel-processing", "sentinel-speaking");
-    if (state === "listening") eye.classList.add("sentinel-listening");
+    if (state === "listening" || state === "active_dialogue") eye.classList.add("sentinel-listening");
     else if (state === "processing") eye.classList.add("sentinel-processing");
     else if (state === "speaking") eye.classList.add("sentinel-speaking");
   }
@@ -976,8 +1009,10 @@ function setMerlinHudState(state = "listening", customText = "") {
   if (statusEl) {
     if (customText) {
       statusEl.innerHTML = customText;
+    } else if (state === "active_dialogue" || isMerlinConversationActive) {
+      statusEl.innerHTML = 'CONVERSATION ACTIVE &bull; LISTENING...';
     } else if (state === "listening") {
-      statusEl.innerHTML = 'LISTENING &bull; WAKE WORD: "MERLIN"';
+      statusEl.innerHTML = 'ALWAYS LISTENING &bull; WAKE WORD: "MERLIN"';
     } else if (state === "processing") {
       statusEl.innerHTML = "PROCESSING DIRECTIVE &bull; QUANTUM CORE";
     } else if (state === "speaking") {
@@ -988,10 +1023,17 @@ function setMerlinHudState(state = "listening", customText = "") {
   }
 
   if (subEl) {
-    if (state === "listening") subEl.textContent = "AWAITING SPOKEN DIRECTIVE";
-    else if (state === "processing") subEl.textContent = "EXECUTING DETERMINISTIC AGENT";
-    else if (state === "speaking") subEl.textContent = "NEURAL CADENCE ACTIVE";
-    else subEl.textContent = "QUANTUM NEURAL CORE ONLINE • 100% LOCAL";
+    if (state === "active_dialogue" || isMerlinConversationActive) {
+      subEl.textContent = "CONTINUOUS DIALOGUE ACTIVE • SPEAK NATURALLY WITHOUT 'MERLIN'";
+    } else if (state === "listening") {
+      subEl.textContent = "ALWAYS LISTENING FOR WAKE WORD 'MERLIN' • ZERO BUTTON PRESS REQUIRED";
+    } else if (state === "processing") {
+      subEl.textContent = "EXECUTING DETERMINISTIC AGENT";
+    } else if (state === "speaking") {
+      subEl.textContent = "NEURAL CADENCE ACTIVE";
+    } else {
+      subEl.textContent = "QUANTUM NEURAL CORE ONLINE • 100% LOCAL";
+    }
   }
 }
 
@@ -1100,7 +1142,8 @@ function speakMerlinText(text, onComplete) {
     if (sentenceIdx >= sentences.length) {
       isMerlinSpeaking = false;
       lastSpokenTime = Date.now();
-      setMerlinHudState("listening");
+      // Keep conversation session active for 35 seconds of follow-up listening!
+      refreshConversationSession(35000);
       // Acoustic grace period: wait 700ms for room reverb/speaker echo to clear before re-enabling mic
       setTimeout(() => {
         if (isMerlinVoiceActive && !isMerlinSpeaking && (!window.speechSynthesis || !window.speechSynthesis.speaking)) {
@@ -1141,7 +1184,6 @@ const speakJarvisText = speakMerlinText;
 
 function toggleMerlinVoice(forceState) {
   const micBtn = document.getElementById("btn-mic");
-  const hud = document.getElementById("merlin-arc-hud");
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
     showToast("Speech Recognition is not supported in this browser.", "warning");
     return;
@@ -1151,9 +1193,13 @@ function toggleMerlinVoice(forceState) {
 
   if (!newState) {
     isMerlinVoiceActive = false;
-    isJarvisVoiceActive = false;
+    isMerlinConversationActive = false;
     isMerlinSpeaking = false;
     localStorage.setItem("merlin_handsfree_wake", "false");
+    if (conversationActiveTimer) {
+      clearTimeout(conversationActiveTimer);
+      conversationActiveTimer = null;
+    }
     if (recognition) {
       try { recognition.abort(); } catch(e) {}
     }
@@ -1164,25 +1210,22 @@ function toggleMerlinVoice(forceState) {
       micBtn.classList.remove("merlin-voice-active", "jarvis-active");
       micBtn.style.color = "var(--text-muted)";
     }
-    if (hud) hud.style.display = "none";
     updateWakePillUI(false);
     playMerlinChime("finish");
-    showToast("Merlin Wake Word Standby.", "info");
+    showToast("Merlin Microphone Paused.", "info");
     return;
   }
 
   isMerlinVoiceActive = true;
-  isJarvisVoiceActive = true;
   isMerlinSpeaking = false;
   localStorage.setItem("merlin_handsfree_wake", "true");
   if (micBtn) {
     micBtn.classList.add("merlin-voice-active", "jarvis-active");
   }
-  if (hud) hud.style.display = "flex";
   updateWakePillUI(true);
   setMerlinHudState("listening");
   playMerlinChime("wake");
-  showToast("Merlin Hands-Free Voice Online. Wake word: 'Merlin'.", "success");
+  showToast("Merlin Hands-Free Voice Online. Always listening.", "success");
   startMerlinListening();
 }
 const toggleJarvisVoice = toggleMerlinVoice;
@@ -1193,8 +1236,11 @@ function startMerlinListening() {
   if (isMerlinSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking)) {
     return;
   }
+  if (isRecognitionRunning) return;
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return;
+
   if (!recognition) {
     recognition = new SpeechRecognition();
   }
@@ -1203,10 +1249,13 @@ function startMerlinListening() {
   recognition.lang = "en-US";
 
   recognition.onstart = () => {
+    isRecognitionRunning = true;
     const micBtn = document.getElementById("btn-mic");
     if (micBtn) micBtn.classList.add("merlin-voice-active", "jarvis-active");
     updateWakePillUI(true);
-    setMerlinHudState("listening");
+    if (!isMerlinConversationActive) {
+      setMerlinHudState("listening");
+    }
   };
 
   recognition.onspeechstart = () => {
@@ -1214,7 +1263,7 @@ function startMerlinListening() {
     if (window.speechSynthesis && window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
       isMerlinSpeaking = false;
-      setMerlinHudState("listening");
+      refreshConversationSession();
     }
   };
 
@@ -1237,14 +1286,12 @@ function startMerlinListening() {
       }
     }
 
-    // 3. Direct Voice Directive: Stop / Cancel
-    if (/^(merlin|hey merlin)?[,\s]*(stop|shut up|be quiet|silence|hold on|pause)$/i.test(lower) || lower === "stop") {
+    // 3. Direct Voice Directive: Stop / Cancel / Standby
+    if (/^(merlin|hey merlin)?[,\s]*(stop|shut up|be quiet|silence|hold on|pause|standby|sleep|go to sleep|mute|that's all|thank you|thanks merlin)$/i.test(lower) || lower === "stop") {
       stopGeneration();
       if (window.speechSynthesis) window.speechSynthesis.cancel();
       isMerlinSpeaking = false;
-      playMerlinChime("finish");
-      setMerlinHudState("idle", "INTERRUPTED // STANDBY");
-      showToast("Merlin standing by.", "info");
+      endConversationSession("Standing by, Sir.");
       return;
     }
 
@@ -1253,23 +1300,19 @@ function startMerlinListening() {
       createNewChat();
       playMerlinChime("ack");
       speakMerlinText("Screen cleared, Sir.");
+      refreshConversationSession();
       return;
     }
 
-    // 5. Direct Voice Directive: Standby
-    if (/^(merlin|hey merlin)?[,\s]*(standby|sleep|go to sleep|mute)$/i.test(lower)) {
-      toggleMerlinVoice(false);
-      return;
-    }
-
-    // 6. Identity Check: Redirect if called Jarvis
+    // 5. Identity Check: Redirect if called Jarvis
     if (/^(hey\s+)?jarvis\b/i.test(lower) || /\bjarvis\b/i.test(lower)) {
       playMerlinChime("ack");
       speakMerlinText("My name is Merlin, Sir. Jarvis is not here. How may I assist you?");
+      refreshConversationSession();
       return;
     }
 
-    // 7. Strict Wake Word Matching for "Merlin"
+    // 6. Wake Word Matching for "Merlin"
     const wakePatterns = [
       /^(hey\s+)?merlin[\s,.:;!?-]*/i,
       /^(wake\s+up\s+)?merlin[\s,.:;!?-]*/i,
@@ -1290,48 +1333,69 @@ function startMerlinListening() {
       strippedPrompt = transcript.replace(/\bmerlin\b[,\s.:;!?-]*/gi, "").trim();
     }
 
-    // Crucial: In hands-free standby, if NO wake word was uttered, ignore room noise!
-    if (!matchedWakeWord) {
+    // CRUCIAL: In hands-free standby, if NO wake word was uttered AND we are not in active dialogue: ignore ambient room noise!
+    if (!matchedWakeWord && !isMerlinConversationActive) {
       console.debug("Ignored ambient speech without wake word 'Merlin':", transcript);
       return;
     }
 
-    // If user only uttered the wake word ("Merlin" or "Hey Merlin")
-    if (!strippedPrompt) {
+    // If user only uttered the wake word ("Merlin" or "Hey Merlin") while in standby
+    if (matchedWakeWord && !strippedPrompt) {
+      refreshConversationSession();
       playMerlinChime("wake");
       speakMerlinText("At your service, Sir. How may I assist you?");
       return;
     }
 
+    // Either wake word was uttered with a question, OR user is actively conversing in an active session!
+    refreshConversationSession();
+
+    const finalPrompt = strippedPrompt || transcript;
     setMerlinHudState("processing");
     const ta = document.getElementById("chat-textarea");
-    ta.value = strippedPrompt;
+    ta.value = finalPrompt;
     autoResizeTextarea(ta);
     await submitMessage(true);
   };
 
-  recognition.onerror = () => {
+  recognition.onerror = (e) => {
+    isRecognitionRunning = false;
+    if (e && e.error === "not-allowed") {
+      console.warn("Microphone permission pending user gesture.");
+      return;
+    }
     if (isMerlinVoiceActive && !isMerlinSpeaking) {
       setTimeout(() => {
-        if (isMerlinVoiceActive && !isMerlinSpeaking) startMerlinListening();
-      }, 1000);
+        if (isMerlinVoiceActive && !isMerlinSpeaking && !isRecognitionRunning) {
+          startMerlinListening();
+        }
+      }, 700);
     }
   };
 
   recognition.onend = () => {
-    // If voice is active but neither assistant nor user is speaking, restart listener
+    isRecognitionRunning = false;
+    // Always listening loop: auto-restart listener continuously
     if (isMerlinVoiceActive && !isMerlinSpeaking && (!window.speechSynthesis || !window.speechSynthesis.speaking)) {
       setTimeout(() => {
-        if (isMerlinVoiceActive && !isMerlinSpeaking && (!window.speechSynthesis || !window.speechSynthesis.speaking)) {
-          try { recognition.start(); } catch(e) {}
+        if (isMerlinVoiceActive && !isMerlinSpeaking && !isRecognitionRunning) {
+          try {
+            recognition.start();
+            isRecognitionRunning = true;
+          } catch(err) {
+            startMerlinListening();
+          }
         }
-      }, 300);
+      }, 150);
     }
   };
 
   try {
     recognition.start();
-  } catch(e) {}
+    isRecognitionRunning = true;
+  } catch(e) {
+    isRecognitionRunning = false;
+  }
 }
 const startJarvisListening = startMerlinListening;
 
@@ -1339,15 +1403,30 @@ function toggleDictation() {
   toggleMerlinVoice();
 }
 
-// Auto-activate hands-free wake word detection on first user gesture if preferred
-if (localStorage.getItem("merlin_handsfree_wake") !== "false") {
-  document.addEventListener("click", function initWakeOnInteraction() {
-    if (!isMerlinVoiceActive) {
-      toggleMerlinVoice(true);
-    }
-    document.removeEventListener("click", initWakeOnInteraction);
-  }, { once: true });
+// Always listening initialization: start automatically without requiring mic button press
+function initAlwaysListeningMerlin() {
+  if (('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window)) {
+    isMerlinVoiceActive = true;
+    updateWakePillUI(true);
+    startMerlinListening();
+  }
 }
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initAlwaysListeningMerlin);
+} else {
+  initAlwaysListeningMerlin();
+}
+
+// User-gesture fallback if browser security blocks microphone until first page interaction
+const ensureListeningOnGesture = () => {
+  if (isMerlinVoiceActive && !isRecognitionRunning && !isMerlinSpeaking) {
+    startMerlinListening();
+  }
+};
+window.addEventListener("click", ensureListeningOnGesture, { passive: true });
+window.addEventListener("keydown", ensureListeningOnGesture, { passive: true });
+window.addEventListener("touchstart", ensureListeningOnGesture, { passive: true });
 
 // ==========================================================================
 // PERSONAL ASSISTANT: TO-DOS & TECHNICAL NOTES
