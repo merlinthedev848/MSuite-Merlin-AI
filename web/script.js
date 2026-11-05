@@ -1232,34 +1232,11 @@ function setMerlinHudState(state = "listening", customText = "") {
     }
   }
 
-  if (statusEl) {
-    if (customText) {
-      statusEl.innerHTML = customText;
-    } else if (state === "active_dialogue" || isMerlinConversationActive) {
-      statusEl.innerHTML = 'CONVERSATION ACTIVE &bull; LISTENING...';
-    } else if (state === "listening") {
-      statusEl.innerHTML = 'ALWAYS LISTENING &bull; WAKE WORD: "MERLIN"';
-    } else if (state === "processing") {
-      statusEl.innerHTML = "PROCESSING DIRECTIVE &bull; QUANTUM CORE";
-    } else if (state === "speaking") {
-      statusEl.innerHTML = "TRANSMITTING SYNTHESIS...";
-    } else {
-      statusEl.innerHTML = 'STANDBY &bull; WAKE WORD: "MERLIN"';
-    }
+  if (statusEl && customText) {
+    statusEl.innerHTML = customText;
   }
-
-  if (subEl) {
-    if (state === "active_dialogue" || isMerlinConversationActive) {
-      subEl.textContent = "CONTINUOUS DIALOGUE ACTIVE • SPEAK NATURALLY WITHOUT 'MERLIN'";
-    } else if (state === "listening") {
-      subEl.textContent = "ALWAYS LISTENING FOR WAKE WORD 'MERLIN' • ZERO BUTTON PRESS REQUIRED";
-    } else if (state === "processing") {
-      subEl.textContent = "EXECUTING DETERMINISTIC AGENT";
-    } else if (state === "speaking") {
-      subEl.textContent = "NEURAL CADENCE ACTIVE";
-    } else {
-      subEl.textContent = "QUANTUM NEURAL CORE ONLINE • 100% LOCAL";
-    }
+  if (subEl && customText) {
+    subEl.textContent = customText;
   }
 }
 

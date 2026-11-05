@@ -139,13 +139,6 @@
           <div class="hud-bracket bottom-left"></div>
           <div class="hud-bracket bottom-right"></div>
 
-          <!-- Tactical HUD Telemetry Header Strip -->
-          <div class="hud-telemetry-strip">
-            <span class="hud-telemetry-tag">[ HUD // MERLIN A25X ]</span>
-            <span class="hud-telemetry-mid">SECTOR-02 &bull; QUANTUM BUS ONLINE</span>
-            <span class="hud-telemetry-right">FREQ: 432Hz &bull; 100% LOCAL</span>
-          </div>
-
           <!-- Radiating Neural PCB Circuit Board SVG -->
           <svg class="circuit-svg-bg" viewBox="0 0 960 480" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
             <defs>
@@ -308,13 +301,12 @@
             </div>
           </div>
 
-          <!-- Futuristic HUD Telemetry Readouts -->
+          <!-- Clean Minimal HUD Caption Area -->
           <div class="sentinel-hud-telemetry">
-            <div class="sentinel-badge-top">MERLIN // NEURAL CORE ONLINE</div>
-            <div class="sentinel-badge-main" id="sentinel-status-text">STANDBY &bull; WAKE WORD: "MERLIN"</div>
-            <div class="sentinel-badge-sub" id="sentinel-sub-text">QUANTUM NEURAL CORE ONLINE &bull; 100% LOCAL</div>
             <div class="sentinel-voice-caption" id="sentinel-voice-caption"></div>
-            <div class="sentinel-badge-guest" id="sentinel-guest-badge">GUEST MODE (EPHEMERAL) &bull; ZERO CHATS STORED &bull; AUTONOMOUS LEARNING ACTIVE</div>
+            <span id="sentinel-status-text" style="display:none;"></span>
+            <span id="sentinel-sub-text" style="display:none;"></span>
+            <span id="sentinel-guest-badge" style="display:none;"></span>
           </div>
         </div>
 
@@ -357,7 +349,6 @@
             </button>
           </div>
         </div>
-        <div class="dock-disclaimer">Merlin Sentinel AI &bull; Quantum Local Architecture &bull; 100% Private</div>
       </div>
     </div>
   </main>

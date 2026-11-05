@@ -738,48 +738,12 @@ body.voice-mode-active .sentinel-hero-container {
 
 /* Telemetry HUD Labels */
 .sentinel-hud-telemetry {
-  margin-top: 26px;
+  margin-top: 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
   text-align: center;
   z-index: 10;
-}
-
-.sentinel-badge-top {
-  font-family: ui-monospace, monospace;
-  font-size: 0.72rem;
-  letter-spacing: 0.16em;
-  color: #00f0ff;
-  font-weight: 700;
-  text-shadow: 0 0 12px rgba(0, 240, 255, 0.8);
-}
-
-.sentinel-badge-main {
-  font-size: 0.95rem;
-  color: var(--text-main);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.sentinel-badge-sub {
-  font-family: ui-monospace, monospace;
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  letter-spacing: 0.08em;
-}
-
-.sentinel-badge-guest {
-  font-family: ui-monospace, monospace;
-  font-size: 0.68rem;
-  color: #00f0ff;
-  letter-spacing: 0.08em;
-  padding: 4px 14px;
-  background: rgba(0, 240, 255, 0.08);
-  border: 1px solid rgba(0, 240, 255, 0.3);
-  border-radius: 9999px;
-  margin-top: 4px;
 }
 
 /* Interactive Eye States */
@@ -936,14 +900,7 @@ body.voice-mode-active .sentinel-hero-container {
   font-family: inherit !important;
 }
 
-.dock-disclaimer {
-  font-family: monospace;
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  text-align: center;
-  margin-top: 4px;
-}
+
 
 /* Message Bubbles */
 .message-block {
