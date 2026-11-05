@@ -125,10 +125,16 @@ def init_db(force: bool = False) -> None:
                 password_hash TEXT NOT NULL,
                 salt TEXT NOT NULL,
                 display_name TEXT DEFAULT '',
+                is_admin INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """)
             c.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
+
+            c.execute("PRAGMA table_info(users);")
+            u_cols = {col[1] for col in c.fetchall()}
+            if "is_admin" not in u_cols:
+                c.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0;")
 
             c.execute("""
             CREATE TABLE IF NOT EXISTS user_tokens (
@@ -371,6 +377,11 @@ def init_db(force: bool = False) -> None:
             c.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_kid ON knowledge_embeddings(knowledge_id);")
 
         _initialized_db_path = DB_PATH
+        if not os.getenv("PYTEST_CURRENT_TEST"):
+            try:
+                seed_foundational_datasets()
+            except Exception:
+                pass
 
 
 # --- User Accounts & Session Authentication ---
@@ -380,7 +391,7 @@ def hash_password(password: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
 
 
-def create_user(username: str, password: str, display_name: str = "") -> dict[str, Any]:
+def create_user(username: str, password: str, display_name: str = "", is_admin: bool | None = None) -> dict[str, Any]:
     """Registers a new user account with secure hashed password."""
     clean_username = username.strip().lower()
     if not clean_username or len(clean_username) < 3:
@@ -401,17 +412,28 @@ def create_user(username: str, password: str, display_name: str = "") -> dict[st
         if c.fetchone():
             raise ValueError(f"Username '{clean_username}' already exists.")
 
+        # Determine admin status: explicit argument, standard admin aliases, or first registered user
+        if is_admin is not None:
+            admin_flag = 1 if is_admin else 0
+        elif clean_username in ("admin", "merlin", "administrator", "root"):
+            admin_flag = 1
+        else:
+            c.execute("SELECT COUNT(*) as total_users FROM users;")
+            row_count = c.fetchone()["total_users"]
+            admin_flag = 1 if row_count == 0 else 0
+
         now = datetime.datetime.now().isoformat()
         c.execute("""
-            INSERT INTO users (id, username, password_hash, salt, display_name, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (uid, clean_username, pw_hash, salt, clean_display, now))
+            INSERT INTO users (id, username, password_hash, salt, display_name, is_admin, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (uid, clean_username, pw_hash, salt, clean_display, admin_flag, now))
 
     token = create_user_token(uid)
     return {
         "id": uid,
         "username": clean_username,
         "display_name": clean_display,
+        "is_admin": bool(admin_flag),
         "token": token,
     }
 
@@ -421,7 +443,7 @@ def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
     clean_username = username.strip().lower()
     with get_db() as conn:
         c = conn.cursor()
-        c.execute("SELECT id, username, password_hash, salt, display_name FROM users WHERE username = ?", (clean_username,))
+        c.execute("SELECT id, username, password_hash, salt, display_name, is_admin FROM users WHERE username = ?", (clean_username,))
         row = c.fetchone()
         if not row:
             return None
@@ -431,11 +453,13 @@ def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
             return None
 
         uid = row["id"]
+        is_adm = bool(row["is_admin"]) or row["username"].lower() in ("admin", "merlin", "administrator", "root")
         token = create_user_token(uid)
         return {
             "id": uid,
             "username": row["username"],
             "display_name": row["display_name"] or row["username"],
+            "is_admin": is_adm,
             "token": token,
         }
 
@@ -459,13 +483,17 @@ def get_user_by_token(token: str) -> dict[str, Any] | None:
     with get_db() as conn:
         c = conn.cursor()
         c.execute("""
-            SELECT u.id, u.username, u.display_name, u.created_at
+            SELECT u.id, u.username, u.display_name, u.is_admin, u.created_at
             FROM user_tokens t
             JOIN users u ON u.id = t.user_id
             WHERE t.token = ?
         """, (token.strip(),))
         row = c.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        res = dict(row)
+        res["is_admin"] = bool(res.get("is_admin")) or res["username"].lower() in ("admin", "merlin", "administrator", "root")
+        return res
 
 
 def delete_user_token(token: str) -> bool:
@@ -1019,6 +1047,108 @@ def index_knowledge_embeddings(knowledge_id: int, text: str | None = None) -> in
             """, (knowledge_id, idx, chunk, packed, len(vec)))
             indexed_count += 1
         return indexed_count
+
+
+def seed_foundational_datasets(force: bool = False) -> int:
+    """
+    Seeds foundational multi-domain dataset knowledge into SQLite + FTS5 + Dense Embeddings.
+    Covers Coding, Personal Assistant & Productivity, Document Extraction, and Reasoning.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) as cnt FROM knowledge WHERE source LIKE 'curated_dataset%';")
+        cnt = c.fetchone()["cnt"]
+        if cnt > 0 and not force:
+            return cnt
+
+    seeds = [
+        # 💻 Coding & Systems Engineering
+        {
+            "topic": "Python AsyncIO Non-Blocking Concurrency & Task Supervisors",
+            "lesson": "High-throughput asynchronous servers in Python must never run blocking I/O on the main event loop. Offload CPU-heavy computation or blocking generators to a worker thread via asyncio.to_thread or run_in_executor, communicating back through threadsafe queues (loop.call_soon_threadsafe). Always catch task exceptions to prevent silent event loop crashes.",
+            "code_example": "import asyncio\n\nasync def worker_queue_consumer(queue: asyncio.Queue):\n    while True:\n        item = await queue.get()\n        if item is None:\n            break\n        await process_item(item)\n        queue.task_done()",
+            "tags": "python,asyncio,concurrency,architecture",
+            "source": "curated_dataset:coding",
+        },
+        {
+            "topic": "FastAPI Resilient Streaming (SSE & WebSockets)",
+            "lesson": "FastAPI streaming endpoints require defensive lifecycle management. For SSE, yield formatted 'data: ...\\n\\n' frames followed by '[DONE]'. For bidirectional WebSockets, always wrap frame processing in try/finally blocks to ensure generation flags and server-side locks are released even if the client disconnects abruptly.",
+            "code_example": "@app.get('/api/chat/stream')\nasync def stream_chat(prompt: str):\n    async def event_generator():\n        for chunk in engine.generate_stream(prompt):\n            yield f'data: {json.dumps({\"chunk\": chunk})}\\n\\n'\n        yield 'data: [DONE]\\n\\n'\n    return StreamingResponse(event_generator(), media_type='text/event-stream')",
+            "tags": "fastapi,streaming,sse,websocket,networking",
+            "source": "curated_dataset:coding",
+        },
+        {
+            "topic": "SQLite FTS5 Full-Text Search and BM25 Ranking Optimization",
+            "lesson": "SQLite FTS5 provides instantaneous full-text lexical search with zero external dependencies. Configure prefix matching ('token*') and order by bm25() with custom column weights. Combine with dense vector similarity via Reciprocal Rank Fusion (RRF: 1/(60 + rank_bm25) + 1/(60 + rank_vector)) for state-of-the-art hybrid RAG retrieval.",
+            "code_example": "SELECT k.id, k.topic, k.lesson FROM knowledge_fts fts\nJOIN knowledge k ON k.id = fts.rowid\nWHERE knowledge_fts MATCH ?\nORDER BY bm25(knowledge_fts, 5.0, 2.0, 3.0, 1.5)\nLIMIT 10;",
+            "tags": "sqlite,fts5,bm25,search,rag",
+            "source": "curated_dataset:coding",
+        },
+
+        # 🤖 Personal Assistant & Productivity
+        {
+            "topic": "Deterministic Calendar Slot Conflict Resolution & Scheduling",
+            "lesson": "An intelligent personal assistant must strictly avoid double-booking by enforcing half-open interval checking: slot A overlaps slot B if and only if (start_A < end_B) AND (end_A > start_B). All timestamps should be normalized to ISO 8601 strings and compared deterministically in UTC or local timezone with conflict logging.",
+            "code_example": "def has_conflict(start_a, end_a, start_b, end_b):\n    return (start_a < end_b) and (end_a > start_b)",
+            "tags": "scheduling,calendar,assistant,productivity",
+            "source": "curated_dataset:assistant",
+        },
+        {
+            "topic": "Executive Task Prioritization & Eisenhower Matrix Workflows",
+            "lesson": "When triaging daily developer or executive tasks, categorize items into Urgent/Important (Do First), Important/Not Urgent (Schedule), Urgent/Not Important (Delegate), and Neither (Eliminate). When managing tasks in local assistants, track priority tags, due dates, and completion status with audit timestamps.",
+            "code_example": "SELECT id, title, priority, due_date FROM todos\nWHERE completed = 0\nORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, due_date ASC;",
+            "tags": "productivity,task_management,eisenhower,workflows",
+            "source": "curated_dataset:assistant",
+        },
+
+        # 📄 Document Analysis & Summarization
+        {
+            "topic": "Multi-Format Document Parsing and Structural Chunking",
+            "lesson": "Ingesting arbitrary user documents (PDF, Markdown, codebases, text) requires segmenting content into semantically coherent chunks (300-500 tokens) with a 10-15% sliding window overlap. This preserves contextual continuity across chunk boundaries and prevents key entity splits during vector search.",
+            "code_example": "def chunk_document(text, chunk_size=400, overlap=60):\n    words = text.split()\n    chunks, i = [], 0\n    while i < len(words):\n        chunks.append(' '.join(words[i:i + chunk_size]))\n        i += chunk_size - overlap\n    return chunks",
+            "tags": "nlp,chunking,rag,documents,summarization",
+            "source": "curated_dataset:documents",
+        },
+        {
+            "topic": "Executive Summary & Key Action Item Distillation",
+            "lesson": "When summarizing transcripts, technical papers, or meeting dialogues, follow the three-tier summary pattern: 1) Executive Bottom Line (1-2 sentences), 2) Key Strategic Decisions & Metrics (bullet points), 3) Concrete Next Steps with Assigned Owners and Deadlines.",
+            "code_example": "# Summary Pattern:\n## Executive Summary\n- Primary objective & outcome\n## Strategic Findings\n- Point 1 (Impact)\n- Point 2 (Metrics)\n## Action Items\n- [ ] Owner: Task (Target Date)",
+            "tags": "summarization,dialogue,executive_brief,nlp",
+            "source": "curated_dataset:documents",
+        },
+
+        # 💬 Natural Conversation & Multi-Turn Reasoning
+        {
+            "topic": "Chain-of-Thought Decomposition for Complex Problem Solving",
+            "lesson": "For mathematical, algorithmic, or architectural reasoning, guide the model through step-by-step problem decomposition. State assumptions explicitly, isolate variables, evaluate edge cases (e.g., null pointers, network timeouts, zero divisions), and state the verified conclusion at the end.",
+            "code_example": "# Reasoning Pattern:\n1. Problem Understanding: Clarify inputs, outputs, constraints.\n2. Decomposition: Break down into discrete sub-problems.\n3. Execution & Verification: Step-by-step resolution.\n4. Final Synthesis: Direct, actionable answer.",
+            "tags": "reasoning,chain_of_thought,logic,problem_solving",
+            "source": "curated_dataset:reasoning",
+        },
+        {
+            "topic": "Empathetic, Assertive & Grounded Conversational Alignment",
+            "lesson": "A high-capability AI assistant balances warm professionalism with strict factual precision. Acknowledge user constraints, clarify ambiguities before making destructive assumptions, and maintain zero-hallucination discipline by stating confidence boundaries when information is missing.",
+            "code_example": "# Response Guideline:\n- Directness: Put the answer first, not preamble.\n- Clarity: Use structured formatting (lists, bold headings).\n- Grounding: Cite specific files, lines, or parameters.",
+            "tags": "conversation,alignment,chat,communication",
+            "source": "curated_dataset:conversation",
+        },
+    ]
+
+    added = 0
+    for s in seeds:
+        kid = add_knowledge(
+            topic=s["topic"],
+            lesson=s["lesson"],
+            code_example=s["code_example"],
+            tags=s["tags"],
+            source=s["source"],
+        )
+        try:
+            index_knowledge_embeddings(kid)
+        except Exception:
+            pass
+        added += 1
+    return added
 
 
 def search_knowledge_dense(query: str, limit: int = 5) -> list[dict[str, Any]]:

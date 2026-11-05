@@ -757,7 +757,10 @@ async def websocket_chat_endpoint(websocket: WebSocket):
             if model:
                 eng.set_active_model(model)
 
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.get_event_loop()
             q: asyncio.Queue[str | None] = asyncio.Queue()
 
             def _producer(p=prompt, s=active_sid, m=mode, lp=loop, queue=q):

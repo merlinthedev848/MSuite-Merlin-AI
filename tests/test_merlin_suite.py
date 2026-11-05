@@ -1127,4 +1127,48 @@ def test_live_ai_guest_and_user_chat_streaming(client):
     assert "All systems are green" not in content
 
 
+def test_admin_user_detection_and_privileges(isolated_db, client):
+    """Verifies that admin accounts receive admin privileges and profile reflects is_admin."""
+    import database
+
+    # First user or username 'admin' automatically gets admin status
+    admin_u = database.create_user("admin_root", "AdminPassword123!", display_name="System Admin", is_admin=True)
+    assert admin_u["is_admin"] is True
+
+    # Standard non-admin user
+    regular_u = database.create_user("normal_dev", "NormalPassword123!", display_name="Normal User", is_admin=False)
+    assert regular_u["is_admin"] is False
+
+    # Check via REST API profile check
+    admin_me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {admin_u['token']}"}).json()
+    assert admin_me["logged_in"] is True
+    assert admin_me["user"]["is_admin"] is True
+
+    regular_me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {regular_u['token']}"}).json()
+    assert regular_me["logged_in"] is True
+    assert regular_me["user"]["is_admin"] is False
+
+
+def test_wide_range_default_datasets_seeding(isolated_db):
+    """Verifies that the application seeds a wide range of curated datasets by default."""
+    import database
+
+    # Force seeding foundational datasets
+    seeded = database.seed_foundational_datasets(force=True)
+    assert seeded >= 4
+
+    # Verify multi-domain coverage in knowledge table
+    all_k = database.get_all_knowledge(limit=50)
+    sources = {k.get("source") for k in all_k}
+    assert any("coding" in s for s in sources if s)
+    assert any("assistant" in s for s in sources if s)
+    assert any("documents" in s for s in sources if s)
+    assert any("reasoning" in s for s in sources if s)
+
+    # Verify hybrid search can retrieve from the seeded datasets
+    results = database.search_knowledge_hybrid("Python AsyncIO Concurrency", limit=3)
+    assert len(results) > 0
+    assert any("asyncio" in r["topic"].lower() for r in results)
+
+
 

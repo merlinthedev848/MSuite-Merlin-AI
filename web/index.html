@@ -28,39 +28,39 @@
       <!-- Injected via JavaScript -->
     </div>
 
-    <div class="sidebar-footer">
-      <button class="sidebar-nav-btn" onclick="openModal('pa-modal')">
+    <div class="sidebar-footer admin-only">
+      <button class="sidebar-nav-btn admin-only" onclick="openModal('pa-modal')">
         <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
         <span>Tasks &amp; Notes (PA)</span>
         <span class="nav-badge" id="badge-todos" style="display:none;">0</span>
       </button>
-      <button class="sidebar-nav-btn" onclick="openModal('memory-modal')">
+      <button class="sidebar-nav-btn admin-only" onclick="openModal('memory-modal')">
         <svg viewBox="0 0 24 24"><path d="M12 3L1 9l4 2.18v6L12 21l7-3.82v-6l2-1.09V17h2V9L12 3zm6.82 6L12 12.72 5.18 9 12 5.28 18.82 9zM17 15.99l-5 2.73-5-2.73v-3.72L12 15l5-2.73v3.72z"/></svg>
         <span>Memory &amp; Knowledge Gaps</span>
         <span class="nav-badge" id="badge-knowledge" style="display:none;">0</span>
       </button>
-      <button class="sidebar-nav-btn" onclick="openModal('sync-modal')">
+      <button class="sidebar-nav-btn admin-only" onclick="openModal('sync-modal')">
         <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
         <span>Teacher Distillation</span>
         <span class="nav-badge warning" id="badge-gaps" style="display:none;">0</span>
       </button>
 
-      <button class="sidebar-nav-btn" onclick="openModal('dataset-modal')">
+      <button class="sidebar-nav-btn admin-only" onclick="openModal('dataset-modal')">
         <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
         <span>Hugging Face Datasets</span>
       </button>
-      <button class="sidebar-nav-btn" onclick="openModal('calendar-modal')">
+      <button class="sidebar-nav-btn admin-only" onclick="openModal('calendar-modal')">
         <svg viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5z"/></svg>
         <span>Calendar &amp; Booking</span>
         <span class="nav-badge" id="badge-calendar" style="display:none;">0</span>
       </button>
 
-      <button class="sidebar-nav-btn" onclick="openModal('telephony-modal')">
+      <button class="sidebar-nav-btn admin-only" onclick="openModal('telephony-modal')">
         <svg viewBox="0 0 24 24"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 0 0-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/></svg>
         <span>Telephony &amp; VoIP</span>
       </button>
 
-      <button class="sidebar-nav-btn" onclick="openModal('settings-modal')">
+      <button class="sidebar-nav-btn admin-only" onclick="openModal('settings-modal')">
         <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
         <span>Settings &amp; Hardware</span>
       </button>
@@ -97,7 +97,7 @@
       </div>
 
       <div class="navbar-center">
-        <span class="engine-status-pill" onclick="openModal('settings-modal')" style="cursor:pointer;" title="Click to inspect engine, switch models, or view hardware telemetry">
+        <span class="engine-status-pill admin-only-inline" onclick="openModal('settings-modal')" style="cursor:pointer;" title="Click to inspect engine, switch models, or view hardware telemetry">
           <span class="status-dot" id="navbar-status-dot"></span>
           <span id="navbar-engine-label">Auto-Engine Active</span>
         </span>
@@ -109,16 +109,16 @@
           <span class="user-name-label" id="user-name-label">Sign In</span>
         </div>
 
-        <button class="icon-btn" onclick="openModal('pa-modal')" title="Tasks &amp; Notes" aria-label="Open Tasks and Notes">
+        <button class="icon-btn admin-only" onclick="openModal('pa-modal')" title="Tasks &amp; Notes" aria-label="Open Tasks and Notes">
           <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
         </button>
-        <button class="icon-btn" onclick="openModal('memory-modal')" title="Record a Knowledge Gap / View Skills" aria-label="Open Knowledge Bank and Gaps">
+        <button class="icon-btn admin-only" onclick="openModal('memory-modal')" title="Record a Knowledge Gap / View Skills" aria-label="Open Knowledge Bank and Gaps">
           <svg viewBox="0 0 24 24"><path d="M12 3L1 9l4 2.18v6L12 21l7-3.82v-6l2-1.09V17h2V9L12 3zm6.82 6L12 12.72 5.18 9 12 5.28 18.82 9zM17 15.99l-5 2.73-5-2.73v-3.72L12 15l5-2.73v3.72z"/></svg>
         </button>
         <button class="icon-btn" onclick="toggleTheme()" id="theme-btn" title="Toggle dark/light mode" aria-label="Toggle dark and light mode">
           <svg viewBox="0 0 24 24" id="theme-icon"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
         </button>
-        <button class="icon-btn" onclick="openModal('settings-modal')" title="Settings &amp; Hardware" aria-label="Open Settings and Hardware Telemetry">
+        <button class="icon-btn admin-only" onclick="openModal('settings-modal')" title="Settings &amp; Hardware" aria-label="Open Settings and Hardware Telemetry">
           <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
         </button>
       </div>

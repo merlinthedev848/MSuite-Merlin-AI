@@ -328,6 +328,30 @@ body { background-color: var(--bg-app); color: var(--text-main); height: 100vh; 
 }
 
 /* ==========================================================================
+   ADMIN ACCESS GATING (Settings/Options strictly hidden unless admin is logged in)
+   ========================================================================== */
+.admin-only,
+.admin-only-inline {
+  display: none !important;
+}
+
+body.admin-logged-in .admin-only {
+  display: flex !important;
+}
+
+body.admin-logged-in button.admin-only {
+  display: flex !important;
+}
+
+body.admin-logged-in div.sidebar-footer.admin-only {
+  display: flex !important;
+}
+
+body.admin-logged-in .admin-only-inline {
+  display: inline-flex !important;
+}
+
+/* ==========================================================================
    CONVERSATION STREAMING CANVAS
    ========================================================================== */
 #messages-viewport {
