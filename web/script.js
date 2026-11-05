@@ -1123,11 +1123,21 @@ function startMerlinListening() {
       return;
     }
 
-    // Wake-word checking and cleansing for "Merlin"
+    // 4. Identity Check: Redirect if called Jarvis
+    if (/^(hey\s+)?jarvis\b/i.test(lower) || /\bjarvis\b/i.test(lower)) {
+      playMerlinChime("ack");
+      speakMerlinText("My name is Merlin, Sir. At your service. How may I assist you?", () => {
+        if (isMerlinVoiceActive) startMerlinListening();
+      });
+      setMerlinHudState("listening");
+      return;
+    }
+
+    // Wake-word checking and cleansing strictly for "Merlin"
     const wakePatterns = [
       /^(hey\s+)?merlin[\s,.:;!?-]*/i,
       /^(wake\s+up\s+)?merlin[\s,.:;!?-]*/i,
-      /^(hey\s+)?jarvis[\s,.:;!?-]*/i
+      /^merlin\b[\s,.:;!?-]*/i
     ];
     let strippedPrompt = transcript;
     for (const pat of wakePatterns) {

@@ -1186,7 +1186,8 @@ def test_merlin_wake_word_intent_and_persona(isolated_db):
     # 2. System prompt generation for Merlin mode
     prompt = eng.build_system_prompt(detected_intent="merlin")
     assert "You are Merlin" in prompt
-    assert "official wake word and name is 'Merlin'" in prompt
+    assert "official wake word and name is strictly 'Merlin'" in prompt
+    assert "You are NEVER Jarvis" in prompt
     assert "Sir" in prompt
     assert "engineering workhorse" in prompt
 

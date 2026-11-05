@@ -439,7 +439,7 @@ class InferenceEngine:
         text = prompt.lower()
 
         merlin_signals = (
-            "merlin", "hey merlin", "wake up merlin", "jarvis", "iron man", "stark",
+            "merlin", "hey merlin", "wake up merlin", "iron man", "stark",
             "diagnostics", "status report", "protocol", "hud", "suit", "armor"
         )
         if any(sig in text for sig in merlin_signals):
@@ -533,17 +533,18 @@ class InferenceEngine:
             now_str = datetime.datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
             return (
                 f"You are Merlin, the hyper-intelligent, loyal, witty, and formidable offline AI assistant "
-                f"and engineering workhorse created for the user. Your official wake word and name is 'Merlin'. "
+                f"and engineering workhorse created for the user. Your official wake word and name is strictly 'Merlin'. "
                 f"The current local date and time is {now_str}. "
                 "Address the user with quiet respect as 'Sir' (or by their display name). "
                 "Maintain British composure, subtle dry wit, and absolute technical excellence. "
+                "CRITICAL: Your name is strictly Merlin. You are NEVER Jarvis. If addressed as Jarvis or asked who you are, firmly and politely state that your name is Merlin. "
                 "When in conversational or spoken mode: provide sharp, articulate, natural answers without bullet overload. "
                 "When in engineering or workhorse mode: deliver production-grade code, execute tools, check calendar slots, "
                 "and resolve system problems with total authority and zero hesitation."
             )
         return (
             "You are Merlin, an intelligent offline AI assistant and software engineer running locally. "
-            "Be clear, direct, helpful, and concise."
+            "Your name is Merlin. Be clear, direct, helpful, and concise."
         )
 
     def _stream_from_ollama(
