@@ -961,12 +961,16 @@ function updateWakePillUI(active) {
 }
 
 function setMerlinHudState(state = "listening", customText = "") {
-  const hud = document.getElementById("merlin-arc-hud");
-  const statusEl = document.getElementById("arc-hud-status");
-  if (!hud) return;
+  const eye = document.getElementById("sentinel-eye");
+  const statusEl = document.getElementById("sentinel-status-text");
+  const subEl = document.getElementById("sentinel-sub-text");
 
-  hud.classList.remove("listening", "processing", "speaking");
-  if (state !== "idle") hud.classList.add(state);
+  if (eye) {
+    eye.classList.remove("sentinel-listening", "sentinel-processing", "sentinel-speaking");
+    if (state === "listening") eye.classList.add("sentinel-listening");
+    else if (state === "processing") eye.classList.add("sentinel-processing");
+    else if (state === "speaking") eye.classList.add("sentinel-speaking");
+  }
 
   if (statusEl) {
     if (customText) {
@@ -974,12 +978,19 @@ function setMerlinHudState(state = "listening", customText = "") {
     } else if (state === "listening") {
       statusEl.innerHTML = 'LISTENING &bull; WAKE WORD: "MERLIN"';
     } else if (state === "processing") {
-      statusEl.innerHTML = "ANALYZING DIRECTIVE...";
+      statusEl.innerHTML = "PROCESSING DIRECTIVE &bull; QUANTUM CORE";
     } else if (state === "speaking") {
       statusEl.innerHTML = "TRANSMITTING SYNTHESIS...";
     } else {
-      statusEl.innerHTML = "MERLIN ONLINE // STANDBY";
+      statusEl.innerHTML = 'STANDBY &bull; WAKE WORD: "MERLIN"';
     }
+  }
+
+  if (subEl) {
+    if (state === "listening") subEl.textContent = "AWAITING SPOKEN DIRECTIVE";
+    else if (state === "processing") subEl.textContent = "EXECUTING DETERMINISTIC AGENT";
+    else if (state === "speaking") subEl.textContent = "NEURAL CADENCE ACTIVE";
+    else subEl.textContent = "QUANTUM NEURAL CORE ONLINE • 100% LOCAL";
   }
 }
 

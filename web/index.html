@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Merlin AI — Offline Assistant &amp; Self-Learning Coder</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23a8c7fa' d='M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/styles.css?v=2.6.0">
+  <link rel="stylesheet" href="/styles.css?v=3.0.0">
 </head>
 <body>
 
@@ -130,26 +130,47 @@
 
     <!-- Message Viewport -->
     <div id="messages-viewport">
-      <!-- Hero View: Gemini Style -->
-      <div id="hero-view">
-        <h1 class="hero-greeting"><span class="gemini-gradient-text">Hello, Developer</span></h1>
-        <h2 class="hero-subtitle">How can I help you code, build, or organize today?</h2>
-        <div class="hero-cards-grid">
-          <div class="hero-card" onclick="promptHero('Write a complete, high-performance async Python socket server with connection pooling')">
-            <p>Write an async Python socket server with connection pooling &amp; error handling</p>
-            <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+      <!-- Tesla Sentinel Eye Hero Canvas: Pure Focused Sentry Mode for Merlin -->
+      <div id="hero-view" class="sentinel-hero-container">
+        <div class="sentinel-frame" onclick="toggleMerlinVoice()" title="Click to engage Merlin Sentinel (Wake word: 'Merlin')">
+          <!-- Background Atmospheric Radar Rings -->
+          <div class="sentinel-radar-ring outer-radar"></div>
+          <div class="sentinel-radar-ring mid-radar"></div>
+
+          <!-- Main Tesla Sentinel Eye -->
+          <div class="sentinel-eye" id="sentinel-eye">
+            <!-- Telemetry Reticle Rings -->
+            <div class="sentinel-ring reticle-outer">
+              <span class="sentinel-tick tick-top">000</span>
+              <span class="sentinel-tick tick-right">090</span>
+              <span class="sentinel-tick tick-bottom">180</span>
+              <span class="sentinel-tick tick-left">270</span>
+            </div>
+            
+            <div class="sentinel-ring aperture-track"></div>
+            <div class="sentinel-ring aperture-blades"></div>
+            
+            <!-- Laser Radar Scan Sweep -->
+            <div class="sentinel-sweep"></div>
+            
+            <!-- Ocular Glowing Iris -->
+            <div class="sentinel-iris">
+              <div class="sentinel-iris-inner"></div>
+              <!-- Glowing Sentry Core Pupil -->
+              <div class="sentinel-pupil" id="sentinel-pupil">
+                <div class="sentinel-pupil-flare"></div>
+              </div>
+            </div>
+            
+            <!-- Glass Lens Optical Highlight -->
+            <div class="sentinel-lens-reflection"></div>
           </div>
-          <div class="hero-card" onclick="promptHero('Review and optimize this algorithm for memory efficiency and race conditions')">
-            <p>Review and optimize code for memory efficiency, latency, and race conditions</p>
-            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-          </div>
-          <div class="hero-card" onclick="promptHero('Audit my current server health, CPU temperature, load average, and memory usage')">
-            <p>Audit server health telemetry, CPU load average, RAM, and systemd services</p>
-            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
-          </div>
-          <div class="hero-card" onclick="promptHero('Organize my technical to-dos and priorities into a structured plan')">
-            <p>Organize my technical tasks, daily priorities, and persistent knowledge notes</p>
-            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+
+          <!-- Futuristic HUD Telemetry Readouts -->
+          <div class="sentinel-hud-telemetry">
+            <div class="sentinel-badge-top">MERLIN // TESLA SENTINEL ACTIVE</div>
+            <div class="sentinel-badge-main" id="sentinel-status-text">STANDBY &bull; WAKE WORD: "MERLIN"</div>
+            <div class="sentinel-badge-sub" id="sentinel-sub-text">QUANTUM NEURAL CORE ONLINE &bull; 100% LOCAL</div>
           </div>
         </div>
       </div>
@@ -158,26 +179,8 @@
       <div class="conversation-container" id="messages-list" style="display:none;"></div>
     </div>
 
-    <!-- Merlin Holographic Arc Reactor HUD -->
-    <div id="merlin-arc-hud" class="merlin-arc-hud" style="display:none;">
-      <div class="arc-core-wrapper">
-        <div class="arc-reactor-ring outer"></div>
-        <div class="arc-reactor-ring middle"></div>
-        <div class="arc-reactor-ring inner"></div>
-        <div class="arc-reactor-core"></div>
-      </div>
-      <div class="arc-hud-info">
-        <div class="arc-hud-title">MERLIN // PROTOCOL ONLINE</div>
-        <div class="arc-hud-status" id="arc-hud-status">LISTENING &bull; WAKE WORD: "MERLIN"</div>
-      </div>
-      <div class="arc-hud-actions">
-        <button class="arc-hud-btn" onclick="stopGeneration(); if(window.speechSynthesis) window.speechSynthesis.cancel();" title="Interrupt / Stop">■</button>
-        <button class="arc-hud-btn" onclick="toggleMerlinVoice();" title="Standby Voice Mode">✕</button>
-      </div>
-    </div>
-
-    <!-- Floating Input Dock -->
-    <div id="input-dock">
+    <!-- Floating Text Entry Pill Dock -->
+    <div id="input-dock" class="floating-pill-dock">
       <div class="input-dock-container">
         <!-- Attachment Tray -->
         <div id="attachment-tray">
@@ -185,32 +188,32 @@
             <svg style="width:14px;height:14px;fill:currentColor;" viewBox="0 0 24 24"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
             <span id="attached-file-name">filename.txt</span>
           </div>
-          <button class="btn-multimodal" id="btn-multimodal-analyze" onclick="analyzeAttachedMultimodal()" style="display:none;" title="Deep Vision/Audio Analysis via Teacher AI">✨ Vision/Audio Analyze</button>
+          <button class="btn-multimodal" id="btn-multimodal-analyze" onclick="analyzeAttachedMultimodal()" style="display:none;" title="Vision/Audio Analysis">✨ Vision/Audio Analyze</button>
           <button class="attachment-remove-btn" onclick="clearAttachment()" title="Remove attachment">✕</button>
         </div>
 
-        <div class="input-pill-box">
+        <div class="input-pill-box floating-pill">
           <input type="file" id="file-uploader" style="display:none;" onchange="handleFileUpload(event)">
-          <button class="dock-icon-btn" onclick="document.getElementById('file-uploader').click()" title="Attach file, document, image, or code snippet" aria-label="Attach file or document">
+          <button class="dock-icon-btn pill-btn" onclick="document.getElementById('file-uploader').click()" title="Attach file or code" aria-label="Attach file">
             <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
           </button>
           
-          <button class="dock-icon-btn" id="btn-mic" onclick="toggleMerlinVoice()" title="Activate Merlin Voice Mode (Wake word: 'Merlin')" aria-label="Activate Merlin Voice Mode">
+          <button class="dock-icon-btn pill-btn" id="btn-mic" onclick="toggleMerlinVoice()" title="Activate Merlin Voice Mode (Wake word: 'Merlin')" aria-label="Activate Merlin Voice Mode">
             <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
           </button>
 
-          <textarea id="chat-textarea" placeholder="Ask Merlin anything..." rows="1" oninput="autoResizeTextarea(this)" onkeydown="handleKeyDown(event)" aria-label="Chat prompt input"></textarea>
+          <textarea id="chat-textarea" placeholder="Ask Merlin anything (or say 'Hey Merlin')..." rows="1" oninput="autoResizeTextarea(this)" onkeydown="handleKeyDown(event)" aria-label="Chat prompt input"></textarea>
 
           <div class="input-controls">
-            <button class="dock-icon-btn btn-stop" id="btn-stop" onclick="stopGeneration()" title="Stop response generation" aria-label="Stop response generation">
+            <button class="dock-icon-btn btn-stop pill-btn" id="btn-stop" onclick="stopGeneration()" title="Stop response generation" aria-label="Stop response generation">
               <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
             </button>
-            <button class="dock-icon-btn btn-send" id="btn-send" onclick="submitMessage()" title="Send prompt" aria-label="Send prompt" disabled>
+            <button class="dock-icon-btn btn-send pill-btn" id="btn-send" onclick="submitMessage()" title="Send directive" aria-label="Send directive" disabled>
               <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </div>
         </div>
-        <div class="dock-disclaimer">Merlin AI can make mistakes. Runs 100% locally on your private network.</div>
+        <div class="dock-disclaimer">Merlin Sentinel AI &bull; Quantum Local Architecture &bull; 100% Private</div>
       </div>
     </div>
   </main>
@@ -833,6 +836,6 @@ Content-Type: application/json
   <!-- ========================================================================
        CLIENT APPLICATION LOGIC
        ======================================================================== -->
-  <script src="/script.js?v=2.6.0"></script>
+  <script src="/script.js?v=3.0.0"></script>
 </body>
 </html>
