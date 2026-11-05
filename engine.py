@@ -568,8 +568,17 @@ class InferenceEngine:
             urllib_timeout = float(timeout)
 
         num_gpu = int(os.getenv("NUM_GPU", "99"))
+        model_to_use = self.active_model_name
+        if not model_to_use or "Waiting for" in model_to_use or "no models" in model_to_use:
+            ollama_ok, ollama_models = self._probe_ollama(timeout=0.6)
+            if ollama_ok and ollama_models:
+                model_to_use = ollama_models[0]
+                self.active_model_name = model_to_use
+            else:
+                model_to_use = "qwen2.5-coder:1.5b"
+
         payload_dict = {
-            "model": self.active_model_name,
+            "model": model_to_use,
             "messages": messages,
             "stream": True,
             "options": {
@@ -984,6 +993,14 @@ class InferenceEngine:
                 )
                 response_buffer.append(msg)
                 yield msg
+
+            if not response_buffer and not abort_event.is_set():
+                fallback_msg = (
+                    "⚠️ **Inference Notice**: The local engine did not return output chunks. "
+                    "Please ensure Ollama is running (`ollama run qwen2.5-coder:1.5b`) or configure an API key in `.env`."
+                )
+                response_buffer.append(fallback_msg)
+                yield fallback_msg
 
         finally:
             if needs_lock and acquired:

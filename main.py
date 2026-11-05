@@ -1566,14 +1566,14 @@ app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 @app.api_route("/", methods=["GET", "HEAD"])
 def serve_index():
-    return FileResponse(os.path.join(WEB_DIR, "index.html"))
+    return FileResponse(os.path.join(WEB_DIR, "index.html"), headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @app.api_route("/styles.css", methods=["GET", "HEAD"])
 def serve_css():
     css_path = os.path.join(WEB_DIR, "styles.css")
     if os.path.exists(css_path):
-        return FileResponse(css_path)
+        return FileResponse(css_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     return FileResponse(os.path.join(WEB_DIR, "index.html"))
 
 
@@ -1581,7 +1581,7 @@ def serve_css():
 def serve_js():
     js_path = os.path.join(WEB_DIR, "script.js")
     if os.path.exists(js_path):
-        return FileResponse(js_path)
+        return FileResponse(js_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     return FileResponse(os.path.join(WEB_DIR, "index.html"))
 
 
