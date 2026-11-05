@@ -604,7 +604,8 @@ async function submitMessage() {
       activeEventSource = null;
     }
     const tokenParam = getAuthToken() ? `&token=${encodeURIComponent(getAuthToken())}` : "";
-    const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=auto&session_id=${encodeURIComponent(activeConversationId)}${tokenParam}`;
+    const activeMode = isJarvisVoiceActive ? "jarvis" : "auto";
+    const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=${activeMode}&session_id=${encodeURIComponent(activeConversationId)}${tokenParam}`;
     activeEventSource = new EventSource(streamUrl);
 
     activeEventSource.onmessage = function(event) {
@@ -652,10 +653,11 @@ async function submitMessage() {
         return;
       }
       wsStarted = true;
+      const activeMode = isJarvisVoiceActive ? "jarvis" : "auto";
       ws.send(JSON.stringify({
         prompt: payloadText,
         session_id: activeConversationId,
-        mode: "auto",
+        mode: activeMode,
         token: getAuthToken()
       }));
     };
@@ -754,6 +756,15 @@ function finishStreaming(bubbleEl, fullResponse) {
   // Note: engine.generate_stream() already saves both the user prompt and the assistant response
   // in SQLite on the backend. Refreshing the conversation list updates the auto-derived title.
   loadConversations();
+
+  if (isJarvisVoiceActive && fullResponse && fullResponse.trim()) {
+    speakJarvisText(fullResponse, () => {
+      if (isJarvisVoiceActive) {
+        playJarvisChime("wake");
+        startJarvisListening();
+      }
+    });
+  }
 }
 
 // ==========================================================================
@@ -860,40 +871,188 @@ async function analyzeAttachedMultimodal() {
 }
 
 // ==========================================================================
-// VOICE DICTATION
+// J.A.R.V.I.S. AUDIO CHIME & REAL-TIME SPOKEN VOICE ENGINE
+// Inspired by huwprosser/jarvis-mlx & Iron Man's Autonomous Workhorse System
 // ==========================================================================
-function toggleDictation() {
+let isJarvisVoiceActive = false;
+let jarvisAudioCtx = null;
+
+function playJarvisChime(type = "wake") {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!jarvisAudioCtx) jarvisAudioCtx = new AudioCtx();
+    if (jarvisAudioCtx.state === "suspended") jarvisAudioCtx.resume();
+
+    const now = jarvisAudioCtx.currentTime;
+    const osc1 = jarvisAudioCtx.createOscillator();
+    const osc2 = jarvisAudioCtx.createOscillator();
+    const gain = jarvisAudioCtx.createGain();
+
+    if (type === "wake") {
+      // Harmonic Stark HUD pulse: D5 (587.33Hz) -> A5 (880.00Hz)
+      osc1.type = "sine";
+      osc1.frequency.setValueAtTime(587.33, now);
+      osc1.frequency.exponentialRampToValueAtTime(880.00, now + 0.12);
+
+      osc2.type = "triangle";
+      osc2.frequency.setValueAtTime(880.00, now);
+      osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.12);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.18, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(jarvisAudioCtx.destination);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.30);
+      osc2.stop(now + 0.30);
+    } else {
+      // Confirmation pulse: A5 (880Hz) -> D6 (1174.66Hz)
+      osc1.type = "sine";
+      osc1.frequency.setValueAtTime(880.00, now);
+      osc1.frequency.exponentialRampToValueAtTime(1174.66, now + 0.10);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.12, now + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+      osc1.connect(gain);
+      gain.connect(jarvisAudioCtx.destination);
+
+      osc1.start(now);
+      osc1.stop(now + 0.24);
+    }
+  } catch (e) {
+    console.debug("AudioContext chime error:", e);
+  }
+}
+
+function speakJarvisText(text, onComplete) {
+  if (!('speechSynthesis' in window)) {
+    if (onComplete) onComplete();
+    return;
+  }
+  window.speechSynthesis.cancel();
+  // Strip code fences and bulky markdown for voice output
+  const cleanText = text
+    .replace(/```[\s\S]*?```/g, "Code implementation complete, Sir.")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/[#*_~>]/g, "")
+    .trim();
+
+  if (!cleanText) {
+    if (onComplete) onComplete();
+    return;
+  }
+
+  const utterance = new SpeechSynthesisUtterance(cleanText);
+  const voices = window.speechSynthesis.getVoices();
+  // Prefer British English voice for authentic J.A.R.V.I.S. persona
+  const britishVoice = voices.find(v => (v.lang === "en-GB" || v.lang.includes("GB")) && (v.name.includes("Male") || v.name.includes("Daniel") || v.name.includes("George")))
+    || voices.find(v => v.lang.startsWith("en-GB"))
+    || voices.find(v => v.lang.startsWith("en"));
+
+  if (britishVoice) utterance.voice = britishVoice;
+  utterance.rate = 1.05;
+  utterance.pitch = 0.95;
+
+  utterance.onend = () => {
+    if (onComplete) onComplete();
+  };
+  utterance.onerror = () => {
+    if (onComplete) onComplete();
+  };
+  window.speechSynthesis.speak(utterance);
+}
+
+function toggleJarvisVoice() {
+  const micBtn = document.getElementById("btn-mic");
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
     showToast("Speech Recognition is not supported in this browser.", "warning");
     return;
   }
-  if (isDictating && recognition) {
-    recognition.stop();
+
+  if (isJarvisVoiceActive) {
+    isJarvisVoiceActive = false;
+    if (recognition) {
+      try { recognition.stop(); } catch(e) {}
+    }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    if (micBtn) {
+      micBtn.classList.remove("jarvis-active");
+      micBtn.style.color = "var(--text-muted)";
+    }
+    playJarvisChime("finish");
+    showToast("J.A.R.V.I.S. Voice Mode Standby.", "info");
     return;
   }
 
+  isJarvisVoiceActive = true;
+  if (micBtn) {
+    micBtn.classList.add("jarvis-active");
+  }
+  playJarvisChime("wake");
+  showToast("J.A.R.V.I.S. Voice Mode Online. At your service, Sir.", "success");
+  startJarvisListening();
+}
+
+function startJarvisListening() {
+  if (!isJarvisVoiceActive) return;
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SpeechRecognition();
+  if (!recognition) {
+    recognition = new SpeechRecognition();
+  }
   recognition.continuous = false;
   recognition.interimResults = false;
   recognition.lang = "en-US";
 
   recognition.onstart = () => {
-    isDictating = true;
-    document.getElementById("btn-mic").style.color = "var(--danger)";
-    showToast("Listening for voice input...", "info");
+    const micBtn = document.getElementById("btn-mic");
+    if (micBtn) micBtn.classList.add("jarvis-active");
   };
-  recognition.onresult = (event) => {
-    const transcript = event.results[0][0].transcript;
+
+  recognition.onresult = async (event) => {
+    const transcript = (event.results[0][0].transcript || "").trim();
+    if (!transcript) return;
     const ta = document.getElementById("chat-textarea");
-    ta.value = (ta.value + " " + transcript).trim();
+    ta.value = transcript;
     autoResizeTextarea(ta);
+    await submitMessage(true);
   };
+
+  recognition.onerror = () => {
+    if (isJarvisVoiceActive) {
+      setTimeout(() => {
+        if (isJarvisVoiceActive) startJarvisListening();
+      }, 1000);
+    }
+  };
+
   recognition.onend = () => {
-    isDictating = false;
-    document.getElementById("btn-mic").style.color = "var(--text-muted)";
+    // If voice is active but assistant is not speaking, restart listener
+    if (isJarvisVoiceActive && !window.speechSynthesis.speaking) {
+      setTimeout(() => {
+        if (isJarvisVoiceActive && !window.speechSynthesis.speaking) {
+          try { recognition.start(); } catch(e) {}
+        }
+      }, 400);
+    }
   };
-  recognition.start();
+
+  try {
+    recognition.start();
+  } catch(e) {}
+}
+
+function toggleDictation() {
+  toggleJarvisVoice();
 }
 
 // ==========================================================================

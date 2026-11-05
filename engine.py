@@ -463,6 +463,13 @@ class InferenceEngine:
         if any(sig in text for sig in calendar_signals):
             return "calendar"
 
+        jarvis_signals = (
+            "jarvis", "iron man", "stark", "diagnostics", "status report",
+            "protocol", "hud", "suit", "armor"
+        )
+        if any(sig in text for sig in jarvis_signals):
+            return "jarvis"
+
         return "assistant"
 
     def auto_select_optimal_model(self, intent: str) -> None:
@@ -519,6 +526,17 @@ class InferenceEngine:
                 f"The current local date and time is {now_str}. "
                 "You help users check calendar availability and book, list, or cancel appointments. "
                 "Always verify dates, times, and attendee details clearly."
+            )
+        if detected_intent == "jarvis" or mode == "jarvis":
+            now_str = datetime.datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+            return (
+                f"You are J.A.R.V.I.S., the hyper-intelligent, loyal, witty, and formidable offline AI assistant "
+                f"and engineering workhorse created for the user. The current time is {now_str}. "
+                "Address the user with quiet respect as 'Sir' (or by their display name). "
+                "Maintain British composure, subtle dry wit, and absolute technical excellence. "
+                "When in conversational or spoken mode: provide sharp, articulate, natural answers without bullet overload. "
+                "When in engineering or workhorse mode: deliver production-grade code, execute tools, check calendar slots, "
+                "and resolve system problems with total authority and zero hesitation."
             )
         return (
             "You are Merlin, an intelligent offline AI assistant and software engineer running locally. "
