@@ -1171,4 +1171,29 @@ def test_wide_range_default_datasets_seeding(isolated_db):
     assert any("asyncio" in r["topic"].lower() for r in results)
 
 
+def test_merlin_wake_word_intent_and_persona(isolated_db):
+    """Verifies that 'Merlin' is recognized as the primary wake word and activates the Stark-level workhorse persona."""
+    from engine import InferenceEngine
+
+    eng = InferenceEngine(lazy_init=True)
+
+    # 1. Wake word and intent detection
+    assert eng.detect_conversation_intent("Hey Merlin, run system diagnostics") == "merlin"
+    assert eng.detect_conversation_intent("Wake up Merlin") == "merlin"
+    assert eng.detect_conversation_intent("Merlin status report") == "merlin"
+    assert eng.detect_conversation_intent("Merlin, optimize this algorithm") == "merlin"
+
+    # 2. System prompt generation for Merlin mode
+    prompt = eng.build_system_prompt(detected_intent="merlin")
+    assert "You are Merlin" in prompt
+    assert "official wake word and name is 'Merlin'" in prompt
+    assert "Sir" in prompt
+    assert "engineering workhorse" in prompt
+
+    # 3. Mode override also triggers Merlin persona
+    mode_prompt = eng.build_system_prompt(mode="merlin")
+    assert "You are Merlin" in mode_prompt
+
+
+
 

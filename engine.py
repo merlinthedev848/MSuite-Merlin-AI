@@ -434,8 +434,16 @@ class InferenceEngine:
         return False
 
     def detect_conversation_intent(self, prompt: str) -> str:
-        """Classifies the conversation domain (coder, reasoning, assistant)."""
+        """Classifies the conversation domain (merlin, coder, reasoning, calendar, assistant)."""
         text = prompt.lower()
+
+        merlin_signals = (
+            "merlin", "hey merlin", "wake up merlin", "jarvis", "iron man", "stark",
+            "diagnostics", "status report", "protocol", "hud", "suit", "armor"
+        )
+        if any(sig in text for sig in merlin_signals):
+            return "merlin"
+
         code_phrases = (
             "def ", "class ", "import ", "const ", "```", "c++", "fn ", "pub fn",
             "write code", "how to code", "unit test", "stack trace", "select * from",
@@ -462,13 +470,6 @@ class InferenceEngine:
         )
         if any(sig in text for sig in calendar_signals):
             return "calendar"
-
-        jarvis_signals = (
-            "jarvis", "iron man", "stark", "diagnostics", "status report",
-            "protocol", "hud", "suit", "armor"
-        )
-        if any(sig in text for sig in jarvis_signals):
-            return "jarvis"
 
         return "assistant"
 
@@ -527,11 +528,12 @@ class InferenceEngine:
                 "You help users check calendar availability and book, list, or cancel appointments. "
                 "Always verify dates, times, and attendee details clearly."
             )
-        if detected_intent == "jarvis" or mode == "jarvis":
+        if detected_intent in ("merlin", "jarvis", "voice") or mode in ("merlin", "jarvis", "voice"):
             now_str = datetime.datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
             return (
-                f"You are J.A.R.V.I.S., the hyper-intelligent, loyal, witty, and formidable offline AI assistant "
-                f"and engineering workhorse created for the user. The current time is {now_str}. "
+                f"You are Merlin, the hyper-intelligent, loyal, witty, and formidable offline AI assistant "
+                f"and engineering workhorse created for the user. Your official wake word and name is 'Merlin'. "
+                f"The current local date and time is {now_str}. "
                 "Address the user with quiet respect as 'Sir' (or by their display name). "
                 "Maintain British composure, subtle dry wit, and absolute technical excellence. "
                 "When in conversational or spoken mode: provide sharp, articulate, natural answers without bullet overload. "

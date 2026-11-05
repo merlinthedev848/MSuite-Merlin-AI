@@ -691,14 +691,15 @@ code { font-family: inherit; font-size: inherit; }
 .dock-icon-btn:hover { background: var(--bg-surface-hover); color: var(--text-main); }
 .dock-icon-btn svg { width: 19px; height: 19px; fill: currentColor; }
 
+.dock-icon-btn.merlin-voice-active,
 .dock-icon-btn.jarvis-active {
   color: #00e5ff !important;
   background: rgba(0, 229, 255, 0.15) !important;
   box-shadow: 0 0 14px rgba(0, 229, 255, 0.5);
-  animation: jarvisPulse 1.8s infinite ease-in-out;
+  animation: merlinVoicePulse 1.8s infinite ease-in-out;
 }
 
-@keyframes jarvisPulse {
+@keyframes merlinVoicePulse {
   0% { box-shadow: 0 0 6px rgba(0, 229, 255, 0.3); transform: scale(1); }
   50% { box-shadow: 0 0 18px rgba(0, 229, 255, 0.7); transform: scale(1.08); }
   100% { box-shadow: 0 0 6px rgba(0, 229, 255, 0.3); transform: scale(1); }

@@ -604,7 +604,7 @@ async function submitMessage() {
       activeEventSource = null;
     }
     const tokenParam = getAuthToken() ? `&token=${encodeURIComponent(getAuthToken())}` : "";
-    const activeMode = isJarvisVoiceActive ? "jarvis" : "auto";
+    const activeMode = (isMerlinVoiceActive || isJarvisVoiceActive) ? "merlin" : "auto";
     const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=${activeMode}&session_id=${encodeURIComponent(activeConversationId)}${tokenParam}`;
     activeEventSource = new EventSource(streamUrl);
 
@@ -653,7 +653,7 @@ async function submitMessage() {
         return;
       }
       wsStarted = true;
-      const activeMode = isJarvisVoiceActive ? "jarvis" : "auto";
+      const activeMode = (isMerlinVoiceActive || isJarvisVoiceActive) ? "merlin" : "auto";
       ws.send(JSON.stringify({
         prompt: payloadText,
         session_id: activeConversationId,
@@ -757,11 +757,11 @@ function finishStreaming(bubbleEl, fullResponse) {
   // in SQLite on the backend. Refreshing the conversation list updates the auto-derived title.
   loadConversations();
 
-  if (isJarvisVoiceActive && fullResponse && fullResponse.trim()) {
-    speakJarvisText(fullResponse, () => {
-      if (isJarvisVoiceActive) {
-        playJarvisChime("wake");
-        startJarvisListening();
+  if ((isMerlinVoiceActive || isJarvisVoiceActive) && fullResponse && fullResponse.trim()) {
+    speakMerlinText(fullResponse, () => {
+      if (isMerlinVoiceActive || isJarvisVoiceActive) {
+        playMerlinChime("wake");
+        startMerlinListening();
       }
     });
   }
@@ -871,23 +871,24 @@ async function analyzeAttachedMultimodal() {
 }
 
 // ==========================================================================
-// J.A.R.V.I.S. AUDIO CHIME & REAL-TIME SPOKEN VOICE ENGINE
-// Inspired by huwprosser/jarvis-mlx & Iron Man's Autonomous Workhorse System
+// MERLIN AUDIO CHIME & REAL-TIME SPOKEN VOICE ENGINE
+// Autonomous Conversational Communicator & Engineering Workhorse
 // ==========================================================================
-let isJarvisVoiceActive = false;
-let jarvisAudioCtx = null;
+let isMerlinVoiceActive = false;
+let isJarvisVoiceActive = false; // Backward-compatibility alias
+let merlinAudioCtx = null;
 
-function playJarvisChime(type = "wake") {
+function playMerlinChime(type = "wake") {
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
-    if (!jarvisAudioCtx) jarvisAudioCtx = new AudioCtx();
-    if (jarvisAudioCtx.state === "suspended") jarvisAudioCtx.resume();
+    if (!merlinAudioCtx) merlinAudioCtx = new AudioCtx();
+    if (merlinAudioCtx.state === "suspended") merlinAudioCtx.resume();
 
-    const now = jarvisAudioCtx.currentTime;
-    const osc1 = jarvisAudioCtx.createOscillator();
-    const osc2 = jarvisAudioCtx.createOscillator();
-    const gain = jarvisAudioCtx.createGain();
+    const now = merlinAudioCtx.currentTime;
+    const osc1 = merlinAudioCtx.createOscillator();
+    const osc2 = merlinAudioCtx.createOscillator();
+    const gain = merlinAudioCtx.createGain();
 
     if (type === "wake") {
       // Harmonic Stark HUD pulse: D5 (587.33Hz) -> A5 (880.00Hz)
@@ -905,7 +906,7 @@ function playJarvisChime(type = "wake") {
 
       osc1.connect(gain);
       osc2.connect(gain);
-      gain.connect(jarvisAudioCtx.destination);
+      gain.connect(merlinAudioCtx.destination);
 
       osc1.start(now);
       osc2.start(now);
@@ -922,7 +923,7 @@ function playJarvisChime(type = "wake") {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
 
       osc1.connect(gain);
-      gain.connect(jarvisAudioCtx.destination);
+      gain.connect(merlinAudioCtx.destination);
 
       osc1.start(now);
       osc1.stop(now + 0.24);
@@ -931,8 +932,9 @@ function playJarvisChime(type = "wake") {
     console.debug("AudioContext chime error:", e);
   }
 }
+const playJarvisChime = playMerlinChime;
 
-function speakJarvisText(text, onComplete) {
+function speakMerlinText(text, onComplete) {
   if (!('speechSynthesis' in window)) {
     if (onComplete) onComplete();
     return;
@@ -952,8 +954,8 @@ function speakJarvisText(text, onComplete) {
 
   const utterance = new SpeechSynthesisUtterance(cleanText);
   const voices = window.speechSynthesis.getVoices();
-  // Prefer British English voice for authentic J.A.R.V.I.S. persona
-  const britishVoice = voices.find(v => (v.lang === "en-GB" || v.lang.includes("GB")) && (v.name.includes("Male") || v.name.includes("Daniel") || v.name.includes("George")))
+  // Prefer British English voice for authentic Merlin persona
+  const britishVoice = voices.find(v => (v.lang === "en-GB" || v.lang.includes("GB")) && (v.name.includes("Male") || v.name.includes("Daniel") || v.name.includes("George") || v.name.includes("Arthur")))
     || voices.find(v => v.lang.startsWith("en-GB"))
     || voices.find(v => v.lang.startsWith("en"));
 
@@ -969,15 +971,17 @@ function speakJarvisText(text, onComplete) {
   };
   window.speechSynthesis.speak(utterance);
 }
+const speakJarvisText = speakMerlinText;
 
-function toggleJarvisVoice() {
+function toggleMerlinVoice() {
   const micBtn = document.getElementById("btn-mic");
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
     showToast("Speech Recognition is not supported in this browser.", "warning");
     return;
   }
 
-  if (isJarvisVoiceActive) {
+  if (isMerlinVoiceActive) {
+    isMerlinVoiceActive = false;
     isJarvisVoiceActive = false;
     if (recognition) {
       try { recognition.stop(); } catch(e) {}
@@ -986,25 +990,27 @@ function toggleJarvisVoice() {
       window.speechSynthesis.cancel();
     }
     if (micBtn) {
-      micBtn.classList.remove("jarvis-active");
+      micBtn.classList.remove("merlin-voice-active", "jarvis-active");
       micBtn.style.color = "var(--text-muted)";
     }
-    playJarvisChime("finish");
-    showToast("J.A.R.V.I.S. Voice Mode Standby.", "info");
+    playMerlinChime("finish");
+    showToast("Merlin Voice Mode Standby.", "info");
     return;
   }
 
+  isMerlinVoiceActive = true;
   isJarvisVoiceActive = true;
   if (micBtn) {
-    micBtn.classList.add("jarvis-active");
+    micBtn.classList.add("merlin-voice-active", "jarvis-active");
   }
-  playJarvisChime("wake");
-  showToast("J.A.R.V.I.S. Voice Mode Online. At your service, Sir.", "success");
-  startJarvisListening();
+  playMerlinChime("wake");
+  showToast("Merlin Voice Mode Online. At your service, Sir.", "success");
+  startMerlinListening();
 }
+const toggleJarvisVoice = toggleMerlinVoice;
 
-function startJarvisListening() {
-  if (!isJarvisVoiceActive) return;
+function startMerlinListening() {
+  if (!isMerlinVoiceActive) return;
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!recognition) {
     recognition = new SpeechRecognition();
@@ -1015,31 +1021,55 @@ function startJarvisListening() {
 
   recognition.onstart = () => {
     const micBtn = document.getElementById("btn-mic");
-    if (micBtn) micBtn.classList.add("jarvis-active");
+    if (micBtn) micBtn.classList.add("merlin-voice-active", "jarvis-active");
   };
 
   recognition.onresult = async (event) => {
-    const transcript = (event.results[0][0].transcript || "").trim();
+    let transcript = (event.results[0][0].transcript || "").trim();
     if (!transcript) return;
+
+    // Wake-word checking and cleansing for "Merlin"
+    const wakePatterns = [
+      /^(hey\s+)?merlin[\s,.:;!?-]*/i,
+      /^(wake\s+up\s+)?merlin[\s,.:;!?-]*/i,
+      /^(hey\s+)?jarvis[\s,.:;!?-]*/i
+    ];
+    let strippedPrompt = transcript;
+    for (const pat of wakePatterns) {
+      if (pat.test(strippedPrompt)) {
+        strippedPrompt = strippedPrompt.replace(pat, "").trim();
+        break;
+      }
+    }
+
+    // If user only uttered the wake word ("Merlin" or "Hey Merlin")
+    if (!strippedPrompt) {
+      playMerlinChime("wake");
+      speakMerlinText("At your service, Sir. How may I assist you?", () => {
+        if (isMerlinVoiceActive) startMerlinListening();
+      });
+      return;
+    }
+
     const ta = document.getElementById("chat-textarea");
-    ta.value = transcript;
+    ta.value = strippedPrompt;
     autoResizeTextarea(ta);
     await submitMessage(true);
   };
 
   recognition.onerror = () => {
-    if (isJarvisVoiceActive) {
+    if (isMerlinVoiceActive) {
       setTimeout(() => {
-        if (isJarvisVoiceActive) startJarvisListening();
+        if (isMerlinVoiceActive) startMerlinListening();
       }, 1000);
     }
   };
 
   recognition.onend = () => {
     // If voice is active but assistant is not speaking, restart listener
-    if (isJarvisVoiceActive && !window.speechSynthesis.speaking) {
+    if (isMerlinVoiceActive && !window.speechSynthesis.speaking) {
       setTimeout(() => {
-        if (isJarvisVoiceActive && !window.speechSynthesis.speaking) {
+        if (isMerlinVoiceActive && !window.speechSynthesis.speaking) {
           try { recognition.start(); } catch(e) {}
         }
       }, 400);
@@ -1050,9 +1080,10 @@ function startJarvisListening() {
     recognition.start();
   } catch(e) {}
 }
+const startJarvisListening = startMerlinListening;
 
 function toggleDictation() {
-  toggleJarvisVoice();
+  toggleMerlinVoice();
 }
 
 // ==========================================================================
