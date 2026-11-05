@@ -881,12 +881,84 @@ async function analyzeAttachedMultimodal() {
 }
 
 // ==========================================================================
-// MERLIN AUDIO CHIME & REAL-TIME SPOKEN VOICE ENGINE
+// MERLIN AUDIO CHIME & ULTRA-SMOOTH SPOKEN VOICE ENGINE
 // Autonomous Conversational Communicator & Engineering Workhorse
 // ==========================================================================
 let isMerlinVoiceActive = false;
 let isJarvisVoiceActive = false; // Backward-compatibility alias
 let merlinAudioCtx = null;
+let isMerlinSpeaking = false;
+let lastSpokenText = "";
+let lastSpokenTime = 0;
+let bestVoice = null;
+
+function updateBestVoice() {
+  if (!('speechSynthesis' in window)) return;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices || !voices.length) return;
+
+  // 1. Natural / Neural British English voices (Microsoft Ryan Online, Microsoft Oliver Online, Google UK English Male)
+  const topTier = voices.find(v => 
+    (v.lang === "en-GB" || v.lang === "en_GB") &&
+    (v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Online") || v.name.includes("Google"))
+  );
+  if (topTier) { bestVoice = topTier; return; }
+
+  // 2. High quality British English voices (Daniel, George, Arthur, Oliver, Male)
+  const gbMale = voices.find(v => 
+    (v.lang === "en-GB" || v.lang.startsWith("en-GB")) &&
+    (v.name.includes("Daniel") || v.name.includes("George") || v.name.includes("Arthur") || v.name.includes("Oliver") || v.name.includes("Male"))
+  );
+  if (gbMale) { bestVoice = gbMale; return; }
+
+  // 3. Any British English voice
+  const anyGB = voices.find(v => v.lang.startsWith("en-GB"));
+  if (anyGB) { bestVoice = anyGB; return; }
+
+  // 4. Any Natural/Neural English voice
+  const anyNatural = voices.find(v => v.lang.startsWith("en") && (v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Online")));
+  if (anyNatural) { bestVoice = anyNatural; return; }
+
+  bestVoice = voices.find(v => v.lang.startsWith("en")) || voices[0];
+}
+
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = updateBestVoice;
+  updateBestVoice();
+}
+
+function prepareTextForSpeech(raw) {
+  if (!raw) return "";
+  return raw
+    .replace(/```[\s\S]*?```/g, "Code implementation complete, Sir.")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/https?:\/\/\S+/g, "link")
+    .replace(/(\d+)\s*GB/gi, "$1 gigabytes")
+    .replace(/(\d+)\s*MB/gi, "$1 megabytes")
+    .replace(/\bCPU\b/g, "C P U")
+    .replace(/\bRAM\b/g, "ram")
+    .replace(/\bOS\b/g, "operating system")
+    .replace(/\bFTS5\b/g, "F T S five")
+    .replace(/\bRAG\b/g, "rag")
+    .replace(/\bUI\b/g, "U I")
+    .replace(/[*_#~>]/g, "")
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function updateWakePillUI(active) {
+  const pill = document.getElementById("wake-word-pill");
+  const label = document.getElementById("wake-pill-label");
+  if (!pill) return;
+  if (active) {
+    pill.classList.add("active");
+    if (label) label.textContent = "Wake Word: 'Merlin' (Listening)";
+  } else {
+    pill.classList.remove("active");
+    if (label) label.textContent = "Wake Word: Merlin (Standby)";
+  }
+}
 
 function setMerlinHudState(state = "listening", customText = "") {
   const hud = document.getElementById("merlin-arc-hud");
@@ -987,44 +1059,75 @@ function speakMerlinText(text, onComplete) {
     if (onComplete) onComplete();
     return;
   }
-  window.speechSynthesis.cancel();
-  // Strip code fences and bulky markdown for voice output
-  const cleanText = text
-    .replace(/```[\s\S]*?```/g, "Code implementation complete, Sir.")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/[#*_~>]/g, "")
-    .trim();
 
+  // 1. Instantly mute & abort speech recognition to prevent speaker feedback loop
+  isMerlinSpeaking = true;
+  if (recognition) {
+    try { recognition.abort(); } catch(e) {}
+  }
+  window.speechSynthesis.cancel();
+
+  const cleanText = prepareTextForSpeech(text);
   if (!cleanText) {
+    isMerlinSpeaking = false;
     if (onComplete) onComplete();
     return;
   }
 
+  lastSpokenText = cleanText.toLowerCase();
+  lastSpokenTime = Date.now();
   setMerlinHudState("speaking");
-  const utterance = new SpeechSynthesisUtterance(cleanText);
-  const voices = window.speechSynthesis.getVoices();
-  // Prefer British English voice for authentic Merlin persona
-  const britishVoice = voices.find(v => (v.lang === "en-GB" || v.lang.includes("GB")) && (v.name.includes("Male") || v.name.includes("Daniel") || v.name.includes("George") || v.name.includes("Arthur")))
-    || voices.find(v => v.lang.startsWith("en-GB"))
-    || voices.find(v => v.lang.startsWith("en"));
 
-  if (britishVoice) utterance.voice = britishVoice;
-  utterance.rate = 1.05;
-  utterance.pitch = 0.95;
+  if (!bestVoice) updateBestVoice();
 
-  utterance.onend = () => {
-    setMerlinHudState("listening");
-    if (onComplete) onComplete();
-  };
-  utterance.onerror = () => {
-    setMerlinHudState("listening");
-    if (onComplete) onComplete();
-  };
-  window.speechSynthesis.speak(utterance);
+  // Split into natural sentences for silky-smooth cadence and buffer-free audio delivery
+  const sentences = cleanText.match(/[^.!?]+[.!?]+|\S+/g) || [cleanText];
+  let sentenceIdx = 0;
+
+  function speakNext() {
+    if (sentenceIdx >= sentences.length) {
+      isMerlinSpeaking = false;
+      lastSpokenTime = Date.now();
+      setMerlinHudState("listening");
+      // Acoustic grace period: wait 700ms for room reverb/speaker echo to clear before re-enabling mic
+      setTimeout(() => {
+        if (isMerlinVoiceActive && !isMerlinSpeaking && (!window.speechSynthesis || !window.speechSynthesis.speaking)) {
+          startMerlinListening();
+        }
+      }, 700);
+      if (onComplete) onComplete();
+      return;
+    }
+
+    const currentSentence = sentences[sentenceIdx++].trim();
+    if (!currentSentence) {
+      speakNext();
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(currentSentence);
+    if (bestVoice) utterance.voice = bestVoice;
+    utterance.rate = 1.0;
+    utterance.pitch = 0.98;
+
+    utterance.onend = () => {
+      setTimeout(speakNext, 40);
+    };
+
+    utterance.onerror = () => {
+      isMerlinSpeaking = false;
+      setMerlinHudState("listening");
+      if (onComplete) onComplete();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  speakNext();
 }
 const speakJarvisText = speakMerlinText;
 
-function toggleMerlinVoice() {
+function toggleMerlinVoice(forceState) {
   const micBtn = document.getElementById("btn-mic");
   const hud = document.getElementById("merlin-arc-hud");
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
@@ -1032,11 +1135,15 @@ function toggleMerlinVoice() {
     return;
   }
 
-  if (isMerlinVoiceActive) {
+  const newState = (typeof forceState === "boolean") ? forceState : !isMerlinVoiceActive;
+
+  if (!newState) {
     isMerlinVoiceActive = false;
     isJarvisVoiceActive = false;
+    isMerlinSpeaking = false;
+    localStorage.setItem("merlin_handsfree_wake", "false");
     if (recognition) {
-      try { recognition.stop(); } catch(e) {}
+      try { recognition.abort(); } catch(e) {}
     }
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -1046,26 +1153,35 @@ function toggleMerlinVoice() {
       micBtn.style.color = "var(--text-muted)";
     }
     if (hud) hud.style.display = "none";
+    updateWakePillUI(false);
     playMerlinChime("finish");
-    showToast("Merlin Voice Mode Standby.", "info");
+    showToast("Merlin Wake Word Standby.", "info");
     return;
   }
 
   isMerlinVoiceActive = true;
   isJarvisVoiceActive = true;
+  isMerlinSpeaking = false;
+  localStorage.setItem("merlin_handsfree_wake", "true");
   if (micBtn) {
     micBtn.classList.add("merlin-voice-active", "jarvis-active");
   }
   if (hud) hud.style.display = "flex";
+  updateWakePillUI(true);
   setMerlinHudState("listening");
   playMerlinChime("wake");
-  showToast("Merlin Voice Mode Online. At your service, Sir.", "success");
+  showToast("Merlin Hands-Free Voice Online. Wake word: 'Merlin'.", "success");
   startMerlinListening();
 }
 const toggleJarvisVoice = toggleMerlinVoice;
 
 function startMerlinListening() {
   if (!isMerlinVoiceActive) return;
+  // If Merlin is synthesizing speech, do not engage microphone!
+  if (isMerlinSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking)) {
+    return;
+  }
+
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!recognition) {
     recognition = new SpeechRecognition();
@@ -1077,39 +1193,50 @@ function startMerlinListening() {
   recognition.onstart = () => {
     const micBtn = document.getElementById("btn-mic");
     if (micBtn) micBtn.classList.add("merlin-voice-active", "jarvis-active");
+    updateWakePillUI(true);
     setMerlinHudState("listening");
   };
 
   recognition.onspeechstart = () => {
-    // Natural Barge-In: if Merlin is synthesizing speech, speaking halts immediately
+    // Natural Barge-In: if user speaks while assistant is speaking, halt speech immediately
     if (window.speechSynthesis && window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
+      isMerlinSpeaking = false;
       setMerlinHudState("listening");
     }
   };
 
   recognition.onresult = async (event) => {
-    let transcript = (event.results[0][0].transcript || "").trim();
-    if (!transcript) return;
-
-    // Barge-in check
-    if (window.speechSynthesis && window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
+    // 1. Acoustic Feedback Protection: Drop immediately if Merlin is speaking
+    if (isMerlinSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking)) {
+      console.debug("Dropped transcript during active speech synthesis.");
+      return;
     }
 
+    let transcript = (event.results[0][0].transcript || "").trim();
+    if (!transcript) return;
     const lower = transcript.toLowerCase();
 
-    // 1. Direct Voice Directive: Stop / Cancel
+    // 2. Room Echo Guard: Drop if transcript matches text Merlin just spoke within the last 2.2 seconds
+    if (Date.now() - lastSpokenTime < 2200 && lastSpokenText) {
+      if (lastSpokenText.includes(lower) || lower.includes("assist you") || lower.includes("how can i help") || lower.includes("how may i assist")) {
+        console.debug("Acoustic echo filtered out from Merlin speakers:", transcript);
+        return;
+      }
+    }
+
+    // 3. Direct Voice Directive: Stop / Cancel
     if (/^(merlin|hey merlin)?[,\s]*(stop|shut up|be quiet|silence|hold on|pause)$/i.test(lower) || lower === "stop") {
       stopGeneration();
       if (window.speechSynthesis) window.speechSynthesis.cancel();
+      isMerlinSpeaking = false;
       playMerlinChime("finish");
       setMerlinHudState("idle", "INTERRUPTED // STANDBY");
       showToast("Merlin standing by.", "info");
       return;
     }
 
-    // 2. Direct Voice Directive: Clear Screen
+    // 4. Direct Voice Directive: Clear Screen
     if (/^(merlin|hey merlin)?[,\s]*(clear screen|clear chat|new chat)$/i.test(lower)) {
       createNewChat();
       playMerlinChime("ack");
@@ -1117,42 +1244,50 @@ function startMerlinListening() {
       return;
     }
 
-    // 3. Direct Voice Directive: Standby
+    // 5. Direct Voice Directive: Standby
     if (/^(merlin|hey merlin)?[,\s]*(standby|sleep|go to sleep|mute)$/i.test(lower)) {
-      toggleMerlinVoice();
+      toggleMerlinVoice(false);
       return;
     }
 
-    // 4. Identity Check: Redirect if called Jarvis
+    // 6. Identity Check: Redirect if called Jarvis
     if (/^(hey\s+)?jarvis\b/i.test(lower) || /\bjarvis\b/i.test(lower)) {
       playMerlinChime("ack");
-      speakMerlinText("My name is Merlin, Sir. At your service. How may I assist you?", () => {
-        if (isMerlinVoiceActive) startMerlinListening();
-      });
-      setMerlinHudState("listening");
+      speakMerlinText("My name is Merlin, Sir. Jarvis is not here. How may I assist you?");
       return;
     }
 
-    // Wake-word checking and cleansing strictly for "Merlin"
+    // 7. Strict Wake Word Matching for "Merlin"
     const wakePatterns = [
       /^(hey\s+)?merlin[\s,.:;!?-]*/i,
       /^(wake\s+up\s+)?merlin[\s,.:;!?-]*/i,
       /^merlin\b[\s,.:;!?-]*/i
     ];
+    let matchedWakeWord = false;
     let strippedPrompt = transcript;
     for (const pat of wakePatterns) {
       if (pat.test(strippedPrompt)) {
+        matchedWakeWord = true;
         strippedPrompt = strippedPrompt.replace(pat, "").trim();
         break;
       }
     }
 
+    if (!matchedWakeWord && /\bmerlin\b/i.test(transcript)) {
+      matchedWakeWord = true;
+      strippedPrompt = transcript.replace(/\bmerlin\b[,\s.:;!?-]*/gi, "").trim();
+    }
+
+    // Crucial: In hands-free standby, if NO wake word was uttered, ignore room noise!
+    if (!matchedWakeWord) {
+      console.debug("Ignored ambient speech without wake word 'Merlin':", transcript);
+      return;
+    }
+
     // If user only uttered the wake word ("Merlin" or "Hey Merlin")
     if (!strippedPrompt) {
       playMerlinChime("wake");
-      speakMerlinText("At your service, Sir. How may I assist you?", () => {
-        if (isMerlinVoiceActive) startMerlinListening();
-      });
+      speakMerlinText("At your service, Sir. How may I assist you?");
       return;
     }
 
@@ -1164,21 +1299,21 @@ function startMerlinListening() {
   };
 
   recognition.onerror = () => {
-    if (isMerlinVoiceActive) {
+    if (isMerlinVoiceActive && !isMerlinSpeaking) {
       setTimeout(() => {
-        if (isMerlinVoiceActive) startMerlinListening();
+        if (isMerlinVoiceActive && !isMerlinSpeaking) startMerlinListening();
       }, 1000);
     }
   };
 
   recognition.onend = () => {
-    // If voice is active but assistant is not speaking, restart listener
-    if (isMerlinVoiceActive && !window.speechSynthesis.speaking) {
+    // If voice is active but neither assistant nor user is speaking, restart listener
+    if (isMerlinVoiceActive && !isMerlinSpeaking && (!window.speechSynthesis || !window.speechSynthesis.speaking)) {
       setTimeout(() => {
-        if (isMerlinVoiceActive && !window.speechSynthesis.speaking) {
+        if (isMerlinVoiceActive && !isMerlinSpeaking && (!window.speechSynthesis || !window.speechSynthesis.speaking)) {
           try { recognition.start(); } catch(e) {}
         }
-      }, 400);
+      }, 300);
     }
   };
 
@@ -1190,6 +1325,16 @@ const startJarvisListening = startMerlinListening;
 
 function toggleDictation() {
   toggleMerlinVoice();
+}
+
+// Auto-activate hands-free wake word detection on first user gesture if preferred
+if (localStorage.getItem("merlin_handsfree_wake") !== "false") {
+  document.addEventListener("click", function initWakeOnInteraction() {
+    if (!isMerlinVoiceActive) {
+      toggleMerlinVoice(true);
+    }
+    document.removeEventListener("click", initWakeOnInteraction);
+  }, { once: true });
 }
 
 // ==========================================================================

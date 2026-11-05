@@ -285,6 +285,49 @@ body { background-color: var(--bg-app); color: var(--text-main); height: 100vh; 
   border-color: var(--border-focus);
   color: var(--text-main);
 }
+
+.wake-word-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-radius: 99px;
+  background: rgba(0, 229, 255, 0.08);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  color: var(--text-main);
+  font-size: 0.76rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  user-select: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.wake-word-pill:hover {
+  background: rgba(0, 229, 255, 0.16);
+  border-color: rgba(0, 229, 255, 0.6);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
+}
+.wake-word-pill .wake-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all 0.25s ease;
+}
+.wake-word-pill.active {
+  border-color: #00e5ff;
+  color: #00e5ff;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
+}
+.wake-word-pill.active .wake-dot {
+  background: #00e5ff;
+  box-shadow: 0 0 8px #00e5ff;
+  animation: wakeDotPulse 2s infinite ease-in-out;
+}
+@keyframes wakeDotPulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.35); opacity: 1; }
+}
 .status-dot {
   width: 7px;
   height: 7px;
