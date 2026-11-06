@@ -97,7 +97,7 @@ function openSidebar() {
   if (sb) {
     sb.classList.remove("collapsed");
     document.body.classList.add("sidebar-open");
-    if (backdrop && (!document.body.classList.contains("text-mode-active") || window.innerWidth <= 768)) {
+    if (backdrop) {
       backdrop.style.display = "block";
     }
   }
