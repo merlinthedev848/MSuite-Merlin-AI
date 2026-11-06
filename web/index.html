@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>J.A.R.V.I.S. — Autonomous Neural Intelligence</title>
+  <title>Merlin — Autonomous Neural Intelligence</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='%2300f0ff' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='4' fill='%2300f0ff'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/styles.css?v=4.0.0">
+  <link rel="stylesheet" href="/styles.css?v=5.0.0">
 </head>
-<body class="jarvis-visual-mode voice-mode-active">
+<body class="hud-visual-mode voice-mode-active">
 
   <!-- ========================================================================
        SIDEBAR: CONVERSATION SESSIONS, PA TOOLS, MEMORY & SETTINGS
@@ -81,19 +81,19 @@
           <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
         </button>
         <div class="brand-title">
-          <svg class="jarvis-arc-emblem" viewBox="0 0 24 24" style="width:22px;height:22px;flex-shrink:0;">
+          <svg class="merlin-arc-emblem" viewBox="0 0 24 24" style="width:22px;height:22px;flex-shrink:0;">
             <circle cx="12" cy="12" r="10" fill="none" stroke="#00f0ff" stroke-width="1.5" stroke-dasharray="3 1.5" />
             <circle cx="12" cy="12" r="6" fill="none" stroke="#00ffcc" stroke-width="2" />
-            <circle cx="12" cy="12" r="2.5" fill="#00f0ff" />
+            <circle cx="12" cy="2.5" fill="#00f0ff" />
           </svg>
-          <span class="brand-name">JARVIS</span>
+          <span class="brand-name">Merlin</span>
         </div>
       </div>
 
       <div class="navbar-center">
         <span class="wake-word-pill active" id="wake-word-pill" onclick="toggleMerlinVoice()">
           <span class="wake-dot"></span>
-          <span id="wake-pill-label">J.A.R.V.I.S. Online</span>
+          <span id="wake-pill-label">Merlin Online</span>
         </span>
         <span class="engine-status-pill admin-only-inline" onclick="openModal('settings-modal')" style="cursor:pointer;">
           <span class="status-dot" id="navbar-status-dot"></span>
@@ -126,7 +126,7 @@
     <div id="messages-viewport">
       <!-- Cyber AI HUD Hero Canvas: High-Tech Neural Core with Radiating Circuit Traces -->
       <div id="hero-view" class="sentinel-hero-container">
-        <div class="sentinel-frame cyber-hud-frame" onclick="handleCoreTap()" title="Click / Tap to engage JARVIS Neural Core">
+        <div class="sentinel-frame cyber-hud-frame" onclick="handleCoreTap()" title="Click / Tap to engage Merlin Neural Core">
           <!-- Tactical HUD Corner Brackets -->
           <div class="hud-bracket top-left"></div>
           <div class="hud-bracket top-right"></div>
@@ -288,7 +288,7 @@
             <!-- Laser Radar Scan Sweep -->
             <div class="sentinel-sweep cyber-sweep"></div>
             
-            <!-- Holographic Central J.A.R.V.I.S. Arc Reactor Core -->
+            <!-- Holographic Central Merlin Arc Reactor Core -->
             <div class="core-center-hub" id="core-center-hub">
               <div class="arc-reactor-core">
                 <svg class="arc-reactor-svg" viewBox="0 0 100 100">
@@ -312,7 +312,7 @@
         </div>
 
         <!-- Holographic On-Demand Visual HUD Panel (Appears ONLY when requested or displaying code/data) -->
-        <div id="jarvis-hud-display" class="jarvis-hud-display" style="display:none;"></div>
+        <div id="hud-on-demand-display" class="hud-on-demand-display jarvis-hud-display" style="display:none;"></div>
 
         <!-- Messages Stream List: Positioned directly beneath the Cyber HUD Core -->
         <div class="conversation-container" id="messages-list" style="display:none;"></div>
@@ -338,11 +338,11 @@
             <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
           </button>
           
-          <button class="dock-icon-btn pill-btn" id="btn-mic" onclick="toggleMerlinVoice()" title="Activate J.A.R.V.I.S. Voice Mode (Wake word: 'Jarvis')" aria-label="Activate J.A.R.V.I.S. Voice Mode">
+          <button class="dock-icon-btn pill-btn" id="btn-mic" onclick="toggleMerlinVoice()" title="Activate Merlin Voice Mode (Wake word: 'Merlin')" aria-label="Activate Merlin Voice Mode">
             <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
           </button>
 
-          <textarea id="chat-textarea" placeholder="Ask J.A.R.V.I.S. anything (or speak hands-free)..." rows="1" oninput="autoResizeTextarea(this)" onkeydown="handleKeyDown(event)" aria-label="Chat prompt input"></textarea>
+          <textarea id="chat-textarea" placeholder="Ask Merlin anything (or speak hands-free)..." rows="1" oninput="autoResizeTextarea(this)" onkeydown="handleKeyDown(event)" aria-label="Chat prompt input"></textarea>
 
           <div class="input-controls">
             <button class="dock-icon-btn btn-stop pill-btn" id="btn-stop" onclick="stopGeneration()" title="Stop response generation" aria-label="Stop response generation">
@@ -528,7 +528,7 @@
           <select class="form-select" id="setting-voice-style" onchange="changeVoiceStyle(this.value)" style="width:240px; font-size:0.82rem; padding:6px 10px;">
             <option value="freeman">Morgan Freeman (Deep Baritone Narrator)</option>
             <option value="deep">Deep Resonant Bass (0.78 Pitch)</option>
-            <option value="jarvis">British Transatlantic AI (Jarvis)</option>
+            <option value="transatlantic">British Transatlantic AI (Merlin)</option>
           </select>
         </div>
 
@@ -982,6 +982,6 @@
   <!-- ========================================================================
        CLIENT APPLICATION LOGIC
        ======================================================================== -->
-  <script src="/script.js?v=4.0.0"></script>
+  <script src="/script.js?v=5.0.0"></script>
 </body>
 </html>

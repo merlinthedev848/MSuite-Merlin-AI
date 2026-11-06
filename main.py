@@ -648,14 +648,13 @@ async def chat_stream(
         yield ": connected\n\n"
         try:
             while True:
-                if await request.is_disconnected():
-                    abort_event.set()
-                    eng.stop_generation(session_id)
-                    break
-
                 try:
-                    chunk = await asyncio.wait_for(queue.get(), timeout=0.02)
+                    chunk = await asyncio.wait_for(queue.get(), timeout=0.15)
                 except TimeoutError:
+                    if await request.is_disconnected():
+                        abort_event.set()
+                        eng.stop_generation(session_id)
+                        break
                     continue
 
                 if chunk is stop_sentinel:

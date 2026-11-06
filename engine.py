@@ -884,11 +884,18 @@ class InferenceEngine:
             self._init_done_event.wait(timeout=30.0)
 
         # --- Live LLM Inference ---
+        prompt_clean = prompt.strip()
+        prompt_lower = prompt_clean.lower()
         intent = self.detect_conversation_intent(prompt) if mode in ("auto", "assistant", "") else mode
         self.auto_select_optimal_model(intent)
 
-        # Retrieve distilled lessons via Hybrid Dense Vector + FTS5 RAG memory
-        learned_context = search_knowledge_hybrid(prompt, limit=2) if len(prompt.strip()) > 12 else []
+        # Retrieve distilled lessons via Hybrid Dense Vector + FTS5 RAG memory (fast-path skip for greetings)
+        is_greeting = any(g in prompt_lower for g in ("hello", "hey", "hi", "how are you", "good morning", "good evening", "who are you", "what's up", "clear screen", "dismiss"))
+        learned_context = (
+            search_knowledge_hybrid(prompt, limit=2)
+            if len(prompt_clean) > 14 and not is_greeting
+            else []
+        )
         memory_parts: list[str] = []
         if learned_context:
             memory_parts.append("[Distilled Knowledge from Teacher Models]:\n")
@@ -914,7 +921,6 @@ class InferenceEngine:
                 messages.append({"role": h["role"], "content": content})
 
         safe_prompt = sanitize_prompt(fit_prompt_to_context(prompt))
-        prompt_lower = safe_prompt.lower()
 
         # Telemetry & Real-Time Context Injection for Merlin Assistant
         if any(term in prompt_lower for term in ("diagnostics", "status report", "telemetry", "system status", "hardware status", "health check", "suit status")):

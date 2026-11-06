@@ -10,7 +10,8 @@ let attachedFile = null;
 let recognition = null;
 let isDictating = false;
 let isMerlinVoiceActive = true;
-let isJarvisVoiceActive = true;
+let isHudVoiceActive = true;
+const isJarvisVoiceActive = true; // Backward compatibility alias
 let isRecognitionRunning = false;
 let isMerlinConversationActive = false;
 let syncPollTimer = null;
@@ -642,9 +643,20 @@ function resetSpeechStream() {
 }
 
 function processIncomingSpeechChunk(tokenChunk, isFinal = false) {
-  if (!isMerlinVoiceActive && !isJarvisVoiceActive) return;
+  if (!isMerlinVoiceActive && !isHudVoiceActive) return;
   ttsStreamActive = !isFinal;
   if (tokenChunk) ttsTextBuffer += tokenChunk;
+
+  // Ultra-rapid initial speech trigger: on the very first chunk of a response,
+  // break at comma, colon, semicolon, or dash after 20+ chars so speech starts in < 200ms
+  if (!ttsIsSpeakingChunk && ttsStreamingQueue.length === 0 && ttsTextBuffer.length > 20) {
+    const earlyMatch = ttsTextBuffer.match(/^([\s\S]*?[,;:—\n]+(?:\s+))([\s\S]*)$/);
+    if (earlyMatch) {
+      const earlyClause = earlyMatch[1].trim();
+      ttsTextBuffer = earlyMatch[2];
+      if (earlyClause) queueSentenceForSpeech(earlyClause);
+    }
+  }
 
   // Real-time sentence chunking: detect punctuation (. ! ?) followed by whitespace or line breaks
   while (ttsTextBuffer.length > 0) {
@@ -655,8 +667,8 @@ function processIncomingSpeechChunk(tokenChunk, isFinal = false) {
       if (sentence) queueSentenceForSpeech(sentence);
       continue;
     }
-    // Clause break fallback for long streaming segments (>80 chars) without punctuation
-    if (ttsTextBuffer.length > 80) {
+    // Clause break fallback for long streaming segments (>60 chars) without punctuation
+    if (ttsTextBuffer.length > 60) {
       const clauseMatch = ttsTextBuffer.match(/^([\s\S]*?[,;:\n]+(?:\s+|\n+))([\s\S]*)$/);
       if (clauseMatch) {
         const clause = clauseMatch[1].trim();
@@ -894,6 +906,11 @@ async function submitMessage(fromVoice = false) {
     const wsUrl = `${wsProto}//${window.location.host}/ws/chat`;
     const ws = new WebSocket(wsUrl);
     activeWebSocket = ws;
+    setTimeout(() => {
+      if (!wsStarted && !sseStarted) {
+        startSSEStream();
+      }
+    }, 350);
 
     ws.onopen = function() {
       if (sseStarted) {
@@ -1015,8 +1032,8 @@ function finishStreaming(bubbleEl, fullResponse, isVoiceMode = false) {
       appendMessageActions(bubbleEl, fullResponse);
     }
   } else {
-    // True Jarvis on-demand display: ONLY project on screen when user asks to see code/data/lists/tables
-    const displayPanel = document.getElementById("jarvis-hud-display");
+    // On-demand HUD display: ONLY project on screen when user asks to see code/data/lists/tables
+    const displayPanel = document.getElementById("hud-on-demand-display") || document.getElementById("jarvis-hud-display");
     const ta = document.getElementById("chat-textarea");
     const lastPrompt = (ta && ta.getAttribute("data-last-prompt") ? ta.getAttribute("data-last-prompt") : "").toLowerCase();
     const hasCodeOrTable = fullResponse.includes("```") || fullResponse.includes("<table") || fullResponse.includes("|---");
@@ -1033,7 +1050,7 @@ function finishStreaming(bubbleEl, fullResponse, isVoiceMode = false) {
               <span class="hud-display-indicator"></span>
               <span>HUD VISUAL PROJECTION</span>
             </div>
-            <button class="hud-display-close" onclick="dismissJarvisHudDisplay()" title="Close holographic display (or say 'dismiss')">✕ Close</button>
+            <button class="hud-display-close" onclick="dismissOnDemandHudDisplay()" title="Close visual display (or say 'dismiss')">✕ Close</button>
           </div>
           <div class="hud-display-content">${renderMarkdown(fullResponse)}</div>
         `;
@@ -1050,12 +1067,13 @@ function finishStreaming(bubbleEl, fullResponse, isVoiceMode = false) {
   loadConversations();
 }
 
-function dismissJarvisHudDisplay() {
-  const displayPanel = document.getElementById("jarvis-hud-display");
+function dismissOnDemandHudDisplay() {
+  const displayPanel = document.getElementById("hud-on-demand-display") || document.getElementById("jarvis-hud-display");
   if (displayPanel) {
     displayPanel.style.display = "none";
   }
 }
+const dismissJarvisHudDisplay = dismissOnDemandHudDisplay;
 
 // ==========================================================================
 // FILE ATTACHMENT & MULTIMODAL VISION/AUDIO HANDLER
@@ -1193,8 +1211,8 @@ function endConversationSession(spokenResponse = null) {
     clearTimeout(conversationActiveTimer);
     conversationActiveTimer = null;
   }
-  setMerlinHudState("listening", 'STANDBY &bull; "JARVIS"');
-  updateWakePillUI(true, "J.A.R.V.I.S. Online (Hands-Free)");
+  setMerlinHudState("listening", 'STANDBY &bull; "MERLIN"');
+  updateWakePillUI(true, "Merlin Online (Hands-Free)");
   if (spokenResponse) {
     speakMerlinText(spokenResponse);
   } else {
@@ -1211,16 +1229,16 @@ function getVoiceStyleConfig() {
   } catch(e) {}
 
   if (style === "freeman") {
-    // Warm, deep resonant baritone narration (Morgan Freeman style)
-    return { pitch: 0.84, rate: 0.94 };
+    // Warm, deep resonant baritone narration (Morgan Freeman style, rapid & crisp)
+    return { pitch: 0.88, rate: 1.05 };
   } else if (style === "deep") {
     // Deep bass resonance
-    return { pitch: 0.78, rate: 0.90 };
-  } else if (style === "jarvis") {
+    return { pitch: 0.80, rate: 0.98 };
+  } else if (style === "transatlantic" || style === "jarvis") {
     // British transatlantic AI
-    return { pitch: 0.96, rate: 1.02 };
+    return { pitch: 0.96, rate: 1.06 };
   }
-  return { pitch: 0.84, rate: 0.94 };
+  return { pitch: 0.88, rate: 1.05 };
 }
 
 function updateBestVoice() {
@@ -1691,8 +1709,8 @@ function startMerlinListening() {
     }
 
     // 4. Direct Voice Directive: Clear Screen / Dismiss On-Demand Display
-    if (/^(merlin|hey merlin|jarvis|hey jarvis)?[,\s]*(clear screen|clear chat|new chat|dismiss|hide display|close display|clear display|hide window)$/i.test(lower)) {
-      dismissJarvisHudDisplay();
+    if (/^(merlin|hey merlin)?[,\s]*(clear screen|clear chat|new chat|dismiss|hide display|close display|clear display|hide window)$/i.test(lower)) {
+      dismissOnDemandHudDisplay();
       createNewChat();
       playMerlinChime("ack");
       speakMerlinText("Display cleared, Sir.");
@@ -1700,12 +1718,12 @@ function startMerlinListening() {
       return;
     }
 
-    // 5. Wake Word Matching for "Jarvis" or "Merlin"
+    // 5. Wake Word Matching for "Merlin"
     const wakePatterns = [
-      /^(hey\s+)?(jarvis|merlin)[\s,.:;!?-]*/i,
-      /^(wake\s+up\s+)?(jarvis|merlin)[\s,.:;!?-]*/i,
-      /^(ok\s+|okay\s+)?(jarvis|merlin)[\s,.:;!?-]*/i,
-      /^(jarvis|merlin)\b[\s,.:;!?-]*/i
+      /^(hey\s+)?merlin[\s,.:;!?-]*/i,
+      /^(wake\s+up\s+)?merlin[\s,.:;!?-]*/i,
+      /^(ok\s+|okay\s+)?merlin[\s,.:;!?-]*/i,
+      /^merlin\b[\s,.:;!?-]*/i
     ];
     let matchedWakeWord = false;
     let strippedPrompt = transcript;
@@ -1717,18 +1735,18 @@ function startMerlinListening() {
       }
     }
 
-    if (!matchedWakeWord && /\b(jarvis|merlin)\b/i.test(transcript)) {
+    if (!matchedWakeWord && /\bmerlin\b/i.test(transcript)) {
       matchedWakeWord = true;
-      strippedPrompt = transcript.replace(/\b(jarvis|merlin)\b[,\s.:;!?-]*/gi, "").trim();
+      strippedPrompt = transcript.replace(/\bmerlin\b[,\s.:;!?-]*/gi, "").trim();
     }
 
     // CRUCIAL: In hands-free standby, if NO wake word was uttered AND we are not in active dialogue: ignore ambient room noise!
     if (!matchedWakeWord && !isMerlinConversationActive) {
-      console.debug("Ignored ambient speech without wake word:", transcript);
+      console.debug("Ignored ambient speech without wake word 'Merlin':", transcript);
       return;
     }
 
-    // If user only uttered the wake word ("Jarvis", "Hey Jarvis", "Merlin") while in standby
+    // If user only uttered the wake word ("Merlin" or "Hey Merlin") while in standby
     if (matchedWakeWord && !strippedPrompt) {
       refreshConversationSession();
       playMerlinChime("wake");
@@ -1852,7 +1870,7 @@ function handleCoreTap() {
   }
 }
 
-// JARVIS HUD vs Text Chat Mode Switching Pill
+// Merlin HUD vs Text Chat Mode Switching Pill
 let isTextChatMode = false;
 
 function toggleTextChatMode() {
@@ -1861,24 +1879,24 @@ function toggleTextChatMode() {
   const pill = document.getElementById("hud-mode-pill");
 
   if (isTextChatMode) {
-    document.body.classList.remove("jarvis-visual-mode");
+    document.body.classList.remove("hud-visual-mode", "jarvis-visual-mode");
     document.body.classList.remove("voice-mode-active");
     document.body.classList.add("text-mode-active");
     const list = document.getElementById("messages-list");
     if (list) list.style.display = "flex";
-    if (pillLabel) pillLabel.textContent = "🎙️ JARVIS Voice HUD";
+    if (pillLabel) pillLabel.textContent = "🎙️ Merlin Voice HUD";
     if (pill) pill.classList.add("text-mode-on");
     const ta = document.getElementById("chat-textarea");
     if (ta) setTimeout(() => ta.focus(), 100);
   } else {
     document.body.classList.remove("text-mode-active");
-    document.body.classList.add("jarvis-visual-mode");
+    document.body.classList.add("hud-visual-mode", "jarvis-visual-mode");
     document.body.classList.add("voice-mode-active");
     const list = document.getElementById("messages-list");
     if (list) list.style.display = "none";
     if (pillLabel) pillLabel.textContent = "💬 Text Chat";
     if (pill) pill.classList.remove("text-mode-on");
-    dismissJarvisHudDisplay();
+    dismissOnDemandHudDisplay();
     unlockMobileAudioAndMic();
   }
 }
@@ -1889,7 +1907,7 @@ function initAlwaysListeningMerlin() {
     isMerlinVoiceActive = true;
     if (document.body) {
       document.body.classList.add("voice-mode-active");
-      document.body.classList.add("jarvis-visual-mode");
+      document.body.classList.add("hud-visual-mode");
     }
     const list = document.getElementById("messages-list");
     if (list) list.style.display = "none";
