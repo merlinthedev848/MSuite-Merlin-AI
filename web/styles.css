@@ -1240,18 +1240,7 @@ body.text-mode-active #hud-corner-settings {
   z-index: 20;
 }
 
-.core-ai-text {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 1.55rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: #ffffff;
-  text-shadow:
-    0 0 10px #00f0ff,
-    0 0 22px #00f0ff,
-    0 0 38px rgba(0, 240, 255, 0.85);
-  line-height: 1;
-}
+
 
 /* Telemetry HUD Labels */
 .sentinel-hud-telemetry {
@@ -1276,9 +1265,6 @@ body.text-mode-active #hud-corner-settings {
   border-color: #00ffcc;
   box-shadow: 0 0 55px #00ffcc, inset 0 0 35px #00ffcc;
   animation: coreListeningPulse 1s infinite alternate ease-in-out;
-}
-.sentinel-eye.sentinel-listening .core-ai-text {
-  text-shadow: 0 0 12px #00ffcc, 0 0 28px #00ffcc;
 }
 .sentinel-eye.sentinel-listening .sentinel-sweep {
   animation-duration: 1.8s;
@@ -1656,20 +1642,7 @@ code { font-family: inherit; font-size: inherit; }
   box-shadow: 0 0 0 1px var(--border-focus);
 }
 
-#chat-textarea {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text-main);
-  font-size: 0.96rem;
-  line-height: 1.5;
-  resize: none;
-  max-height: 180px;
-  padding: 4px 0;
-  min-height: 26px;
-}
-#chat-textarea::placeholder { color: var(--text-muted); }
+
 
 .input-controls {
   display: flex;
@@ -1707,163 +1680,6 @@ code { font-family: inherit; font-size: inherit; }
   0% { box-shadow: 0 0 6px rgba(0, 229, 255, 0.3); transform: scale(1); }
   50% { box-shadow: 0 0 18px rgba(0, 229, 255, 0.7); transform: scale(1.08); }
   100% { box-shadow: 0 0 6px rgba(0, 229, 255, 0.3); transform: scale(1); }
-}
-
-/* ==========================================================================
-   MERLIN HOLOGRAPHIC ARC REACTOR HUD
-   ========================================================================== */
-.merlin-arc-hud {
-  position: absolute;
-  bottom: 84px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 18px 8px 12px;
-  background: rgba(10, 20, 32, 0.88);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(0, 229, 255, 0.4);
-  border-radius: 40px;
-  box-shadow: 0 10px 30px rgba(0, 229, 255, 0.22), inset 0 0 18px rgba(0, 229, 255, 0.12);
-  z-index: 100;
-  cursor: pointer;
-  animation: arcHudEntrance 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  user-select: none;
-}
-
-@keyframes arcHudEntrance {
-  0% { opacity: 0; transform: translate(-50%, 15px) scale(0.92); }
-  100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
-}
-
-.arc-core-wrapper {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.arc-reactor-ring {
-  position: absolute;
-  border-radius: 50%;
-  box-sizing: border-box;
-}
-
-.arc-reactor-ring.outer {
-  width: 36px;
-  height: 36px;
-  border: 1.5px dashed rgba(0, 229, 255, 0.7);
-  animation: arcRotateClockwise 8s linear infinite;
-}
-
-.arc-reactor-ring.middle {
-  width: 26px;
-  height: 26px;
-  border: 1.5px solid rgba(0, 229, 255, 0.4);
-  border-top-color: #00e5ff;
-  border-bottom-color: #00e5ff;
-  animation: arcRotateCounterClockwise 4s linear infinite;
-}
-
-.arc-reactor-ring.inner {
-  width: 16px;
-  height: 16px;
-  border: 1.5px solid rgba(0, 229, 255, 0.8);
-  animation: arcPulseRing 2s infinite ease-in-out;
-}
-
-.arc-reactor-core {
-  width: 8px;
-  height: 8px;
-  background: #00e5ff;
-  border-radius: 50%;
-  box-shadow: 0 0 12px #00e5ff, 0 0 20px rgba(0, 229, 255, 0.8);
-  animation: arcCoreGlow 1.6s infinite alternate ease-in-out;
-}
-
-@keyframes arcRotateClockwise {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes arcRotateCounterClockwise {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(-360deg); }
-}
-
-@keyframes arcPulseRing {
-  0%, 100% { transform: scale(1); opacity: 0.7; }
-  50% { transform: scale(1.15); opacity: 1; }
-}
-
-@keyframes arcCoreGlow {
-  0% { transform: scale(0.9); box-shadow: 0 0 8px #00e5ff; }
-  100% { transform: scale(1.25); box-shadow: 0 0 18px #00e5ff, 0 0 28px rgba(0, 229, 255, 0.9); }
-}
-
-.arc-hud-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.arc-hud-title {
-  font-family: monospace;
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  color: #00e5ff;
-  font-weight: 700;
-  text-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
-}
-
-.arc-hud-status {
-  font-size: 0.76rem;
-  color: var(--text-main);
-  font-weight: 500;
-}
-
-.arc-hud-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 6px;
-}
-
-.arc-hud-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: var(--text-muted);
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.68rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.arc-hud-btn:hover {
-  background: rgba(0, 229, 255, 0.2);
-  color: #00e5ff;
-  border-color: rgba(0, 229, 255, 0.5);
-}
-
-.merlin-arc-hud.speaking .arc-reactor-core {
-  animation: arcSpeakingCore 0.6s infinite alternate ease-in-out;
-}
-@keyframes arcSpeakingCore {
-  0% { transform: scale(1); box-shadow: 0 0 10px #00e5ff; }
-  100% { transform: scale(1.5); box-shadow: 0 0 25px #00e5ff, 0 0 35px #00e5ff; }
-}
-
-.merlin-arc-hud.processing .arc-reactor-ring.middle {
-  animation-duration: 1.2s;
 }
 
 .btn-send {
@@ -2256,25 +2072,27 @@ code { font-family: inherit; font-size: inherit; }
 
 @media (max-width: 768px) {
   #sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: min(300px, 85vw);
-    max-width: 85vw;
-    height: 100%;
-    height: 100dvh;
-    z-index: 100;
-    box-shadow: var(--shadow-lg);
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), width 0.25s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.25s ease;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: min(310px, 86vw) !important;
+    max-width: 86vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 100 !important;
+    background: #060b14 !important;
+    border-right: 1px solid rgba(0, 240, 255, 0.25) !important;
+    box-shadow: 14px 0 40px rgba(0, 0, 0, 0.9) !important;
+    transform: translateX(0) !important;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s !important;
+    will-change: transform;
+    visibility: visible !important;
   }
   #sidebar.collapsed {
-    width: 0 !important;
     transform: translateX(-100%) !important;
     visibility: hidden !important;
     pointer-events: none !important;
-    box-shadow: none !important;
-    border-right: none !important;
   }
   .sidebar-backdrop {
     z-index: 95;
@@ -2735,4 +2553,17 @@ body.typing-active .hud-pill-dot {
 
 body.typing-active .stark-arc-reactor-svg {
   filter: none !important;
+}
+
+
+/* WCAG 2.1 AA Compliant Keyboard Focus Rings */
+:focus-visible {
+  outline: 2px solid #00f0ff !important;
+  outline-offset: 2px !important;
+}
+
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+input:focus:not(:focus-visible) {
+  outline: none;
 }

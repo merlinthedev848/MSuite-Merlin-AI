@@ -1207,8 +1207,8 @@ function refreshConversationSession(durationMs = 35000) {
   conversationActiveTimer = setTimeout(() => {
     isMerlinConversationActive = false;
     setMerlinHudState("listening");
-    updateWakePillUI(true, "J.A.R.V.I.S. Online (Hands-Free)");
-    console.debug("J.A.R.V.I.S. active conversation session timed out; returning to standby.");
+    updateWakePillUI(true, "Merlin Online (Hands-Free)");
+    console.debug("Merlin active conversation session timed out; returning to standby.");
   }, durationMs);
 }
 
@@ -1424,7 +1424,7 @@ function updateWakePillUI(active, customLabel = "") {
   if (!pill) return;
   if (active) {
     pill.classList.add("active");
-    if (label) label.textContent = customLabel || (isMerlinConversationActive ? "Active Dialogue" : "J.A.R.V.I.S. Online");
+    if (label) label.textContent = customLabel || (isMerlinConversationActive ? "Active Dialogue" : "Merlin Online");
   } else {
     pill.classList.remove("active");
     if (label) label.textContent = customLabel || "Voice Standby";
@@ -1435,7 +1435,6 @@ function setMerlinHudState(state = "listening", customText = "") {
   const eye = document.getElementById("sentinel-eye");
   const statusEl = document.getElementById("sentinel-status-text");
   const subEl = document.getElementById("sentinel-sub-text");
-  const coreAiText = document.getElementById("core-ai-text");
 
   if (eye) {
     eye.classList.remove("sentinel-listening", "sentinel-processing", "sentinel-speaking");
@@ -1444,9 +1443,6 @@ function setMerlinHudState(state = "listening", customText = "") {
     else if (state === "speaking") eye.classList.add("sentinel-speaking");
   }
 
-  if (coreAiText) {
-    coreAiText.textContent = "AI";
-  }
 
   if (statusEl && customText) {
     statusEl.innerHTML = customText;
