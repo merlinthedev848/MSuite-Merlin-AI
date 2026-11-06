@@ -1,10 +1,11 @@
-# Merlin AI — Core Runtime Dependencies
+# Merlin AI — Core Runtime Dependencies (Latest Stable Releases)
 fastapi>=0.115.0
 uvicorn>=0.32.0
-pydantic>=2.9.0
+pydantic>=2.14.0
 requests>=2.32.0
 datasets>=3.0.0
 huggingface-hub>=0.26.0
-pypdf>=5.0.0
-psutil>=6.0.0
+pypdf>=7.0.0
+psutil>=7.0.0
+anyio>=4.16.0
 

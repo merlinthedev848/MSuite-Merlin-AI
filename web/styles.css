@@ -129,8 +129,7 @@ body { background-color: var(--bg-app); color: var(--text-main); height: 100vh; 
   height: 100dvh;
   background: rgba(0, 0, 0, 0.6);
   z-index: 45;
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  /* backdrop blur removed for 120fps performance */
   cursor: pointer;
 }
 
@@ -498,15 +497,10 @@ body:not(.text-mode-active) {
   overflow: hidden !important;
 }
 
-body.hud-visual-mode #sidebar.collapsed,
-body.voice-mode-active #sidebar.collapsed,
-body:not(.text-mode-active) #sidebar.collapsed {
-  display: none !important;
-}
-
-body.hud-visual-mode #sidebar:not(.collapsed),
-body.voice-mode-active #sidebar:not(.collapsed),
-body:not(.text-mode-active) #sidebar:not(.collapsed) {
+/* Hardware-Accelerated Fast Sidebar Drawer (Zero-Jank GPU Composite) */
+body.hud-visual-mode #sidebar,
+body.voice-mode-active #sidebar,
+body:not(.text-mode-active) #sidebar {
   display: flex !important;
   position: fixed !important;
   top: 0 !important;
@@ -517,28 +511,40 @@ body:not(.text-mode-active) #sidebar:not(.collapsed) {
   height: 100vh !important;
   height: 100dvh !important;
   z-index: 100 !important;
-  background: rgba(8, 14, 25, 0.96) !important;
-  backdrop-filter: blur(24px) !important;
-  -webkit-backdrop-filter: blur(24px) !important;
-  border-right: 1px solid rgba(0, 240, 255, 0.35) !important;
-  box-shadow: 16px 0 48px rgba(0, 0, 0, 0.85), 0 0 24px rgba(0, 240, 255, 0.18) !important;
-  animation: sidebarDrawerSlide 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  background: #060b14 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-right: 1px solid rgba(0, 240, 255, 0.25) !important;
+  box-shadow: 14px 0 40px rgba(0, 0, 0, 0.9) !important;
+  transform: translateX(0) !important;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s !important;
+  will-change: transform;
+  visibility: visible !important;
+  overflow-y: auto !important;
 }
 
-@keyframes sidebarDrawerSlide {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
+body.hud-visual-mode #sidebar.collapsed,
+body.voice-mode-active #sidebar.collapsed,
+body:not(.text-mode-active) #sidebar.collapsed {
+  transform: translateX(-100%) !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 body.hud-visual-mode #sidebar-backdrop,
 body.voice-mode-active #sidebar-backdrop,
 body:not(.text-mode-active) #sidebar-backdrop {
   z-index: 90 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(0, 0, 0, 0.65) !important;
 }
 
-body.sidebar-open #sidebar-backdrop {
+body.sidebar-open #sidebar-backdrop,
+body.sidebar-open .sidebar-backdrop {
   display: block !important;
   opacity: 1 !important;
+  visibility: visible !important;
   pointer-events: auto !important;
 }
 
@@ -620,8 +626,11 @@ body:not(.text-mode-active) .circuit-svg-bg {
 body.hud-visual-mode .sentinel-eye.cyber-ai-core,
 body.voice-mode-active .sentinel-eye.cyber-ai-core,
 body:not(.text-mode-active) .sentinel-eye.cyber-ai-core {
-  width: clamp(260px, 36vw, 360px);
-  height: clamp(260px, 36vw, 360px);
+  width: clamp(320px, 42vw, 460px) !important;
+  height: clamp(320px, 42vw, 460px) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 body.hud-visual-mode .core-center-hub,

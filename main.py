@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.middleware.gzip import GZipMiddleware
 
 from database import (
     add_gap,
@@ -173,6 +174,9 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+# High-Speed Compression Middleware (up to 80% wire reduction for fast static and JSON delivery)
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Hardened CORS Middleware: strictly compliant with W3C spec (no wildcard origins with credentials)
 CORS_ORIGINS = [orig.strip() for orig in os.getenv("CORS_ORIGINS", "*").split(",") if orig.strip()]
