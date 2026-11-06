@@ -112,6 +112,10 @@ def purge_stale_history(retention_days: int = 14) -> None:
               AND id NOT IN (SELECT DISTINCT conversation_id FROM messages WHERE conversation_id IS NOT NULL)
         """)
 
+        # Clean up expired tokens and old audit logs past 30 days
+        c.execute("DELETE FROM user_tokens WHERE expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP;")
+        c.execute("DELETE FROM audit_log WHERE datetime(created_at) < datetime('now', '-30 days');")
+
         c.execute("PRAGMA optimize;")
 
         if deleted_msgs > 0 or deleted_sessions > 0:

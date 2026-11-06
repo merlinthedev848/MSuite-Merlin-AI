@@ -444,6 +444,7 @@ async function togglePin(convId, newPinned) {
 }
 
 async function deleteConv(convId) {
+  if (!confirm("Are you sure you want to delete this conversation?")) return;
   await fetch(`/api/conversations/${encodeURIComponent(convId)}/delete`, {
     method: "POST",
     headers: authHeaders()
@@ -996,7 +997,10 @@ function finishStreaming(bubbleEl, fullResponse, isVoiceMode = false) {
     const hasCodeOrTable = fullResponse.includes("```") || fullResponse.includes("<table") || fullResponse.includes("|---");
     const userAskedToDisplay = /\b(show|display|render|write|draw|print|list|table|code|script|schema|json|html|css|sql|python|c\+\+|rust|javascript)\b/i.test(lastPrompt);
 
-    if ((hasCodeOrTable || userAskedToDisplay) && fullResponse && fullResponse.trim()) {
+    if (!fullResponse || !fullResponse.trim()) {
+      speakMerlinText("I was unable to retrieve a response from the inference engine, Sir. Please ensure the local model server is running.");
+      if (displayPanel) displayPanel.style.display = "none";
+    } else if ((hasCodeOrTable || userAskedToDisplay) && fullResponse && fullResponse.trim()) {
       if (displayPanel) {
         displayPanel.innerHTML = `
           <div class="hud-display-header">
@@ -1068,6 +1072,7 @@ function handleFileUpload(e) {
     }
   };
   reader.readAsDataURL(file);
+  if (e.target) e.target.value = "";
 }
 
 function clearAttachment() {
@@ -2021,6 +2026,7 @@ async function saveNoteItem() {
 }
 
 async function deleteNoteItem(id) {
+  if (!confirm("Are you sure you want to delete this technical note?")) return;
   await fetch("/api/notes/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2183,6 +2189,7 @@ async function createSkillItem() {
 }
 
 async function deleteSkillItem(id) {
+  if (!confirm("Are you sure you want to delete this learned skill from SQLite memory?")) return;
   await fetch("/api/knowledge/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

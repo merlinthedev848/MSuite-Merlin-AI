@@ -1895,6 +1895,16 @@ code { font-family: inherit; font-size: inherit; }
   .inline-form-row {
     flex-wrap: wrap;
   }
+  .jarvis-hud-display {
+    max-height: 48vh;
+    padding: 12px 16px;
+    margin: 10px 8px 0 8px;
+    font-size: 0.85rem;
+  }
+  .cyber-circuit-svg {
+    max-width: 96vw;
+    height: auto;
+  }
 }
 
 /* ==========================================================================

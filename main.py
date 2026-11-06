@@ -722,6 +722,39 @@ async def websocket_chat_endpoint(websocket: WebSocket):
     await websocket.accept()
     eng = get_engine()
     active_sid = "default"
+    active_task: asyncio.Task | None = None
+    abort_event = threading.Event()
+
+    async def _stream_producer(prompt_text: str, session_id: str, mode_str: str, user_id_val: str | None, current_abort: threading.Event):
+        loop = asyncio.get_running_loop()
+        q: asyncio.Queue[str | None] = asyncio.Queue()
+
+        def _worker():
+            try:
+                for chunk in eng.generate_stream(prompt_text, session_id=session_id, mode=mode_str, user_id=user_id_val):
+                    if current_abort.is_set():
+                        break
+                    loop.call_soon_threadsafe(q.put_nowait, chunk)
+            except Exception as ex:
+                loop.call_soon_threadsafe(q.put_nowait, f"[Error: {ex}]")
+            finally:
+                loop.call_soon_threadsafe(q.put_nowait, None)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+        try:
+            while True:
+                chunk = await q.get()
+                if chunk is None or current_abort.is_set():
+                    break
+                await websocket.send_json({"type": "chunk", "delta": chunk, "session_id": session_id})
+            if not current_abort.is_set():
+                await websocket.send_json({"type": "done", "session_id": session_id})
+        except Exception:
+            current_abort.set()
+            eng.stop_generation(session_id)
+            raise
+
     try:
         while True:
             raw_msg = await websocket.receive_text()
@@ -735,7 +768,11 @@ async def websocket_chat_endpoint(websocket: WebSocket):
             active_sid = data.get("session_id", "default").strip() or "default"
 
             if action == "stop":
+                abort_event.set()
                 stopped = eng.stop_generation(active_sid)
+                if active_task and not active_task.done():
+                    active_task.cancel()
+                    active_task = None
                 await websocket.send_json({"type": "stopped", "session_id": active_sid, "success": stopped})
                 continue
 
@@ -758,36 +795,25 @@ async def websocket_chat_endpoint(websocket: WebSocket):
             if model:
                 eng.set_active_model(model)
 
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = asyncio.get_event_loop()
-            q: asyncio.Queue[str | None] = asyncio.Queue()
+            # Abort any prior streaming task before starting a new one
+            if active_task and not active_task.done():
+                abort_event.set()
+                eng.stop_generation(active_sid)
+                active_task.cancel()
 
-            def _producer(p=prompt, s=active_sid, m=mode, lp=loop, queue=q, uid=user_id):
-                try:
-                    for chunk in eng.generate_stream(p, session_id=s, mode=m, user_id=uid):
-                        lp.call_soon_threadsafe(queue.put_nowait, chunk)
-                except Exception as ex:
-                    lp.call_soon_threadsafe(queue.put_nowait, f"[Error: {ex}]")
-                finally:
-                    lp.call_soon_threadsafe(queue.put_nowait, None)
-
-            producer_thread = threading.Thread(target=_producer, daemon=True)
-            producer_thread.start()
-
-            while True:
-                chunk = await q.get()
-                if chunk is None:
-                    break
-                await websocket.send_json({"type": "chunk", "delta": chunk, "session_id": active_sid})
-
-            await websocket.send_json({"type": "done", "session_id": active_sid})
+            abort_event = threading.Event()
+            active_task = asyncio.create_task(_stream_producer(prompt, active_sid, mode, user_id, abort_event))
 
     except WebSocketDisconnect:
+        abort_event.set()
         if active_sid:
             eng.stop_generation(active_sid)
+        if active_task and not active_task.done():
+            active_task.cancel()
     except Exception as e:
+        abort_event.set()
+        if active_sid:
+            eng.stop_generation(active_sid)
         logger.warning(f"WebSocket chat exception: {e}")
 
 
@@ -1454,6 +1480,7 @@ def start_teacher_sync(data: TeacherSyncRequest):
         or os.getenv("TEACHER_API_KEY", "")
         or os.getenv("GROQ_API_KEY", "")
         or os.getenv("OPENAI_API_KEY", "")
+        or load_saved_api_key()
     )
     topic = data.topic.strip()
     endpoint = (data.endpoint or "").strip() or None

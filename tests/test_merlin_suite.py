@@ -1424,6 +1424,80 @@ def test_voice_mode_pure_hud_contract():
     assert 'id="sentinel-voice-caption"' in html
 
 
+def test_token_expiration_and_security_cleanup():
+    """Validates that session tokens support expiration and are purged during checkpoint_and_vacuum."""
+    from database import (
+        checkpoint_and_vacuum,
+        create_user,
+        create_user_token,
+        get_db,
+        get_user_by_token,
+    )
+
+    uname = f"u_{int(time.time() * 1000)}"
+    user_created = create_user(uname, "Secret123!", display_name="Expiry Test")
+    uid = user_created["id"]
+
+    # 1. Valid token
+    token = create_user_token(uid, days_valid=7)
+    user = get_user_by_token(token)
+    assert user is not None
+    assert user["id"] == uid
+
+    # 2. Expired token
+    expired_token = create_user_token(uid, days_valid=1)
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE user_tokens SET expires_at = '2020-01-01T00:00:00' WHERE token = ?",
+            (expired_token,),
+        )
+    # Expired token must be rejected
+    assert get_user_by_token(expired_token) is None
+
+    # 3. Vacuum cleans up expired tokens
+    res = checkpoint_and_vacuum()
+    assert res["status"] == "ok"
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM user_tokens WHERE token = ?", (expired_token,))
+        assert c.fetchone()[0] == 0
+
+
+def test_websocket_chat_streaming_and_stop_action():
+    """Validates real-time WebSocket chat streaming and stop command dispatch."""
+    from starlette.testclient import TestClient
+
+    import main
+
+    client = TestClient(main.app)
+    with client.websocket_connect("/ws/chat") as ws:
+        # Test 1: Send prompt
+        ws.send_json({
+            "prompt": "Hello Merlin, status check.",
+            "session_id": "ws-audit-test",
+            "mode": "assistant",
+        })
+        msg = ws.receive_json()
+        assert msg["type"] in ("chunk", "done", "error")
+
+        # Test 2: Stop action
+        ws.send_json({"action": "stop", "session_id": "ws-audit-test"})
+        stop_resp = ws.receive_json()
+        assert stop_resp["type"] in ("stopped", "chunk", "done")
+
+
+def test_function_calling_psutil_resilience():
+    """Validates system diagnostics tool executes safely regardless of psutil environment."""
+    import function_calling
+
+    diag = function_calling.tool_get_system_diagnostics()
+    assert "status" in diag
+    assert "system" in diag
+    assert "platform" in diag["system"]
+    assert "overall_status" in diag
+
+
+
 
 
 

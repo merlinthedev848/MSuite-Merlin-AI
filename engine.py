@@ -380,6 +380,13 @@ class InferenceEngine:
 
         ollama_ok, ollama_models = self._probe_ollama(timeout=0.8)
         if ollama_ok and clean_name in ollama_models:
+            if self._server_process:
+                try:
+                    self._server_process.terminate()
+                    self._server_process.wait(timeout=1.0)
+                except Exception:
+                    pass
+                self._server_process = None
             self.backend = "ollama"
             self.active_model_name = clean_name
             log_event("model_switch", f"Switched active Ollama model to {clean_name}", "success")
@@ -394,6 +401,13 @@ class InferenceEngine:
 
             if os.path.exists(model_path) and os.path.isfile(model_path):
                 try:
+                    if self._server_process:
+                        try:
+                            self._server_process.terminate()
+                            self._server_process.wait(timeout=1.0)
+                        except Exception:
+                            pass
+                        self._server_process = None
                     threads = get_optimal_threads()
                     n_ctx = int(os.getenv("N_CTX", "2048"))
                     n_gpu = int(os.getenv("N_GPU_LAYERS", "0"))

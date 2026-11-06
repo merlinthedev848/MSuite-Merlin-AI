@@ -464,30 +464,33 @@ def authenticate_user(username: str, password: str) -> dict[str, Any] | None:
         }
 
 
-def create_user_token(user_id: str) -> str:
+def create_user_token(user_id: str, days_valid: int = 30) -> str:
     """Generates and stores a new cryptographically secure session token."""
     token = secrets.token_urlsafe(32)
-    now = datetime.datetime.now().isoformat()
+    now_dt = datetime.datetime.now()
+    now = now_dt.isoformat()
+    expires_at = (now_dt + datetime.timedelta(days=max(1, int(days_valid)))).isoformat()
     with get_db() as conn:
         conn.execute("""
-            INSERT INTO user_tokens (token, user_id, created_at)
-            VALUES (?, ?, ?)
-        """, (token, user_id, now))
+            INSERT INTO user_tokens (token, user_id, created_at, expires_at)
+            VALUES (?, ?, ?, ?)
+        """, (token, user_id, now, expires_at))
     return token
 
 
 def get_user_by_token(token: str) -> dict[str, Any] | None:
-    """Resolves an auth token to its active user record."""
+    """Resolves an auth token to its active user record, verifying expiration."""
     if not token or not token.strip():
         return None
+    now_iso = datetime.datetime.now().isoformat()
     with get_db() as conn:
         c = conn.cursor()
         c.execute("""
-            SELECT u.id, u.username, u.display_name, u.is_admin, u.created_at
+            SELECT u.id, u.username, u.display_name, u.is_admin, u.created_at, t.expires_at
             FROM user_tokens t
             JOIN users u ON u.id = t.user_id
-            WHERE t.token = ?
-        """, (token.strip(),))
+            WHERE t.token = ? AND (t.expires_at IS NULL OR t.expires_at > ?)
+        """, (token.strip(), now_iso))
         row = c.fetchone()
         if not row:
             return None
@@ -1514,11 +1517,17 @@ def search_notes(query: str, limit: int = 50) -> list[dict[str, Any]]:
 
 
 def checkpoint_and_vacuum() -> dict[str, Any]:
-    """Runs SQLite WAL checkpoint and optimization to keep file sizes and lookup latencies optimal."""
+    """Runs SQLite WAL checkpoint, token cleanup, and optimization to keep file sizes and lookup latencies optimal."""
     with get_db() as conn:
+        conn.execute("DELETE FROM user_tokens WHERE expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP;")
+    # PRAGMAs wal_checkpoint and optimize must execute outside an active write transaction
+    conn = get_connection()
+    try:
         conn.execute("PRAGMA wal_checkpoint(PASSIVE);")
         conn.execute("PRAGMA optimize;")
-    log_event("db_maintenance", "Completed SQLite WAL checkpoint and query planner optimization", "info")
+    except sqlite3.OperationalError:
+        pass
+    log_event("db_maintenance", "Completed SQLite WAL checkpoint, token cleanup, and query planner optimization", "info")
     return {"status": "ok", "message": "Database optimized and WAL checkpointed successfully."}
 
 

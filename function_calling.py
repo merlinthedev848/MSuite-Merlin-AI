@@ -15,7 +15,10 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 from database import (
     add_note,
@@ -321,9 +324,14 @@ MERLIN_TOOLS: list[dict[str, Any]] = [
 def tool_get_system_diagnostics(**kwargs: Any) -> dict[str, Any]:
     """Retrieves live CPU, RAM, disk, OS, and Merlin AI operational telemetry."""
     try:
-        cpu_pct = psutil.cpu_percent(interval=None)
-        cpu_count = psutil.cpu_count(logical=True)
-        vmem = psutil.virtual_memory()
+        if psutil is not None:
+            cpu_pct = psutil.cpu_percent(interval=None)
+            cpu_count = psutil.cpu_count(logical=True)
+            vmem = psutil.virtual_memory()
+        else:
+            cpu_pct = 0.0
+            cpu_count = 1
+            vmem = None
     except Exception:
         cpu_pct = 0.0
         cpu_count = 1
