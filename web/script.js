@@ -176,7 +176,7 @@ function openModal(id) {
     }
     const styleSel = document.getElementById("setting-voice-style");
     if (styleSel) {
-      styleSel.value = localStorage.getItem("merlin_voice_style") || "freeman";
+      styleSel.value = localStorage.getItem("merlin_voice_style") || "baritone";
     }
     populateVoiceSelect();
   } else if (id === "pa-modal") {
@@ -1221,24 +1221,27 @@ function endConversationSession(spokenResponse = null) {
 }
 
 function getVoiceStyleConfig() {
-  let style = "freeman";
+  let style = "baritone";
   try {
     if (typeof localStorage !== "undefined" && localStorage.getItem) {
-      style = localStorage.getItem("merlin_voice_style") || "freeman";
+      style = localStorage.getItem("merlin_voice_style") || "baritone";
     }
   } catch(e) {}
 
-  if (style === "freeman") {
-    // Warm, deep resonant baritone narration (Morgan Freeman style, rapid & crisp)
+  if (style === "baritone") {
+    // Deep Baritone: Resonant, commanding, authoritative and warm
+    return { pitch: 0.82, rate: 1.02 };
+  } else if (style === "deep_bass") {
+    // Deep Bass resonance
+    return { pitch: 0.74, rate: 0.98 };
+  } else if (style === "freeman") {
+    // Warm baritone narrator
     return { pitch: 0.88, rate: 1.05 };
-  } else if (style === "deep") {
-    // Deep bass resonance
-    return { pitch: 0.80, rate: 0.98 };
   } else if (style === "transatlantic") {
-    // British transatlantic AI
+    // British Transatlantic AI
     return { pitch: 0.96, rate: 1.06 };
   }
-  return { pitch: 0.88, rate: 1.05 };
+  return { pitch: 0.82, rate: 1.02 };
 }
 
 function updateBestVoice() {
@@ -1262,38 +1265,46 @@ function updateBestVoice() {
     }
   }
 
+  // Priority 1: Google UK English Male (Exact match or Google UK variant)
+  const googleUKMale = voices.find(v => 
+    v.name.includes("Google UK English Male") ||
+    (v.name.includes("Google") && (v.lang === "en-GB" || v.lang === "en_GB") && /\bmale\b/i.test(v.name))
+  );
+  if (googleUKMale) {
+    bestVoice = googleUKMale;
+    populateVoiceSelect();
+    return;
+  }
+
   // Common female name/indicator filter
   const femalePattern = /\b(female|zira|susan|hazel|catherine|linda|jenny|aria|samantha|victoria|karen|moira|fiona|tessa|ava|emma|olivia|sophia|chloe|sonia|natasha|ana)\b/i;
 
   const englishVoices = voices.filter(v => v.lang.startsWith("en") && !femalePattern.test(v.name));
 
-  // Priority 1: Resonant American baritone male voices (Guy, Christopher, Andrew, David, Mark)
-  const usNarratorMale = englishVoices.find(v => 
-    (v.lang === "en-US" || v.lang === "en_US") &&
-    (v.name.includes("Guy") || v.name.includes("Christopher") || v.name.includes("Andrew") || v.name.includes("David") || v.name.includes("Mark"))
+  // Priority 2: Other High quality British UK male voices (Ryan, George, Arthur, Oliver, Daniel)
+  const gbMale = englishVoices.find(v => 
+    (v.lang === "en-GB" || v.lang === "en_GB") &&
+    (v.name.includes("Ryan") || v.name.includes("George") || v.name.includes("Arthur") || v.name.includes("Oliver") || v.name.includes("Daniel") || /\bmale\b/i.test(v.name))
   );
-  if (usNarratorMale) { bestVoice = usNarratorMale; populateVoiceSelect(); return; }
+  if (gbMale) { bestVoice = gbMale; populateVoiceSelect(); return; }
 
-  // Priority 2: Natural / Neural male English voices
+  // Priority 3: Any British en-GB male voice
+  const anyGB = englishVoices.find(v => v.lang.startsWith("en-GB") || v.lang.startsWith("en_GB"));
+  if (anyGB) { bestVoice = anyGB; populateVoiceSelect(); return; }
+
+  // Priority 4: Natural / Neural male English voices
   const neuralMale = englishVoices.find(v => 
     (v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Online")) &&
     (/\b(male|guy|christopher|andrew|david|ryan|george|oliver|daniel)\b/i.test(v.name) || !femalePattern.test(v.name))
   );
   if (neuralMale) { bestVoice = neuralMale; populateVoiceSelect(); return; }
 
-  // Priority 3: Any American English male voice (David, Mark, Alex, etc.)
-  const anyUSMale = englishVoices.find(v => 
-    v.lang.startsWith("en-US") &&
-    (/\b(male|david|mark|alex|brian|eric|charles)\b/i.test(v.name) || !femalePattern.test(v.name))
+  // Priority 5: Resonant American baritone male voices (Guy, Christopher, Andrew, David, Mark)
+  const usNarratorMale = englishVoices.find(v => 
+    (v.lang === "en-US" || v.lang === "en_US") &&
+    (v.name.includes("Guy") || v.name.includes("Christopher") || v.name.includes("Andrew") || v.name.includes("David") || v.name.includes("Mark"))
   );
-  if (anyUSMale) { bestVoice = anyUSMale; populateVoiceSelect(); return; }
-
-  // Priority 4: High quality British male voices (Ryan, George, Arthur, Oliver, Daniel)
-  const gbMale = englishVoices.find(v => 
-    (v.lang === "en-GB" || v.lang === "en_GB") &&
-    (v.name.includes("Ryan") || v.name.includes("George") || v.name.includes("Arthur") || v.name.includes("Oliver") || v.name.includes("Daniel") || v.name.includes("Male"))
-  );
-  if (gbMale) { bestVoice = gbMale; populateVoiceSelect(); return; }
+  if (usNarratorMale) { bestVoice = usNarratorMale; populateVoiceSelect(); return; }
 
   // Priority 5: Any non-female English voice
   if (englishVoices.length > 0) {
@@ -1321,7 +1332,7 @@ function populateVoiceSelect() {
   } catch(e) {}
   if (!currentVal && bestVoice) currentVal = bestVoice.voiceURI;
 
-  select.innerHTML = '<option value="">Auto-Select Deep Male Voice</option>';
+  select.innerHTML = '<option value="">Default: Google UK English Male</option>';
 
   const femalePattern = /\b(female|zira|susan|hazel|catherine|linda|jenny|aria|samantha|victoria|karen|moira|fiona|tessa|ava|emma|olivia|sophia|chloe|sonia|natasha|ana)\b/i;
 
@@ -1362,7 +1373,13 @@ function changeVoiceStyle(style) {
       localStorage.setItem("merlin_voice_style", style);
     }
   } catch(e) {}
-  showToast(`Voice style set to ${style === "freeman" ? "Morgan Freeman (Deep Baritone)" : style}.`, "info");
+  const labelMap = {
+    "baritone": "Deep Baritone",
+    "deep_bass": "Deep Bass",
+    "freeman": "Warm Baritone Narrator",
+    "transatlantic": "British Transatlantic AI"
+  };
+  showToast(`Voice persona set to ${labelMap[style] || style}.`, "info");
 }
 
 function testMerlinVoice() {

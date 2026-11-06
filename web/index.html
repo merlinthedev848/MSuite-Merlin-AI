@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Merlin — Autonomous Neural Intelligence</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='%2300f0ff' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='4' fill='%2300f0ff'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/styles.css?v=7.0.0">
+  <link rel="stylesheet" href="/styles.css?v=7.1.0">
 </head>
 <body class="hud-visual-mode voice-mode-active">
 
@@ -818,9 +818,10 @@
             <div style="font-size:0.86rem; font-weight:600; color:var(--text-main);">Voice Persona &amp; Tone</div>
           </div>
           <select class="form-select" id="setting-voice-style" onchange="changeVoiceStyle(this.value)" style="width:240px; font-size:0.82rem; padding:6px 10px;">
-            <option value="freeman">Morgan Freeman (Deep Baritone Narrator)</option>
-            <option value="deep">Deep Resonant Bass (0.78 Pitch)</option>
-            <option value="transatlantic">British Transatlantic AI (Merlin)</option>
+            <option value="baritone" selected>Deep Baritone (Resonant &amp; Authoritative)</option>
+            <option value="freeman">Warm Baritone Narrator</option>
+            <option value="deep_bass">Deep Bass (0.74 Pitch)</option>
+            <option value="transatlantic">British Transatlantic AI</option>
           </select>
         </div>
 
@@ -829,7 +830,7 @@
             <div style="font-size:0.86rem; font-weight:600; color:var(--text-main);">Synthesizer Voice Engine</div>
           </div>
           <select class="form-select" id="setting-voice-device" onchange="changeVoiceDevice(this.value)" style="width:240px; font-size:0.82rem; padding:6px 10px;">
-            <option value="">Auto-Select Deep Male Voice</option>
+            <option value="">Default: Google UK English Male</option>
           </select>
         </div>
         <div style="margin-top:10px; display:flex; justify-content:flex-end;">
@@ -1274,6 +1275,6 @@
   <!-- ========================================================================
        CLIENT APPLICATION LOGIC
        ======================================================================== -->
-  <script src="/script.js?v=7.0.0"></script>
+  <script src="/script.js?v=7.1.0"></script>
 </body>
 </html>
