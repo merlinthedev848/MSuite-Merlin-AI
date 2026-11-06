@@ -277,364 +277,352 @@
             <div class="arc-reactor-core">
 <svg class="stark-arc-reactor-svg" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <!-- Deep Cosmic Singularity Gradient (Astral Violet to Celestial Cyan & Diamond White) -->
+    <!-- Gaseous Entity Volumetric Filters -->
+    <filter id="gas-soft-blur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.5" result="blur" />
+    </filter>
+    <filter id="nebula-deep-mist" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="8" result="heavyBlur" />
+    </filter>
+
+    <!-- Sentient Gas Nucleus Gradient -->
     <radialGradient id="singularity-glow" cx="50%" cy="50%" r="50%">
       <stop offset="0%" stop-color="#ffffff" stop-opacity="1" />
-      <stop offset="12%" stop-color="#fdf4ff" stop-opacity="0.95" />
+      <stop offset="14%" stop-color="#fdf4ff" stop-opacity="0.95" />
       <stop offset="28%" stop-color="#d8b4fe" stop-opacity="0.9" />
-      <stop offset="48%" stop-color="#818cf8" stop-opacity="0.8" />
-      <stop offset="68%" stop-color="#00f5d4" stop-opacity="0.55" />
-      <stop offset="86%" stop-color="#4c1d95" stop-opacity="0.25" />
+      <stop offset="46%" stop-color="#818cf8" stop-opacity="0.8" />
+      <stop offset="65%" stop-color="#00f5d4" stop-opacity="0.6" />
+      <stop offset="84%" stop-color="#7c3aed" stop-opacity="0.3" />
       <stop offset="100%" stop-color="#030014" stop-opacity="0" />
     </radialGradient>
     
-    <!-- Ethereal Nebula Corona Gradient -->
+    <!-- Outer Diffuse Interstellar Gas Cloud -->
     <radialGradient id="nebula-corona" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#a855f7" stop-opacity="0.55" />
-      <stop offset="45%" stop-color="#6366f1" stop-opacity="0.3" />
-      <stop offset="78%" stop-color="#00f5d4" stop-opacity="0.12" />
+      <stop offset="0%" stop-color="#a855f7" stop-opacity="0.6" />
+      <stop offset="35%" stop-color="#6366f1" stop-opacity="0.35" />
+      <stop offset="68%" stop-color="#00f5d4" stop-opacity="0.18" />
+      <stop offset="92%" stop-color="#f472b6" stop-opacity="0.06" />
       <stop offset="100%" stop-color="#030014" stop-opacity="0" />
     </radialGradient>
 
-    <!-- Multi-Spectral Astral Plasma Torus -->
+    <!-- Multi-Spectral Ionized Plasma Torus -->
     <linearGradient id="astral-torus-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#7928ca" />
-      <stop offset="25%" stop-color="#00f5d4" />
-      <stop offset="50%" stop-color="#ffffff" />
-      <stop offset="75%" stop-color="#f72585" />
-      <stop offset="100%" stop-color="#7928ca" />
+      <stop offset="0%" stop-color="#7c3aed" />
+      <stop offset="20%" stop-color="#00f5d4" />
+      <stop offset="45%" stop-color="#ffffff" />
+      <stop offset="65%" stop-color="#f472b6" />
+      <stop offset="85%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#7c3aed" />
     </linearGradient>
 
-    <!-- Spire Housing Cosmic Gradient -->
-    <linearGradient id="spire-housing-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#2e1065" />
-      <stop offset="50%" stop-color="#0f0728" />
-      <stop offset="100%" stop-color="#030014" />
+    <!-- Gas Streamer Petal Gradients -->
+    <linearGradient id="gas-streamer-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc" stop-opacity="0.8" />
+      <stop offset="50%" stop-color="#00f5d4" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.1" />
+    </linearGradient>
+    <linearGradient id="gas-spine-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="40%" stop-color="#00f5d4" stop-opacity="0.75" />
+      <stop offset="100%" stop-color="#a855f7" stop-opacity="0.25" />
     </linearGradient>
 
-    <!-- Celestial Starlight Prism Gradient -->
-    <linearGradient id="celestial-prism" x1="0%" y1="0%" x2="0%" y2="100%">
+    <!-- Inner Gas Flow Stream Gradient -->
+    <linearGradient id="inner-gas-flow" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85" />
-      <stop offset="50%" stop-color="#c084fc" stop-opacity="0.5" />
-      <stop offset="100%" stop-color="#00f5d4" stop-opacity="0.15" />
+      <stop offset="45%" stop-color="#d8b4fe" stop-opacity="0.6" />
+      <stop offset="100%" stop-color="#00f5d4" stop-opacity="0.2" />
     </linearGradient>
 
-    <!-- Ethereal Celestial Webbing / Stardust Mesh -->
-    <pattern id="celestial-web" width="24" height="24" patternUnits="userSpaceOnUse">
-      <circle cx="12" cy="12" r="0.8" fill="#ffffff" opacity="0.45" />
-      <circle cx="4" cy="4" r="0.6" fill="#00f5d4" opacity="0.4" />
-      <circle cx="20" cy="16" r="0.6" fill="#c084fc" opacity="0.4" />
-      <path d="M 0 12 L 24 12 M 12 0 L 12 24" stroke="rgba(168, 85, 247, 0.12)" stroke-width="0.5" />
+    <!-- Flowing Gas Tendril Gradient -->
+    <linearGradient id="singularity-gas-tendril" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="40%" stop-color="#00f5d4" stop-opacity="0.7" />
+      <stop offset="80%" stop-color="#a855f7" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#f472b6" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Stardust Veil Pattern -->
+    <pattern id="celestial-web" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="16" cy="16" r="0.9" fill="#ffffff" opacity="0.45" />
+      <circle cx="6" cy="8" r="0.6" fill="#00f5d4" opacity="0.4" />
+      <circle cx="26" cy="22" r="0.7" fill="#f472b6" opacity="0.4" />
+      <path d="M 0 16 Q 16 24 32 16" fill="none" stroke="rgba(192, 132, 252, 0.12)" stroke-width="0.6" />
     </pattern>
   </defs>
 
-  <!-- LAYER 0: Ambient Cosmic Void Corona -->
-  <circle cx="200" cy="200" r="198" fill="url(#nebula-corona)" />
+  <!-- LAYER 0: Outer Volumetric Cosmic Gas Veil -->
+  <circle cx="200" cy="200" r="198" fill="url(#nebula-corona)" filter="url(#nebula-deep-mist)" />
+  <circle cx="200" cy="200" r="185" fill="none" stroke="rgba(0, 245, 212, 0.35)" stroke-width="1.2" stroke-dasharray="14 10 4 10" />
+  <circle cx="200" cy="200" r="192" fill="none" stroke="rgba(192, 132, 252, 0.25)" stroke-width="0.8" stroke-dasharray="4 8" />
 
-  <!-- LAYER 1: Celestial Astrolabe & Constellation Coordinates -->
-  <circle cx="200" cy="200" r="195" fill="none" stroke="rgba(192, 132, 252, 0.28)" stroke-width="0.8" stroke-dasharray="3 9" />
-  <circle cx="200" cy="200" r="190" fill="none" stroke="rgba(0, 245, 212, 0.45)" stroke-width="1.2" stroke-dasharray="16 8 4 8" />
-  
-  <!-- Sacred Geometry Constellation Points & Starlight Coordinates -->
-  <g class="arc-metric-ticks" opacity="0.88">
-    <line x1="378.0" y1="200.0" x2="390.0" y2="200.0" stroke="#00f5d4" stroke-width="1.8" />
-    <line x1="382.12" y1="217.94" x2="386.1" y2="218.33" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="379.48" y1="235.7" x2="383.41" y2="236.48" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="375.12" y1="253.12" x2="378.95" y2="254.28" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="367.22" y1="269.27" x2="373.69" y2="271.94" stroke="#c084fc" stroke-width="1.2" />
-    <line x1="361.39" y1="286.27" x2="364.92" y2="288.15" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="352.16" y1="301.67" x2="355.48" y2="303.89" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="341.46" y1="316.09" x2="344.55" y2="318.63" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="325.87" y1="325.87" x2="334.35" y2="334.35" stroke="#00f5d4" stroke-width="1.8" />
-    <line x1="316.09" y1="341.46" x2="318.63" y2="344.55" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="301.67" y1="352.16" x2="303.89" y2="355.48" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="286.27" y1="361.39" x2="288.15" y2="364.92" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="269.27" y1="367.22" x2="271.94" y2="373.69" stroke="#c084fc" stroke-width="1.2" />
-    <line x1="253.12" y1="375.12" x2="254.28" y2="378.95" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="235.7" y1="379.48" x2="236.48" y2="383.41" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="217.94" y1="382.12" x2="218.33" y2="386.1" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="200.0" y1="378.0" x2="200.0" y2="390.0" stroke="#00f5d4" stroke-width="1.8" />
-    <line x1="182.06" y1="382.12" x2="181.67" y2="386.1" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="164.3" y1="379.48" x2="163.52" y2="383.41" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="146.88" y1="375.12" x2="145.72" y2="378.95" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="130.73" y1="367.22" x2="128.06" y2="373.69" stroke="#c084fc" stroke-width="1.2" />
-    <line x1="113.73" y1="361.39" x2="111.85" y2="364.92" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="98.33" y1="352.16" x2="96.11" y2="355.48" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="83.91" y1="341.46" x2="81.37" y2="344.55" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="74.13" y1="325.87" x2="65.65" y2="334.35" stroke="#00f5d4" stroke-width="1.8" />
-    <line x1="58.54" y1="316.09" x2="55.45" y2="318.63" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="47.84" y1="301.67" x2="44.52" y2="303.89" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="38.61" y1="286.27" x2="35.08" y2="288.15" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="32.78" y1="269.27" x2="26.31" y2="271.94" stroke="#c084fc" stroke-width="1.2" />
-    <line x1="24.88" y1="253.12" x2="21.05" y2="254.28" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="20.52" y1="235.7" x2="16.59" y2="236.48" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="17.88" y1="217.94" x2="13.9" y2="218.33" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="22.0" y1="200.0" x2="10.0" y2="200.0" stroke="#00f5d4" stroke-width="1.8" />
-    <line x1="17.88" y1="182.06" x2="13.9" y2="181.67" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="20.52" y1="164.3" x2="16.59" y2="163.52" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="24.88" y1="146.88" x2="21.05" y2="145.72" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="32.78" y1="130.73" x2="26.31" y2="128.06" stroke="#c084fc" stroke-width="1.2" />
-    <line x1="38.61" y1="113.73" x2="35.08" y2="111.85" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="47.84" y1="98.33" x2="44.52" y2="96.11" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="58.54" y1="83.91" x2="55.45" y2="81.37" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="74.13" y1="74.13" x2="65.65" y2="65.65" stroke="#00f5d4" stroke-width="1.8" />
-    <line x1="83.91" y1="58.54" x2="81.37" y2="55.45" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="98.33" y1="47.84" x2="96.11" y2="44.52" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="113.73" y1="38.61" x2="111.85" y2="35.08" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="130.73" y1="32.78" x2="128.06" y2="26.31" stroke="#c084fc" stroke-width="1.2" />
-    <line x1="146.88" y1="24.88" x2="145.72" y2="21.05" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="164.3" y1="20.52" x2="163.52" y2="16.59" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="182.06" y1="17.88" x2="181.67" y2="13.9" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="200.0" y1="22.0" x2="200.0" y2="10.0" stroke="#00f5d4" stroke-width="1.8" />
-    <line x1="217.94" y1="17.88" x2="218.33" y2="13.9" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="235.7" y1="20.52" x2="236.48" y2="16.59" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="253.12" y1="24.88" x2="254.28" y2="21.05" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="269.27" y1="32.78" x2="271.94" y2="26.31" stroke="#c084fc" stroke-width="1.2" />
-    <line x1="286.27" y1="38.61" x2="288.15" y2="35.08" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="301.67" y1="47.84" x2="303.89" y2="44.52" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="316.09" y1="58.54" x2="318.63" y2="55.45" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="325.87" y1="74.13" x2="334.35" y2="65.65" stroke="#00f5d4" stroke-width="1.8" />
-    <line x1="341.46" y1="83.91" x2="344.55" y2="81.37" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="352.16" y1="98.33" x2="355.48" y2="96.11" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="361.39" y1="113.73" x2="364.92" y2="111.85" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="367.22" y1="130.73" x2="373.69" y2="128.06" stroke="#c084fc" stroke-width="1.2" />
-    <line x1="375.12" y1="146.88" x2="378.95" y2="145.72" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="379.48" y1="164.3" x2="383.41" y2="163.52" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
-    <line x1="382.12" y1="182.06" x2="386.1" y2="181.67" stroke="rgba(192, 132, 252, 0.4)" stroke-width="0.7" />
+  <!-- LAYER 1: Floating Stardust & Cosmic Dust Filaments (arc-metric-ticks) -->
+  <g class="arc-metric-ticks">
+    <line x1="375.0" y1="200.0" x2="389.0" y2="200.0" stroke="#00f5d4" stroke-width="1.5" opacity="0.35" stroke-linecap="round" />
+    <circle cx="394.0" cy="200.0" r="1.2" fill="#00f5d4" opacity="0.35" />
+    <line x1="381.41" y1="223.88" x2="386.34" y2="224.53" stroke="#c084fc" stroke-width="0.8" opacity="0.58" stroke-linecap="round" />
+    <line x1="370.13" y1="245.59" x2="375.01" y2="246.89" stroke="#f472b6" stroke-width="0.8" opacity="0.8" stroke-linecap="round" />
+    <circle cx="379.84" cy="248.19" r="0.7" fill="#f472b6" opacity="0.8" />
+    <line x1="354.45" y1="263.98" x2="367.39" y2="269.33" stroke="#00f5d4" stroke-width="0.8" opacity="0.56" stroke-linecap="round" />
+    <line x1="349.62" y1="286.38" x2="353.85" y2="288.82" stroke="#c084fc" stroke-width="0.8" opacity="0.35" stroke-linecap="round" />
+    <circle cx="358.18" cy="291.32" r="1.2" fill="#c084fc" opacity="0.35" />
+    <line x1="344.79" y1="311.1" x2="348.87" y2="314.23" stroke="#f472b6" stroke-width="0.8" opacity="0.61" stroke-linecap="round" />
+    <line x1="326.07" y1="326.07" x2="335.97" y2="335.97" stroke="#00f5d4" stroke-width="1.5" opacity="0.8" stroke-linecap="round" />
+    <circle cx="339.51" cy="339.51" r="0.7" fill="#00f5d4" opacity="0.8" />
+    <line x1="302.25" y1="333.25" x2="305.17" y2="337.06" stroke="#c084fc" stroke-width="0.8" opacity="0.53" stroke-linecap="round" />
+    <line x1="285.35" y1="347.84" x2="287.97" y2="352.37" stroke="#f472b6" stroke-width="0.8" opacity="0.36" stroke-linecap="round" />
+    <circle cx="290.47" cy="356.7" r="1.2" fill="#f472b6" opacity="0.36" />
+    <line x1="269.43" y1="367.62" x2="274.79" y2="380.55" stroke="#00f5d4" stroke-width="0.8" opacity="0.63" stroke-linecap="round" />
+    <line x1="246.64" y1="374.06" x2="247.86" y2="378.62" stroke="#c084fc" stroke-width="0.8" opacity="0.79" stroke-linecap="round" />
+    <circle cx="249.15" cy="383.44" r="0.7" fill="#c084fc" opacity="0.79" />
+    <line x1="222.1" y1="367.86" x2="222.79" y2="373.14" stroke="#f472b6" stroke-width="0.8" opacity="0.5" stroke-linecap="round" />
+    <line x1="200.0" y1="368.99" x2="200.0" y2="382.98" stroke="#00f5d4" stroke-width="1.5" opacity="0.36" stroke-linecap="round" />
+    <circle cx="200.0" cy="387.98" r="1.2" fill="#00f5d4" opacity="0.36" />
+    <line x1="176.53" y1="378.31" x2="175.92" y2="382.9" stroke="#c084fc" stroke-width="0.8" opacity="0.66" stroke-linecap="round" />
+    <line x1="152.97" y1="375.5" x2="151.57" y2="380.73" stroke="#f472b6" stroke-width="0.8" opacity="0.78" stroke-linecap="round" />
+    <circle cx="150.28" cy="385.56" r="0.7" fill="#f472b6" opacity="0.78" />
+    <line x1="134.52" y1="358.08" x2="129.17" y2="370.99" stroke="#00f5d4" stroke-width="0.8" opacity="0.48" stroke-linecap="round" />
+    <line x1="116.12" y1="345.28" x2="113.85" y2="349.22" stroke="#c084fc" stroke-width="0.8" opacity="0.37" stroke-linecap="round" />
+    <circle cx="111.35" cy="353.55" r="1.2" fill="#c084fc" opacity="0.37" />
+    <line x1="91.72" y1="341.12" x2="88.37" y2="345.49" stroke="#f472b6" stroke-width="0.8" opacity="0.68" stroke-linecap="round" />
+    <line x1="70.85" y1="329.15" x2="60.97" y2="339.03" stroke="#00f5d4" stroke-width="1.5" opacity="0.77" stroke-linecap="round" />
+    <circle cx="57.43" cy="342.57" r="0.7" fill="#00f5d4" opacity="0.77" />
+    <line x1="62.58" y1="305.44" x2="59.04" y2="308.16" stroke="#c084fc" stroke-width="0.8" opacity="0.46" stroke-linecap="round" />
+    <line x1="55.29" y1="283.55" x2="50.44" y2="286.35" stroke="#f472b6" stroke-width="0.8" opacity="0.39" stroke-linecap="round" />
+    <circle cx="46.11" cy="288.85" r="1.2" fill="#f472b6" opacity="0.39" />
+    <line x1="37.7" y1="267.23" x2="24.8" y2="272.57" stroke="#00f5d4" stroke-width="0.8" opacity="0.7" stroke-linecap="round" />
+    <line x1="23.24" y1="247.36" x2="19.0" y2="248.5" stroke="#c084fc" stroke-width="0.8" opacity="0.76" stroke-linecap="round" />
+    <circle cx="14.17" cy="249.79" r="0.7" fill="#c084fc" opacity="0.76" />
+    <line x1="26.04" y1="222.9" x2="20.4" y2="223.65" stroke="#f472b6" stroke-width="0.8" opacity="0.43" stroke-linecap="round" />
+    <line x1="32.93" y1="200.0" x2="18.99" y2="200.0" stroke="#00f5d4" stroke-width="1.5" opacity="0.4" stroke-linecap="round" />
+    <circle cx="13.99" cy="200.0" r="1.2" fill="#00f5d4" opacity="0.4" />
+    <line x1="28.07" y1="177.36" x2="23.8" y2="176.8" stroke="#c084fc" stroke-width="0.8" opacity="0.73" stroke-linecap="round" />
+    <line x1="23.52" y1="152.71" x2="17.93" y2="151.21" stroke="#f472b6" stroke-width="0.8" opacity="0.74" stroke-linecap="round" />
+    <circle cx="13.1" cy="149.92" r="0.7" fill="#f472b6" opacity="0.74" />
+    <line x1="35.85" y1="132.01" x2="22.98" y2="126.68" stroke="#00f5d4" stroke-width="0.8" opacity="0.42" stroke-linecap="round" />
+    <line x1="54.8" y1="116.17" x2="51.14" y2="114.05" stroke="#c084fc" stroke-width="0.8" opacity="0.42" stroke-linecap="round" />
+    <circle cx="46.81" cy="111.55" r="1.2" fill="#c084fc" opacity="0.42" />
+    <line x1="64.11" y1="95.73" x2="59.44" y2="92.15" stroke="#f472b6" stroke-width="0.8" opacity="0.74" stroke-linecap="round" />
+    <line x1="71.44" y1="71.44" x2="61.6" y2="61.6" stroke="#00f5d4" stroke-width="1.5" opacity="0.72" stroke-linecap="round" />
+    <circle cx="58.07" cy="58.07" r="0.7" fill="#00f5d4" opacity="0.72" />
+    <line x1="90.62" y1="57.46" x2="88.1" y2="54.17" stroke="#c084fc" stroke-width="0.8" opacity="0.4" stroke-linecap="round" />
+    <line x1="115.57" y1="53.77" x2="112.59" y2="48.59" stroke="#f472b6" stroke-width="0.8" opacity="0.44" stroke-linecap="round" />
+    <circle cx="110.09" cy="44.26" r="1.2" fill="#f472b6" opacity="0.44" />
+    <line x1="135.15" y1="43.44" x2="129.83" y2="30.6" stroke="#00f5d4" stroke-width="0.8" opacity="0.76" stroke-linecap="round" />
+    <line x1="153.32" y1="25.78" x2="152.27" y2="21.85" stroke="#c084fc" stroke-width="0.8" opacity="0.7" stroke-linecap="round" />
+    <circle cx="150.97" cy="17.02" r="0.7" fill="#c084fc" opacity="0.7" />
+    <line x1="176.34" y1="20.25" x2="175.54" y2="14.23" stroke="#f472b6" stroke-width="0.8" opacity="0.38" stroke-linecap="round" />
+    <line x1="200.0" y1="29.47" x2="200.0" y2="15.59" stroke="#00f5d4" stroke-width="1.5" opacity="0.46" stroke-linecap="round" />
+    <circle cx="200.0" cy="10.59" r="1.2" fill="#00f5d4" opacity="0.46" />
+    <line x1="221.94" y1="33.37" x2="222.46" y2="29.41" stroke="#c084fc" stroke-width="0.8" opacity="0.77" stroke-linecap="round" />
+    <line x1="246.2" y1="27.59" x2="247.79" y2="21.64" stroke="#f472b6" stroke-width="0.8" opacity="0.68" stroke-linecap="round" />
+    <circle cx="249.09" cy="16.81" r="0.7" fill="#f472b6" opacity="0.68" />
+    <line x1="269.81" y1="31.46" x2="275.11" y2="18.66" stroke="#00f5d4" stroke-width="0.8" opacity="0.37" stroke-linecap="round" />
+    <line x1="286.28" y1="50.56" x2="288.24" y2="47.16" stroke="#c084fc" stroke-width="0.8" opacity="0.49" stroke-linecap="round" />
+    <circle cx="290.74" cy="42.83" r="1.2" fill="#c084fc" opacity="0.49" />
+    <line x1="301.8" y1="67.33" x2="305.61" y2="62.36" stroke="#f472b6" stroke-width="0.8" opacity="0.78" stroke-linecap="round" />
+    <line x1="324.69" y1="75.31" x2="334.47" y2="65.53" stroke="#00f5d4" stroke-width="1.5" opacity="0.65" stroke-linecap="round" />
+    <circle cx="338.01" cy="61.99" r="0.7" fill="#00f5d4" opacity="0.65" />
+    <line x1="345.15" y1="88.62" x2="348.21" y2="86.28" stroke="#c084fc" stroke-width="0.8" opacity="0.36" stroke-linecap="round" />
+    <line x1="351.37" y1="112.61" x2="356.88" y2="109.43" stroke="#f472b6" stroke-width="0.8" opacity="0.51" stroke-linecap="round" />
+    <circle cx="361.21" cy="106.93" r="1.2" fill="#f472b6" opacity="0.51" />
+    <line x1="354.3" y1="136.09" x2="367.05" y2="130.8" stroke="#00f5d4" stroke-width="0.8" opacity="0.79" stroke-linecap="round" />
+    <line x1="368.15" y1="154.94" x2="371.8" y2="153.97" stroke="#c084fc" stroke-width="0.8" opacity="0.63" stroke-linecap="round" />
+    <circle cx="376.63" cy="152.67" r="0.7" fill="#c084fc" opacity="0.63" />
+    <line x1="381.3" y1="176.13" x2="387.7" y2="175.29" stroke="#f472b6" stroke-width="0.8" opacity="0.35" stroke-linecap="round" />
   </g>
 
-  <!-- Cardinal Celestial Starlight Crosshairs -->
-  <path d="M 200 4 L 200 18 M 200 382 L 200 396 M 4 200 L 18 200 M 382 200 L 396 200" stroke="#00f5d4" stroke-width="1.6" />
-  <circle cx="200" cy="11" r="2.5" fill="#ffffff" stroke="#c084fc" stroke-width="1" />
-  <circle cx="200" cy="389" r="2.5" fill="#ffffff" stroke="#c084fc" stroke-width="1" />
-  <circle cx="11" cy="200" r="2.5" fill="#ffffff" stroke="#c084fc" stroke-width="1" />
-  <circle cx="389" cy="200" r="2.5" fill="#ffffff" stroke="#c084fc" stroke-width="1" />
+  <!-- Cardinal Celestial Starlight Droplets -->
+  <circle cx="200" cy="10" r="2.5" fill="#ffffff" opacity="0.9" />
+  <circle cx="200" cy="390" r="2.5" fill="#ffffff" opacity="0.9" />
+  <circle cx="10" cy="200" r="2.5" fill="#ffffff" opacity="0.9" />
+  <circle cx="390" cy="200" r="2.5" fill="#ffffff" opacity="0.9" />
 
-  <!-- LAYER 2: Ethereal Planetary Orbital Rings & Rotating Stargate (arc-aperture-stator) -->
+  <!-- LAYER 2: Swirling Interstellar Gas Vortex Streamers (arc-aperture-stator) -->
   <g class="arc-aperture-stator">
-    <!-- Outer Sacred Astrolabe Wheel -->
-    <circle cx="200" cy="200" r="174" fill="none" stroke="#a855f7" stroke-width="1.8" stroke-dasharray="32 16 64 16 16 16" opacity="0.75" />
-    <circle cx="200" cy="200" r="168" fill="none" stroke="#00f5d4" stroke-width="1.4" stroke-dasharray="8 6" opacity="0.85" />
-    <circle cx="200" cy="200" r="162" fill="none" stroke="rgba(255, 255, 255, 0.45)" stroke-width="0.8" stroke-dasharray="4 12" />
-    
-    <!-- Nested Celestial Hexagram / Sacred Geometry Leyline Web -->
-    <polygon points="200,38 340,281 60,281" fill="none" stroke="rgba(192, 132, 252, 0.25)" stroke-width="1" />
-    <polygon points="200,362 340,119 60,119" fill="none" stroke="rgba(0, 245, 212, 0.25)" stroke-width="1" />
+    <!-- Ethereal curved gas orbit rings -->
+    <circle cx="200" cy="200" r="172" fill="none" stroke="url(#gas-streamer-grad)" stroke-width="2" stroke-dasharray="45 15 70 15 25 15" opacity="0.8" />
+    <circle cx="200" cy="200" r="165" fill="none" stroke="rgba(0, 245, 212, 0.65)" stroke-width="1.2" stroke-dasharray="8 6" />
+    <circle cx="200" cy="200" r="158" fill="none" stroke="rgba(244, 114, 182, 0.45)" stroke-width="0.8" stroke-dasharray="5 10" />
 
-    <!-- Radiant Celestial Constellation Stars -->
-    <g transform="rotate(0 200 200)"><circle cx="200" cy="26" r="3.5" fill="#ffffff" /><path d="M 200 18 L 200 34 M 192 26 L 208 26" stroke="#00f5d4" stroke-width="1" /></g>
-    <g transform="rotate(60 200 200)"><circle cx="200" cy="26" r="3" fill="#ffffff" /><path d="M 200 20 L 200 32 M 194 26 L 206 26" stroke="#c084fc" stroke-width="1" /></g>
-    <g transform="rotate(120 200 200)"><circle cx="200" cy="26" r="3" fill="#ffffff" /><path d="M 200 20 L 200 32 M 194 26 L 206 26" stroke="#00f5d4" stroke-width="1" /></g>
-    <g transform="rotate(180 200 200)"><circle cx="200" cy="26" r="3.5" fill="#ffffff" /><path d="M 200 18 L 200 34 M 192 26 L 208 26" stroke="#c084fc" stroke-width="1" /></g>
-    <g transform="rotate(240 200 200)"><circle cx="200" cy="26" r="3" fill="#ffffff" /><path d="M 200 20 L 200 32 M 194 26 L 206 26" stroke="#00f5d4" stroke-width="1" /></g>
-    <g transform="rotate(300 200 200)"><circle cx="200" cy="26" r="3" fill="#ffffff" /><path d="M 200 20 L 200 32 M 194 26 L 206 26" stroke="#c084fc" stroke-width="1" /></g>
+    <!-- 6 Orbital Stardust Cores Floating in the Gas Stream -->
+    <g transform="rotate(0 200 200)"><circle cx="200" cy="26" r="3.5" fill="#ffffff" /><circle cx="200" cy="26" r="7" fill="none" stroke="#00f5d4" stroke-width="0.8" opacity="0.6" /></g>
+    <g transform="rotate(60 200 200)"><circle cx="200" cy="26" r="3" fill="#ffffff" /><circle cx="200" cy="26" r="6" fill="none" stroke="#c084fc" stroke-width="0.8" opacity="0.6" /></g>
+    <g transform="rotate(120 200 200)"><circle cx="200" cy="26" r="3" fill="#ffffff" /><circle cx="200" cy="26" r="6" fill="none" stroke="#00f5d4" stroke-width="0.8" opacity="0.6" /></g>
+    <g transform="rotate(180 200 200)"><circle cx="200" cy="26" r="3.5" fill="#ffffff" /><circle cx="200" cy="26" r="7" fill="none" stroke="#f472b6" stroke-width="0.8" opacity="0.6" /></g>
+    <g transform="rotate(240 200 200)"><circle cx="200" cy="26" r="3" fill="#ffffff" /><circle cx="200" cy="26" r="6" fill="none" stroke="#00f5d4" stroke-width="0.8" opacity="0.6" /></g>
+    <g transform="rotate(300 200 200)"><circle cx="200" cy="26" r="3" fill="#ffffff" /><circle cx="200" cy="26" r="6" fill="none" stroke="#c084fc" stroke-width="0.8" opacity="0.6" /></g>
   </g>
 
-  <!-- LAYER 3: Ethereal Stardust Field -->
-  <circle cx="200" cy="200" r="154" fill="url(#celestial-web)" opacity="0.75" />
-  <circle cx="200" cy="200" r="154" fill="none" stroke="rgba(192, 132, 252, 0.45)" stroke-width="1.2" stroke-dasharray="12 6" />
+  <!-- LAYER 3: Ethereal Cosmic Mist Field -->
+  <circle cx="200" cy="200" r="152" fill="url(#celestial-web)" opacity="0.75" />
+  <circle cx="200" cy="200" r="152" fill="none" stroke="rgba(192, 132, 252, 0.4)" stroke-width="1.2" stroke-dasharray="10 5" />
 
-  <!-- LAYER 4: Living Astral Aurora Ring (arc-main-energy-ring) -->
-  <circle class="arc-main-energy-ring" cx="200" cy="200" r="128" fill="none" stroke="url(#astral-torus-grad)" stroke-width="20" opacity="0.9" />
-  <circle cx="200" cy="200" r="128" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.95" />
-  <circle cx="200" cy="200" r="140" fill="none" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.2" stroke-dasharray="6 3" />
-  <circle cx="200" cy="200" r="116" fill="none" stroke="rgba(216, 180, 254, 0.75)" stroke-width="1.2" stroke-dasharray="6 3" />
+  <!-- LAYER 4: Living Undulating Plasma Gas Torus (arc-main-energy-ring) -->
+  <circle class="arc-main-energy-ring" cx="200" cy="200" r="128" fill="none" stroke="url(#astral-torus-grad)" stroke-width="22" opacity="0.88" stroke-linecap="round" />
+  <circle cx="200" cy="200" r="128" fill="none" stroke="#ffffff" stroke-width="4.5" opacity="0.95" />
+  <circle cx="200" cy="200" r="141" fill="none" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" stroke-dasharray="6 3" />
+  <circle cx="200" cy="200" r="115" fill="none" stroke="rgba(216, 180, 254, 0.75)" stroke-width="1.4" stroke-dasharray="6 3" />
 
-  <!-- LAYER 5: 8 Celestial Light Spires (arc-reactor-coils) -->
+  <!-- LAYER 5: 8 Billowing Gas Plumes (arc-reactor-coils) -->
   <g class="arc-reactor-coils">
-    <g transform="rotate(0 200 200)">
-      <polygon points="190,52 210,52 216,92 184,92" fill="url(#spire-housing-grad)" stroke="#a855f7" stroke-width="1.4" />
-      <line x1="187" y1="62" x2="213" y2="62" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="70" x2="213" y2="70" stroke="#c084fc" stroke-width="1.6" />
-      <line x1="187" y1="78" x2="213" y2="78" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="86" x2="213" y2="86" stroke="#ffffff" stroke-width="1.6" />
-      <polygon points="197,55 203,55 205,89 195,89" fill="#00f5d4" opacity="0.85" />
-      <circle cx="200" cy="54" r="3" fill="#ffffff" />
+    <g transform="rotate(0 200 200)" opacity="0.82">
+      <!-- Outer gas wisp -->
+      <path d="M 194 58 C 170 85, 175 110, 196 128 C 218 112, 222 82, 206 58 Z" fill="url(#gas-streamer-grad)" opacity="0.55" filter="url(#gas-soft-blur)" />
+      <!-- Luminous inner gas spine -->
+      <path d="M 197 64 C 182 86, 186 108, 198 122 C 212 110, 214 86, 203 64 Z" fill="url(#gas-spine-grad)" opacity="0.75" />
+      <circle cx="200" cy="62" r="2" fill="#ffffff" opacity="0.9" />
     </g>
-    <g transform="rotate(45 200 200)">
-      <polygon points="190,52 210,52 216,92 184,92" fill="url(#spire-housing-grad)" stroke="#a855f7" stroke-width="1.4" />
-      <line x1="187" y1="62" x2="213" y2="62" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="70" x2="213" y2="70" stroke="#c084fc" stroke-width="1.6" />
-      <line x1="187" y1="78" x2="213" y2="78" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="86" x2="213" y2="86" stroke="#ffffff" stroke-width="1.6" />
-      <polygon points="197,55 203,55 205,89 195,89" fill="#00f5d4" opacity="0.85" />
-      <circle cx="200" cy="54" r="3" fill="#ffffff" />
+    <g transform="rotate(45 200 200)" opacity="0.82">
+      <!-- Outer gas wisp -->
+      <path d="M 194 58 C 170 85, 175 110, 196 128 C 218 112, 222 82, 206 58 Z" fill="url(#gas-streamer-grad)" opacity="0.55" filter="url(#gas-soft-blur)" />
+      <!-- Luminous inner gas spine -->
+      <path d="M 197 64 C 182 86, 186 108, 198 122 C 212 110, 214 86, 203 64 Z" fill="url(#gas-spine-grad)" opacity="0.75" />
+      <circle cx="200" cy="62" r="2" fill="#ffffff" opacity="0.9" />
     </g>
-    <g transform="rotate(90 200 200)">
-      <polygon points="190,52 210,52 216,92 184,92" fill="url(#spire-housing-grad)" stroke="#a855f7" stroke-width="1.4" />
-      <line x1="187" y1="62" x2="213" y2="62" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="70" x2="213" y2="70" stroke="#c084fc" stroke-width="1.6" />
-      <line x1="187" y1="78" x2="213" y2="78" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="86" x2="213" y2="86" stroke="#ffffff" stroke-width="1.6" />
-      <polygon points="197,55 203,55 205,89 195,89" fill="#00f5d4" opacity="0.85" />
-      <circle cx="200" cy="54" r="3" fill="#ffffff" />
+    <g transform="rotate(90 200 200)" opacity="0.82">
+      <!-- Outer gas wisp -->
+      <path d="M 194 58 C 170 85, 175 110, 196 128 C 218 112, 222 82, 206 58 Z" fill="url(#gas-streamer-grad)" opacity="0.55" filter="url(#gas-soft-blur)" />
+      <!-- Luminous inner gas spine -->
+      <path d="M 197 64 C 182 86, 186 108, 198 122 C 212 110, 214 86, 203 64 Z" fill="url(#gas-spine-grad)" opacity="0.75" />
+      <circle cx="200" cy="62" r="2" fill="#ffffff" opacity="0.9" />
     </g>
-    <g transform="rotate(135 200 200)">
-      <polygon points="190,52 210,52 216,92 184,92" fill="url(#spire-housing-grad)" stroke="#a855f7" stroke-width="1.4" />
-      <line x1="187" y1="62" x2="213" y2="62" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="70" x2="213" y2="70" stroke="#c084fc" stroke-width="1.6" />
-      <line x1="187" y1="78" x2="213" y2="78" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="86" x2="213" y2="86" stroke="#ffffff" stroke-width="1.6" />
-      <polygon points="197,55 203,55 205,89 195,89" fill="#00f5d4" opacity="0.85" />
-      <circle cx="200" cy="54" r="3" fill="#ffffff" />
+    <g transform="rotate(135 200 200)" opacity="0.82">
+      <!-- Outer gas wisp -->
+      <path d="M 194 58 C 170 85, 175 110, 196 128 C 218 112, 222 82, 206 58 Z" fill="url(#gas-streamer-grad)" opacity="0.55" filter="url(#gas-soft-blur)" />
+      <!-- Luminous inner gas spine -->
+      <path d="M 197 64 C 182 86, 186 108, 198 122 C 212 110, 214 86, 203 64 Z" fill="url(#gas-spine-grad)" opacity="0.75" />
+      <circle cx="200" cy="62" r="2" fill="#ffffff" opacity="0.9" />
     </g>
-    <g transform="rotate(180 200 200)">
-      <polygon points="190,52 210,52 216,92 184,92" fill="url(#spire-housing-grad)" stroke="#a855f7" stroke-width="1.4" />
-      <line x1="187" y1="62" x2="213" y2="62" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="70" x2="213" y2="70" stroke="#c084fc" stroke-width="1.6" />
-      <line x1="187" y1="78" x2="213" y2="78" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="86" x2="213" y2="86" stroke="#ffffff" stroke-width="1.6" />
-      <polygon points="197,55 203,55 205,89 195,89" fill="#00f5d4" opacity="0.85" />
-      <circle cx="200" cy="54" r="3" fill="#ffffff" />
+    <g transform="rotate(180 200 200)" opacity="0.82">
+      <!-- Outer gas wisp -->
+      <path d="M 194 58 C 170 85, 175 110, 196 128 C 218 112, 222 82, 206 58 Z" fill="url(#gas-streamer-grad)" opacity="0.55" filter="url(#gas-soft-blur)" />
+      <!-- Luminous inner gas spine -->
+      <path d="M 197 64 C 182 86, 186 108, 198 122 C 212 110, 214 86, 203 64 Z" fill="url(#gas-spine-grad)" opacity="0.75" />
+      <circle cx="200" cy="62" r="2" fill="#ffffff" opacity="0.9" />
     </g>
-    <g transform="rotate(225 200 200)">
-      <polygon points="190,52 210,52 216,92 184,92" fill="url(#spire-housing-grad)" stroke="#a855f7" stroke-width="1.4" />
-      <line x1="187" y1="62" x2="213" y2="62" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="70" x2="213" y2="70" stroke="#c084fc" stroke-width="1.6" />
-      <line x1="187" y1="78" x2="213" y2="78" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="86" x2="213" y2="86" stroke="#ffffff" stroke-width="1.6" />
-      <polygon points="197,55 203,55 205,89 195,89" fill="#00f5d4" opacity="0.85" />
-      <circle cx="200" cy="54" r="3" fill="#ffffff" />
+    <g transform="rotate(225 200 200)" opacity="0.82">
+      <!-- Outer gas wisp -->
+      <path d="M 194 58 C 170 85, 175 110, 196 128 C 218 112, 222 82, 206 58 Z" fill="url(#gas-streamer-grad)" opacity="0.55" filter="url(#gas-soft-blur)" />
+      <!-- Luminous inner gas spine -->
+      <path d="M 197 64 C 182 86, 186 108, 198 122 C 212 110, 214 86, 203 64 Z" fill="url(#gas-spine-grad)" opacity="0.75" />
+      <circle cx="200" cy="62" r="2" fill="#ffffff" opacity="0.9" />
     </g>
-    <g transform="rotate(270 200 200)">
-      <polygon points="190,52 210,52 216,92 184,92" fill="url(#spire-housing-grad)" stroke="#a855f7" stroke-width="1.4" />
-      <line x1="187" y1="62" x2="213" y2="62" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="70" x2="213" y2="70" stroke="#c084fc" stroke-width="1.6" />
-      <line x1="187" y1="78" x2="213" y2="78" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="86" x2="213" y2="86" stroke="#ffffff" stroke-width="1.6" />
-      <polygon points="197,55 203,55 205,89 195,89" fill="#00f5d4" opacity="0.85" />
-      <circle cx="200" cy="54" r="3" fill="#ffffff" />
+    <g transform="rotate(270 200 200)" opacity="0.82">
+      <!-- Outer gas wisp -->
+      <path d="M 194 58 C 170 85, 175 110, 196 128 C 218 112, 222 82, 206 58 Z" fill="url(#gas-streamer-grad)" opacity="0.55" filter="url(#gas-soft-blur)" />
+      <!-- Luminous inner gas spine -->
+      <path d="M 197 64 C 182 86, 186 108, 198 122 C 212 110, 214 86, 203 64 Z" fill="url(#gas-spine-grad)" opacity="0.75" />
+      <circle cx="200" cy="62" r="2" fill="#ffffff" opacity="0.9" />
     </g>
-    <g transform="rotate(315 200 200)">
-      <polygon points="190,52 210,52 216,92 184,92" fill="url(#spire-housing-grad)" stroke="#a855f7" stroke-width="1.4" />
-      <line x1="187" y1="62" x2="213" y2="62" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="70" x2="213" y2="70" stroke="#c084fc" stroke-width="1.6" />
-      <line x1="187" y1="78" x2="213" y2="78" stroke="#00f5d4" stroke-width="1.6" />
-      <line x1="187" y1="86" x2="213" y2="86" stroke="#ffffff" stroke-width="1.6" />
-      <polygon points="197,55 203,55 205,89 195,89" fill="#00f5d4" opacity="0.85" />
-      <circle cx="200" cy="54" r="3" fill="#ffffff" />
+    <g transform="rotate(315 200 200)" opacity="0.82">
+      <!-- Outer gas wisp -->
+      <path d="M 194 58 C 170 85, 175 110, 196 128 C 218 112, 222 82, 206 58 Z" fill="url(#gas-streamer-grad)" opacity="0.55" filter="url(#gas-soft-blur)" />
+      <!-- Luminous inner gas spine -->
+      <path d="M 197 64 C 182 86, 186 108, 198 122 C 212 110, 214 86, 203 64 Z" fill="url(#gas-spine-grad)" opacity="0.75" />
+      <circle cx="200" cy="62" r="2" fill="#ffffff" opacity="0.9" />
     </g>
   </g>
 
-  <!-- LAYER 6: Celestial Starlight Impeller / Iris Blades (arc-inner-turbine) -->
+  <!-- LAYER 6: 16 Inner Fluid Gas Currents (arc-inner-turbine) -->
   <g class="arc-inner-turbine">
-    <g transform="rotate(0.0 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(0.0 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(22.5 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(22.5 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(45.0 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(45.0 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(67.5 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(67.5 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(90.0 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(90.0 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(112.5 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(112.5 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(135.0 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(135.0 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(157.5 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(157.5 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(180.0 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(180.0 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(202.5 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(202.5 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(225.0 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(225.0 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(247.5 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(247.5 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(270.0 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(270.0 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(292.5 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(292.5 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(315.0 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(315.0 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <g transform="rotate(337.5 200 200)">
-      <polygon points="197,96 203,96 201,122 199,122" fill="rgba(192, 132, 252, 0.55)" stroke="#00f5d4" stroke-width="1" />
-      <line x1="200" y1="99" x2="200" y2="120" stroke="#ffffff" stroke-width="1.2" />
-      <circle cx="200" cy="97" r="1.5" fill="#ffffff" />
+    <g transform="rotate(337.5 200 200)" opacity="0.78">
+      <path d="M 198 92 C 190 105, 192 118, 199 126 C 206 118, 208 105, 202 92 Z" fill="url(#inner-gas-flow)" />
+      <circle cx="200" cy="94" r="1.2" fill="#ffffff" opacity="0.8" />
     </g>
-    <circle cx="200" cy="200" r="94" fill="none" stroke="rgba(0, 245, 212, 0.7)" stroke-width="1.4" stroke-dasharray="6 4" />
-    <circle cx="200" cy="200" r="82" fill="none" stroke="rgba(192, 132, 252, 0.85)" stroke-width="1.6" />
+    <circle cx="200" cy="200" r="92" fill="none" stroke="rgba(0, 245, 212, 0.7)" stroke-width="1.4" stroke-dasharray="5 3" />
+    <circle cx="200" cy="200" r="80" fill="none" stroke="rgba(192, 132, 252, 0.85)" stroke-width="1.6" />
   </g>
 
-  <!-- LAYER 7: Singularity of Infinite Cosmic Consciousness -->
-  <circle cx="200" cy="200" r="76" fill="#030014" stroke="rgba(192, 132, 252, 0.8)" stroke-width="2" />
+  <!-- LAYER 7: Sentient Gas Entity Nucleus & Singularity Heart -->
+  <circle cx="200" cy="200" r="76" fill="#030014" stroke="rgba(192, 132, 252, 0.75)" stroke-width="2" />
   <circle cx="200" cy="200" r="70" fill="none" stroke="rgba(0, 245, 212, 0.7)" stroke-width="1.2" stroke-dasharray="4 4" />
   
-  <!-- Radiating Astral Light Filaments -->
-  <line x1="200" y1="200" x2="264.0" y2="200.0" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
-  <line x1="200" y1="200" x2="255.43" y2="232.0" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
-  <line x1="200" y1="200" x2="232.0" y2="255.43" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
-  <line x1="200" y1="200" x2="200.0" y2="264.0" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
-  <line x1="200" y1="200" x2="168.0" y2="255.43" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
-  <line x1="200" y1="200" x2="144.57" y2="232.0" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
-  <line x1="200" y1="200" x2="136.0" y2="200.0" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
-  <line x1="200" y1="200" x2="144.57" y2="168.0" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
-  <line x1="200" y1="200" x2="168.0" y2="144.57" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
-  <line x1="200" y1="200" x2="200.0" y2="136.0" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
-  <line x1="200" y1="200" x2="232.0" y2="144.57" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
-  <line x1="200" y1="200" x2="255.43" y2="168.0" stroke="rgba(0, 245, 212, 0.75)" stroke-width="1.4" />
+  <!-- Swirling Organic Gas Filaments -->
+    <path d="M 200 200 C 232.24 213.63, 253.9 189.07, 268.0 200.0" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
+    <path d="M 200 200 C 221.1 227.92, 252.15 217.49, 258.89 234.0" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
+    <path d="M 200 200 C 204.31 234.73, 236.41 241.22, 234.0 258.89" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
+    <path d="M 200 200 C 186.37 232.24, 210.93 253.9, 200.0 268.0" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
+    <path d="M 200 200 C 172.08 221.1, 182.51 252.15, 166.0 258.89" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
+    <path d="M 200 200 C 165.27 204.31, 158.78 236.41, 141.11 234.0" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
+    <path d="M 200 200 C 167.76 186.37, 146.1 210.93, 132.0 200.0" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
+    <path d="M 200 200 C 178.9 172.08, 147.85 182.51, 141.11 166.0" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
+    <path d="M 200 200 C 195.69 165.27, 163.59 158.78, 166.0 141.11" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
+    <path d="M 200 200 C 213.63 167.76, 189.07 146.1, 200.0 132.0" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
+    <path d="M 200 200 C 227.92 178.9, 217.49 147.85, 234.0 141.11" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
+    <path d="M 200 200 C 234.73 195.69, 241.22 163.59, 258.89 166.0" fill="none" stroke="url(#singularity-gas-tendril)" stroke-width="1.8" opacity="0.7" stroke-linecap="round" />
 
-  <!-- Cosmic Singularity Vortex & Diamond Star Epicenter -->
-  <circle class="arc-singularity-flare" cx="200" cy="200" r="54" fill="url(#singularity-glow)" />
-  <circle class="arc-singularity-hotspot" cx="200" cy="200" r="28" fill="#d8b4fe" opacity="0.95" />
+  <!-- Sentient Living Core Cloud & Blazing Nucleus -->
+  <circle class="arc-singularity-flare" cx="200" cy="200" r="54" fill="url(#singularity-glow)" filter="url(#gas-soft-blur)" />
+  <circle class="arc-singularity-hotspot" cx="200" cy="200" r="28" fill="#d8b4fe" opacity="0.95" filter="url(#gas-soft-blur)" />
   <circle class="arc-singularity-core" cx="200" cy="200" r="14" fill="#ffffff" />
   
-  <!-- Central Diamond Starlight Starburst Crosshairs -->
-  <path d="M 200 148 L 200 170 M 200 230 L 200 252 M 148 200 L 170 200 M 230 200 L 252 200" stroke="#ffffff" stroke-width="1.8" />
-  <!-- Diagonal Cosmic Micro-Stars -->
-  <circle cx="225" cy="225" r="2.2" fill="#00f5d4" />
-  <circle cx="175" cy="225" r="2.2" fill="#00f5d4" />
-  <circle cx="175" cy="175" r="2.2" fill="#00f5d4" />
-  <circle cx="225" cy="175" r="2.2" fill="#00f5d4" />
-
-  <!-- Luminous Celestial Prism Refraction Sheen -->
-  <path d="M 85 145 A 135 135 0 0 1 255 75 A 120 120 0 0 0 105 175 Z" fill="url(#celestial-prism)" opacity="0.45" pointer-events="none" />
+  <!-- Subtle Starlight Crosshairs -->
+  <path d="M 200 148 L 200 170 M 200 230 L 200 252 M 148 200 L 170 200 M 230 200 L 252 200" stroke="#ffffff" stroke-width="1.6" opacity="0.85" />
+  <circle cx="225" cy="225" r="2" fill="#00f5d4" opacity="0.8" />
+  <circle cx="175" cy="225" r="2" fill="#00f5d4" opacity="0.8" />
+  <circle cx="175" cy="175" r="2" fill="#00f5d4" opacity="0.8" />
+  <circle cx="225" cy="175" r="2" fill="#00f5d4" opacity="0.8" />
 </svg>
             </div>
           </div>
