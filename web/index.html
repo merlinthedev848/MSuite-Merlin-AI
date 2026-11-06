@@ -92,18 +92,17 @@
             </defs>
           </svg>
           <span class="brand-name">Merlin</span>
-          <span class="offline-tag">LOCAL</span>
         </div>
       </div>
 
       <div class="navbar-center">
-        <span class="wake-word-pill active" id="wake-word-pill" onclick="toggleMerlinVoice()" title="Hands-Free Wake Word ('Merlin') Active — Zero Button Press Required">
+        <span class="wake-word-pill active" id="wake-word-pill" onclick="toggleMerlinVoice()">
           <span class="wake-dot"></span>
-          <span id="wake-pill-label">Wake Word: Merlin (Always Listening)</span>
+          <span id="wake-pill-label">Wake Word: Merlin</span>
         </span>
-        <span class="engine-status-pill admin-only-inline" onclick="openModal('settings-modal')" style="cursor:pointer;" title="Click to inspect engine, switch models, or view hardware telemetry">
+        <span class="engine-status-pill admin-only-inline" onclick="openModal('settings-modal')" style="cursor:pointer;">
           <span class="status-dot" id="navbar-status-dot"></span>
-          <span id="navbar-engine-label">Auto-Engine Active</span>
+          <span id="navbar-engine-label">Engine</span>
         </span>
       </div>
 
@@ -297,7 +296,6 @@
             <!-- Holographic Central AI Core Hub (Image 2) -->
             <div class="core-center-hub" id="core-center-hub">
               <div class="core-ai-text" id="core-ai-text">AI</div>
-              <div class="core-ai-subtext" id="core-ai-subtext">MERLIN</div>
             </div>
           </div>
 
@@ -426,9 +424,6 @@
 
       <!-- Knowledge Gaps Tab -->
       <div id="memory-tab-gaps">
-        <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:10px;">
-          Record questions or concepts Merlin struggled with while offline. Next time you run <b>Teacher Distillation</b>, Merlin will interview the Teacher AI to resolve every pending gap.
-        </p>
         <div class="form-group">
           <input type="text" class="form-input" id="new-gap-question" placeholder="Question or topic to learn (e.g. Lock-free ring buffer in C11)..." style="margin-bottom:8px;">
           <div class="inline-form-row">
@@ -489,7 +484,7 @@
             <span class="auto-badge-icon">⚡</span>
             <span id="active-model-display" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Auto-Detected Model</span>
           </div>
-          <span class="auto-badge-tag" id="active-backend-tag">AUTO-OPTIMIZED</span>
+          <span class="auto-badge-tag" id="active-backend-tag" style="display:none;"></span>
         </div>
         <div class="inline-form-row" style="margin-top:8px;" id="model-switcher-row">
           <select class="form-select" id="local-model-select">
@@ -497,16 +492,12 @@
           </select>
           <button class="btn-secondary" onclick="switchLocalModel()" style="flex-shrink:0;">Activate Model</button>
         </div>
-        <p style="font-size:0.75rem; color:var(--text-muted); margin-top:6px;">
-          Merlin dynamically tunes generation parameters and routes technical tasks to the best offline model automatically.
-        </p>
       </div>
 
       <div class="sidebar-section-title" style="padding-left:0;">Audio &amp; Voice Settings</div>
       <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-bottom:10px; background:var(--bg-app); border:1px solid var(--border-subtle); border-radius:10px;">
         <div>
           <div style="font-size:0.86rem; font-weight:600; color:var(--text-main);">Wake Word Audio Chime</div>
-          <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Play synthetic audio blip when listening or wake word is recognized (Default: Off)</div>
         </div>
         <label class="toggle-switch">
           <input type="checkbox" id="setting-sound-chimes" onchange="toggleSoundChimes(this.checked)">
@@ -519,7 +510,6 @@
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
           <div>
             <div style="font-size:0.86rem; font-weight:600; color:var(--text-main);">Voice Persona &amp; Tone</div>
-            <div style="font-size:0.75rem; color:var(--text-muted);">Baritone cadence and pitch tuning</div>
           </div>
           <select class="form-select" id="setting-voice-style" onchange="changeVoiceStyle(this.value)" style="width:240px; font-size:0.82rem; padding:6px 10px;">
             <option value="freeman">Morgan Freeman (Deep Baritone Narrator)</option>
@@ -531,7 +521,6 @@
         <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding-top:10px; border-top:1px solid var(--border-subtle);">
           <div>
             <div style="font-size:0.86rem; font-weight:600; color:var(--text-main);">Synthesizer Voice Engine</div>
-            <div style="font-size:0.75rem; color:var(--text-muted);">Male voice device preference</div>
           </div>
           <select class="form-select" id="setting-voice-device" onchange="changeVoiceDevice(this.value)" style="width:240px; font-size:0.82rem; padding:6px 10px;">
             <option value="">Auto-Select Deep Male Voice</option>
@@ -551,14 +540,6 @@
         <div class="stat-tile"><span>Platform / Arch</span><b id="diag-os">-</b></div>
         <div class="stat-tile"><span>System Uptime</span><b id="diag-uptime">-</b></div>
       </div>
-
-      <div class="sidebar-section-title" style="padding-left:0;">OpenAI-Compatible REST API</div>
-      <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:8px;">
-        Drop-in local endpoint for VS Code (Continue.dev), Cursor, Neovim, or scripts:
-      </p>
-      <pre style="font-size:0.74rem; border-radius:8px; margin-bottom:14px;"><code>POST http://localhost:5000/v1/chat/completions
-Content-Type: application/json
-{ "model": "merlin-ai", "messages": [{"role":"user","content":"Hello"}] }</code></pre>
 
       <details style="margin-bottom:16px;">
         <summary style="cursor:pointer;font-size:0.8rem;font-weight:600;color:var(--text-muted);">System Audit Log (Recent Events)</summary>
@@ -584,9 +565,6 @@ Content-Type: application/json
         <h2>Teacher Distillation Engine</h2>
         <button class="icon-btn" onclick="closeModal('sync-modal')">✕</button>
       </div>
-      <p style="font-size:0.84rem; color:var(--text-muted); margin-bottom:14px;">
-        Interview an external Teacher AI (Google Gemini, Groq, OpenRouter, OpenAI) to resolve pending knowledge gaps and permanently index validated code lessons into local SQLite memory.
-      </p>
 
       <div class="form-group">
         <label>Teacher Provider &amp; Model</label>
@@ -612,7 +590,7 @@ Content-Type: application/json
       </div>
 
       <div class="form-group">
-        <label>Optional Topic to Distill Immediately (or leave blank to resolve pending gaps)</label>
+        <label>Topic to Distill (Optional)</label>
         <input type="text" class="form-input" id="teacher-topic" placeholder="E.g. Lock-free ring buffer in C">
       </div>
 
@@ -637,9 +615,6 @@ Content-Type: application/json
         <h2>🤗 Hugging Face Dataset Ingestion</h2>
         <button class="icon-btn" onclick="closeModal('dataset-modal')">✕</button>
       </div>
-      <p style="font-size:0.84rem; color:var(--text-muted); margin-bottom:14px;">
-        Stream and assimilate curated coding, Personal Assistant, and summarization datasets into your local SQLite knowledge base and offline disk cache.
-      </p>
 
       <div class="form-group">
         <label>Select Curated Dataset</label>
@@ -659,18 +634,18 @@ Content-Type: application/json
       </div>
 
       <div class="form-group">
-        <label>Sample Limit per Dataset (0 = Unlimited / Full Dataset, or enter any number)</label>
+        <label>Sample Limit (0 = Unlimited)</label>
         <input type="number" class="form-input" id="hf-limit" value="0" min="0" step="100">
       </div>
 
       <div class="form-group">
-        <label>Optional Hugging Face Access Token (for gated datasets)</label>
+        <label>Hugging Face Access Token (Optional)</label>
         <input type="password" class="form-input" id="hf-token" placeholder="hf_... (optional)">
       </div>
 
       <div class="form-group" style="display:flex;align-items:center;gap:8px;">
         <input type="checkbox" id="hf-save-local" checked>
-        <label for="hf-save-local" style="margin:0;cursor:pointer;">Save dataset copy to local disk (<code>data/datasets/</code>) for 100% offline reload</label>
+        <label for="hf-save-local" style="margin:0;cursor:pointer;">Save copy to local disk</label>
       </div>
 
       <div id="dataset-progress-box" class="progress-status-box" style="display:none;">
@@ -696,19 +671,10 @@ Content-Type: application/json
           <div>
             <h2 style="margin:0;font-size:1.15rem;display:flex;align-items:center;gap:8px;">
               Gemini 4 Argon
-              <span class="argon-badge">FRONTIER REASONING</span>
             </h2>
-            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">Controllable Thinking Budgets &amp; Cognitive Offline Distillation</div>
           </div>
         </div>
         <button class="icon-btn" onclick="closeModal('argon-modal')">✕</button>
-      </div>
-
-      <div class="argon-intro-banner">
-        <span>⚡</span>
-        <div style="font-size:0.8rem;line-height:1.45;">
-          Directly consult <b>Gemini 4 Argon</b> for complex system architecture, deep root-cause debugging, or algorithm proofs with controllable thinking budgets. Assimilate proven solutions into Merlin's offline SQLite memory with one click.
-        </div>
       </div>
 
       <!-- Argon Configuration Row -->
@@ -838,9 +804,6 @@ Content-Type: application/json
         <h2>📅 Calendar &amp; Appointment Scheduling</h2>
         <button class="icon-btn" onclick="closeModal('calendar-modal')">✕</button>
       </div>
-      <p style="font-size:0.84rem; color:var(--text-muted); margin-bottom:14px;">
-        Manage bookings, check slot availability, and review automated appointments scheduled by Merlin over VoIP phone calls or chat.
-      </p>
 
       <!-- Quick Slot Availability Checker -->
       <div class="hardware-card" style="margin-bottom:16px;">
@@ -904,21 +867,16 @@ Content-Type: application/json
         <h2>📞 Telephony &amp; VoIP Audio Gateway</h2>
         <button class="icon-btn" onclick="closeModal('telephony-modal')">✕</button>
       </div>
-      <p style="font-size:0.84rem; color:var(--text-muted); margin-bottom:14px;">
-        PBX integration bridge for Asterisk (res_audiosocket), FreePBX, and FreeSWITCH. Real-time audio streaming, speech recognition, and automated reception.
-      </p>
 
       <!-- Gateway Status Cards -->
       <div class="hardware-grid" style="margin-bottom:16px;">
         <div class="hardware-card">
           <div class="hardware-card-label">PBX Gateway Stream</div>
           <div class="hardware-card-value" style="font-size:0.92rem;color:var(--accent-color);">/ws/telephony/stream</div>
-          <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">16-bit linear PCM / µ-law AudioSocket</div>
         </div>
         <div class="hardware-card">
           <div class="hardware-card-label">Dialplan Webhook</div>
           <div class="hardware-card-value" style="font-size:0.92rem;">/api/telephony/webhook</div>
-          <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">Inbound Asterisk / FreeSWITCH REST</div>
         </div>
       </div>
 
@@ -965,7 +923,7 @@ Content-Type: application/json
         <div class="hardware-card" style="margin-bottom:14px;text-align:center;padding:18px;">
           <div style="font-size:2rem;margin-bottom:6px;">👤</div>
           <div style="font-weight:700;font-size:1.05rem;" id="auth-current-username">User</div>
-          <div style="color:var(--text-muted);font-size:0.8rem;margin-top:2px;" id="auth-current-meta">Chats are securely remembered on your account</div>
+          <div id="auth-current-meta" style="display:none;"></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button class="btn-primary" onclick="claimActiveChat()" id="btn-claim-chat">💾 Save Current Chat to My Account</button>
@@ -975,10 +933,6 @@ Content-Type: application/json
 
       <!-- Logged Out / Auth View -->
       <div id="auth-form-view">
-        <p style="font-size:0.84rem; color:var(--text-muted); margin-bottom:14px;">
-          Log in or create a local account to have your conversations, memory, and personal settings remembered securely. Guests can still chat freely with the live model.
-        </p>
-
         <!-- Tabs: Login vs Register -->
         <div class="memory-tabs" style="margin-bottom:14px;">
           <button class="memory-tab-btn active" id="tab-auth-login" onclick="switchAuthTab('login')">Log In</button>

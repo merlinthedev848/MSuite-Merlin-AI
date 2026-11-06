@@ -1361,10 +1361,10 @@ function updateWakePillUI(active, customLabel = "") {
   if (!pill) return;
   if (active) {
     pill.classList.add("active");
-    if (label) label.textContent = customLabel || (isMerlinConversationActive ? "Active Dialogue (Speak freely)" : "Wake Word: Merlin (Always Listening)");
+    if (label) label.textContent = customLabel || (isMerlinConversationActive ? "Active Dialogue" : "Wake Word: Merlin");
   } else {
     pill.classList.remove("active");
-    if (label) label.textContent = customLabel || "Wake Word: Merlin (Paused)";
+    if (label) label.textContent = customLabel || "Wake Word: Paused";
   }
 }
 
@@ -1373,7 +1373,6 @@ function setMerlinHudState(state = "listening", customText = "") {
   const statusEl = document.getElementById("sentinel-status-text");
   const subEl = document.getElementById("sentinel-sub-text");
   const coreAiText = document.getElementById("core-ai-text");
-  const coreAiSub = document.getElementById("core-ai-subtext");
 
   if (eye) {
     eye.classList.remove("sentinel-listening", "sentinel-processing", "sentinel-speaking");
@@ -1382,20 +1381,8 @@ function setMerlinHudState(state = "listening", customText = "") {
     else if (state === "speaking") eye.classList.add("sentinel-speaking");
   }
 
-  if (coreAiText && coreAiSub) {
-    if (state === "listening" || state === "active_dialogue") {
-      coreAiText.textContent = "AI";
-      coreAiSub.textContent = "LISTENING";
-    } else if (state === "processing") {
-      coreAiText.textContent = "AI";
-      coreAiSub.textContent = "SYNAPSE";
-    } else if (state === "speaking") {
-      coreAiText.textContent = "AI";
-      coreAiSub.textContent = "VOICE";
-    } else {
-      coreAiText.textContent = "AI";
-      coreAiSub.textContent = "MERLIN";
-    }
+  if (coreAiText) {
+    coreAiText.textContent = "AI";
   }
 
   if (statusEl && customText) {
