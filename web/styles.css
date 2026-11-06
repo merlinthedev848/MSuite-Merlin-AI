@@ -600,43 +600,134 @@ body.hud-visual-mode .core-center-hub,
 body.jarvis-visual-mode .core-center-hub,
 body.voice-mode-active .core-center-hub,
 body:not(.text-mode-active) .core-center-hub {
-  width: clamp(100px, 14vw, 136px);
-  height: clamp(100px, 14vw, 136px);
+  width: clamp(260px, 36vw, 360px) !important;
+  height: clamp(260px, 36vw, 360px) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
-/* Authentic Stark Arc Reactor Core Optics */
+/* Authentic Cinema-Grade Stark Arc Reactor Core Optics */
 .arc-reactor-core {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
-.arc-reactor-svg {
-  width: 85%;
-  height: 85%;
-  animation: arcRotate 24s linear infinite;
-  filter: drop-shadow(0 0 14px rgba(0, 240, 255, 0.85));
+.stark-arc-reactor-svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 28px rgba(0, 240, 255, 0.75));
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: visible;
 }
 
-@keyframes arcRotate {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+/* Stator Aperture Counter-Rotation */
+.arc-aperture-stator {
+  transform-origin: 200px 200px;
+  animation: arcStatorSpin 24s linear infinite;
 }
 
-.sentinel-eye.sentinel-speaking .arc-reactor-svg {
-  animation: arcRotateSpeaking 3s linear infinite, arcPulse 1.2s ease-in-out infinite alternate;
+@keyframes arcStatorSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-@keyframes arcRotateSpeaking {
-  0% { transform: rotate(0deg) scale(1.05); }
-  100% { transform: rotate(360deg) scale(1.05); }
+/* Internal 12-Blade Collimator Turbine Spin */
+.arc-inner-turbine {
+  transform-origin: 200px 200px;
+  animation: arcTurbineSpin 9s linear infinite reverse;
 }
 
-@keyframes arcPulse {
-  0% { filter: drop-shadow(0 0 16px rgba(0, 240, 255, 0.9)); }
-  100% { filter: drop-shadow(0 0 32px rgba(0, 255, 204, 1)); }
+@keyframes arcTurbineSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Metric Perimeter Calibration Ticks */
+.arc-metric-ticks {
+  transform-origin: 200px 200px;
+  animation: arcTicksPulse 7s ease-in-out infinite alternate;
+}
+
+@keyframes arcTicksPulse {
+  0% { opacity: 0.65; transform: rotate(0deg); }
+  100% { opacity: 0.95; transform: rotate(12deg); }
+}
+
+/* Quantum Singularity Flare Dynamics */
+.arc-singularity-flare {
+  animation: arcSingularityBreathe 3s ease-in-out infinite alternate;
+}
+
+@keyframes arcSingularityBreathe {
+  0% { transform-origin: 200px 200px; transform: scale(0.92); opacity: 0.85; }
+  100% { transform-origin: 200px 200px; transform: scale(1.1); opacity: 1; }
+}
+
+.arc-main-energy-ring {
+  animation: arcPlasmaPulse 2.6s ease-in-out infinite alternate;
+}
+
+@keyframes arcPlasmaPulse {
+  0% { stroke-width: 22px; opacity: 0.85; filter: drop-shadow(0 0 16px #00f0ff); }
+  100% { stroke-width: 30px; opacity: 1; filter: drop-shadow(0 0 32px #00f0ff); }
+}
+
+/* Listening State: Energized Arc Reactor Plasma Ignition */
+.sentinel-eye.sentinel-listening .stark-arc-reactor-svg {
+  filter: drop-shadow(0 0 38px rgba(0, 240, 255, 0.95)) drop-shadow(0 0 70px rgba(0, 255, 204, 0.6));
+}
+.sentinel-eye.sentinel-listening .arc-inner-turbine {
+  animation: arcTurbineSpin 3.5s linear infinite reverse;
+}
+.sentinel-eye.sentinel-listening .arc-aperture-stator {
+  animation: arcStatorSpin 12s linear infinite;
+}
+.sentinel-eye.sentinel-listening .arc-main-energy-ring {
+  animation: arcPlasmaPulse 1.2s ease-in-out infinite alternate;
+}
+
+/* Speaking State: Harmonic Plasma Surge & Kinetic Vibration */
+.sentinel-eye.sentinel-speaking .stark-arc-reactor-svg {
+  filter: drop-shadow(0 0 48px rgba(0, 240, 255, 1)) drop-shadow(0 0 95px rgba(0, 255, 204, 0.85));
+  animation: arcSpeakingJitter 0.12s ease-in-out infinite alternate;
+}
+.sentinel-eye.sentinel-speaking .arc-inner-turbine {
+  animation: arcTurbineSpin 1.8s linear infinite reverse;
+}
+.sentinel-eye.sentinel-speaking .arc-aperture-stator {
+  animation: arcStatorSpin 6s linear infinite;
+}
+.sentinel-eye.sentinel-speaking .arc-singularity-flare {
+  animation: arcSingularitySpeaking 0.65s ease-in-out infinite alternate;
+}
+
+@keyframes arcSingularitySpeaking {
+  0% { transform-origin: 200px 200px; transform: scale(0.88); }
+  100% { transform-origin: 200px 200px; transform: scale(1.28); }
+}
+
+@keyframes arcSpeakingJitter {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.03); }
+}
+
+/* Flat CSS ring suppression in pure HUD visual mode so the 3D SVG Arc Reactor shines through */
+body.hud-visual-mode .sentinel-ring.reticle-outer,
+body.hud-visual-mode .sentinel-ring.aperture-track,
+body.hud-visual-mode .sentinel-ring.aperture-blades,
+body.hud-visual-mode .sentinel-ring.cyber-neon-arc,
+body.hud-visual-mode .sentinel-sweep.cyber-sweep,
+body:not(.text-mode-active) .sentinel-ring.reticle-outer,
+body:not(.text-mode-active) .sentinel-ring.aperture-track,
+body:not(.text-mode-active) .sentinel-ring.aperture-blades,
+body:not(.text-mode-active) .sentinel-ring.cyber-neon-arc,
+body:not(.text-mode-active) .sentinel-sweep.cyber-sweep {
+  display: none !important;
 }
 
 /* Pure Minimalist Cyber HUD: Pure focus on animation; hide all telemetry text & strips */
