@@ -11,7 +11,6 @@ let recognition = null;
 let isDictating = false;
 let isMerlinVoiceActive = true;
 let isHudVoiceActive = true;
-const isJarvisVoiceActive = true; // Backward compatibility alias
 let isRecognitionRunning = false;
 let isMerlinConversationActive = false;
 let syncPollTimer = null;
@@ -98,7 +97,7 @@ function openSidebar() {
   if (sb) {
     sb.classList.remove("collapsed");
     document.body.classList.add("sidebar-open");
-    if (backdrop && window.innerWidth <= 768) {
+    if (backdrop && (!document.body.classList.contains("text-mode-active") || window.innerWidth <= 768)) {
       backdrop.style.display = "block";
     }
   }
@@ -159,6 +158,7 @@ function openModal(id) {
   lastFocusedElement = document.activeElement;
   const m = document.getElementById(id);
   if (m) {
+    document.body.classList.add("modal-open");
     m.style.display = "flex";
     m.setAttribute("aria-hidden", "false");
     const firstFocusable = m.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
@@ -202,6 +202,7 @@ function openModal(id) {
 }
 
 function closeModal(id) {
+  document.body.classList.remove("modal-open");
   const m = document.getElementById(id);
   if (m) {
     m.style.display = "none";
@@ -803,7 +804,7 @@ async function submitMessage(fromVoice = false) {
   ta.value = "";
   clearAttachment();
   autoResizeTextarea(ta);
-  dismissJarvisHudDisplay();
+  dismissOnDemandHudDisplay();
 
   let assistantBubble;
   if (!isVoiceMode) {
@@ -813,7 +814,7 @@ async function submitMessage(fromVoice = false) {
     assistantBubble.innerHTML = '<span class="status-thinking" style="color:var(--text-muted);font-size:0.88rem;display:inline-flex;align-items:center;gap:6px;">⚡ Generating response...</span>';
     assistantBubble.classList.add("streaming-cursor");
   } else {
-    // Full Voice Mode: Pure Cyber HUD! Hide scrolling message list & all text subtitles for True Jarvis feel
+    // Full Voice Mode: Pure Cyber HUD! Hide scrolling message list & all text subtitles for true immersive Stark Arc feel
     const statusEl = document.getElementById("sentinel-status-text");
     const subEl = document.getElementById("sentinel-sub-text");
     const cap = document.getElementById("sentinel-voice-caption");
@@ -859,7 +860,7 @@ async function submitMessage(fromVoice = false) {
       activeEventSource = null;
     }
     const tokenParam = getAuthToken() ? `&token=${encodeURIComponent(getAuthToken())}` : "";
-    const activeMode = (isMerlinVoiceActive || isJarvisVoiceActive) ? "merlin" : "auto";
+    const activeMode = isMerlinVoiceActive ? "merlin" : "auto";
     const streamUrl = `/api/chat/stream?prompt=${encodeURIComponent(payloadText)}&mode=${activeMode}&session_id=${encodeURIComponent(activeConversationId)}${tokenParam}`;
     activeEventSource = new EventSource(streamUrl);
 
@@ -918,7 +919,7 @@ async function submitMessage(fromVoice = false) {
         return;
       }
       wsStarted = true;
-      const activeMode = (isMerlinVoiceActive || isJarvisVoiceActive) ? "merlin" : "auto";
+      const activeMode = isMerlinVoiceActive ? "merlin" : "auto";
       ws.send(JSON.stringify({
         prompt: payloadText,
         session_id: activeConversationId,
@@ -989,7 +990,7 @@ function stopGeneration() {
   if (window.speechSynthesis) {
     try { window.speechSynthesis.cancel(); } catch(e) {}
   }
-  if (isMerlinVoiceActive || isJarvisVoiceActive) {
+  if (isMerlinVoiceActive) {
     setMerlinHudState("idle", "INTERRUPTED // STANDBY");
   }
   if (activeWebSocket) {
@@ -1033,7 +1034,7 @@ function finishStreaming(bubbleEl, fullResponse, isVoiceMode = false) {
     }
   } else {
     // On-demand HUD display: ONLY project on screen when user asks to see code/data/lists/tables
-    const displayPanel = document.getElementById("hud-on-demand-display") || document.getElementById("jarvis-hud-display");
+    const displayPanel = document.getElementById("hud-on-demand-display");
     const ta = document.getElementById("chat-textarea");
     const lastPrompt = (ta && ta.getAttribute("data-last-prompt") ? ta.getAttribute("data-last-prompt") : "").toLowerCase();
     const hasCodeOrTable = fullResponse.includes("```") || fullResponse.includes("<table") || fullResponse.includes("|---");
@@ -1068,12 +1069,11 @@ function finishStreaming(bubbleEl, fullResponse, isVoiceMode = false) {
 }
 
 function dismissOnDemandHudDisplay() {
-  const displayPanel = document.getElementById("hud-on-demand-display") || document.getElementById("jarvis-hud-display");
+  const displayPanel = document.getElementById("hud-on-demand-display");
   if (displayPanel) {
     displayPanel.style.display = "none";
   }
 }
-const dismissJarvisHudDisplay = dismissOnDemandHudDisplay;
 
 // ==========================================================================
 // FILE ATTACHMENT & MULTIMODAL VISION/AUDIO HANDLER
@@ -1234,7 +1234,7 @@ function getVoiceStyleConfig() {
   } else if (style === "deep") {
     // Deep bass resonance
     return { pitch: 0.80, rate: 0.98 };
-  } else if (style === "transatlantic" || style === "jarvis") {
+  } else if (style === "transatlantic") {
     // British transatlantic AI
     return { pitch: 0.96, rate: 1.06 };
   }
@@ -1503,7 +1503,6 @@ function playMerlinChime(type = "wake") {
     console.debug("AudioContext chime error:", e);
   }
 }
-const playJarvisChime = playMerlinChime;
 
 function toggleSoundChimes(enabled) {
   localStorage.setItem("merlin_sound_chimes", enabled ? "true" : "false");
@@ -1583,7 +1582,6 @@ function speakMerlinText(text, onComplete) {
 
   speakNext();
 }
-const speakJarvisText = speakMerlinText;
 
 function toggleMerlinVoice(forceState) {
   const micBtn = document.getElementById("btn-mic");
@@ -1599,7 +1597,7 @@ function toggleMerlinVoice(forceState) {
     isMerlinConversationActive = false;
     isMerlinSpeaking = false;
     resetSpeechStream();
-    dismissJarvisHudDisplay();
+    dismissOnDemandHudDisplay();
     if (document.body) document.body.classList.remove("voice-mode-active");
     const list = document.getElementById("messages-list");
     if (list && list.children.length > 0) list.style.display = "flex";
@@ -1615,7 +1613,7 @@ function toggleMerlinVoice(forceState) {
       window.speechSynthesis.cancel();
     }
     if (micBtn) {
-      micBtn.classList.remove("merlin-voice-active", "jarvis-active");
+      micBtn.classList.remove("merlin-voice-active");
       micBtn.style.color = "var(--text-muted)";
     }
     updateWakePillUI(false);
@@ -1626,13 +1624,13 @@ function toggleMerlinVoice(forceState) {
 
   isMerlinVoiceActive = true;
   isMerlinSpeaking = false;
-  dismissJarvisHudDisplay();
+  dismissOnDemandHudDisplay();
   if (document.body) document.body.classList.add("voice-mode-active");
   const list = document.getElementById("messages-list");
   if (list) list.style.display = "none";
   localStorage.setItem("merlin_handsfree_wake", "true");
   if (micBtn) {
-    micBtn.classList.add("merlin-voice-active", "jarvis-active");
+    micBtn.classList.add("merlin-voice-active");
   }
   updateWakePillUI(true);
   setMerlinHudState("listening");
@@ -1640,7 +1638,6 @@ function toggleMerlinVoice(forceState) {
   showToast("Merlin Hands-Free Voice Online. Always listening.", "success");
   startMerlinListening();
 }
-const toggleJarvisVoice = toggleMerlinVoice;
 
 function startMerlinListening() {
   if (!isMerlinVoiceActive) return;
@@ -1663,7 +1660,7 @@ function startMerlinListening() {
   recognition.onstart = () => {
     isRecognitionRunning = true;
     const micBtn = document.getElementById("btn-mic");
-    if (micBtn) micBtn.classList.add("merlin-voice-active", "jarvis-active");
+    if (micBtn) micBtn.classList.add("merlin-voice-active");
     updateWakePillUI(true);
     if (!isMerlinConversationActive) {
       setMerlinHudState("listening");
@@ -1703,7 +1700,7 @@ function startMerlinListening() {
       stopGeneration();
       if (window.speechSynthesis) window.speechSynthesis.cancel();
       isMerlinSpeaking = false;
-      dismissJarvisHudDisplay();
+      dismissOnDemandHudDisplay();
       endConversationSession("Standing by, Sir.");
       return;
     }
@@ -1805,7 +1802,6 @@ function startMerlinListening() {
     isRecognitionRunning = false;
   }
 }
-const startJarvisListening = startMerlinListening;
 
 function toggleDictation() {
   toggleMerlinVoice();
@@ -1879,7 +1875,7 @@ function toggleTextChatMode() {
   const pill = document.getElementById("hud-mode-pill");
 
   if (isTextChatMode) {
-    document.body.classList.remove("hud-visual-mode", "jarvis-visual-mode");
+    document.body.classList.remove("hud-visual-mode");
     document.body.classList.remove("voice-mode-active");
     document.body.classList.add("text-mode-active");
     const list = document.getElementById("messages-list");
@@ -1890,7 +1886,7 @@ function toggleTextChatMode() {
     if (ta) setTimeout(() => ta.focus(), 100);
   } else {
     document.body.classList.remove("text-mode-active");
-    document.body.classList.add("hud-visual-mode", "jarvis-visual-mode");
+    document.body.classList.add("hud-visual-mode");
     document.body.classList.add("voice-mode-active");
     const list = document.getElementById("messages-list");
     if (list) list.style.display = "none";
@@ -1922,10 +1918,9 @@ if (document.readyState === "loading") {
   initAlwaysListeningMerlin();
 }
 
-// Mobile and desktop gesture unlockers
+// Mobile and desktop gesture unlockers (primed once, zero overhead afterwards)
 window.addEventListener("touchstart", () => unlockMobileAudioAndMic(), { passive: true, once: true });
 window.addEventListener("click", () => unlockMobileAudioAndMic(), { passive: true, once: true });
-window.addEventListener("keydown", () => unlockMobileAudioAndMic(), { passive: true, once: true });
 
 // User-gesture fallback if browser security blocks microphone until first page interaction
 const ensureListeningOnGesture = () => {
@@ -1933,37 +1928,8 @@ const ensureListeningOnGesture = () => {
     startMerlinListening();
   }
 };
-window.addEventListener("click", ensureListeningOnGesture, { passive: true });
-window.addEventListener("keydown", ensureListeningOnGesture, { passive: true });
-window.addEventListener("touchstart", ensureListeningOnGesture, { passive: true });
-
-// True Jarvis Auto-Hiding Input Dock in Voice Mode:
-// Dock stays completely hidden to leave only the central cyber core animation on screen;
-// Reveals smoothly on mousemove near bottom of viewport or keyboard input.
-let dockHideTimeout = null;
-function revealDockTemporarily() {
-  if (!document.body.classList.contains("voice-mode-active")) return;
-  document.body.classList.add("show-dock");
-  clearTimeout(dockHideTimeout);
-  dockHideTimeout = setTimeout(() => {
-    const ta = document.getElementById("chat-textarea");
-    if (document.activeElement !== ta) {
-      document.body.classList.remove("show-dock");
-    }
-  }, 4000);
-}
-
-window.addEventListener("mousemove", (e) => {
-  if (e.clientY >= window.innerHeight - 75) {
-    revealDockTemporarily();
-  }
-}, { passive: true });
-
-window.addEventListener("keydown", (e) => {
-  if (!['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
-    revealDockTemporarily();
-  }
-}, { passive: true });
+window.addEventListener("click", ensureListeningOnGesture, { passive: true, once: true });
+window.addEventListener("touchstart", ensureListeningOnGesture, { passive: true, once: true });
 
 // ==========================================================================
 // PERSONAL ASSISTANT: TO-DOS & TECHNICAL NOTES
@@ -3073,6 +3039,8 @@ async function checkAuthStatus() {
   const nameLabel = document.getElementById("user-name-label");
   const avatarIcon = document.getElementById("user-avatar-icon");
   const sidebarTitle = document.getElementById("sidebar-conv-title");
+  const sbAvatar = document.getElementById("sidebar-user-avatar");
+  const sbName = document.getElementById("sidebar-user-name");
 
   function setLoggedOutState() {
     currentUser = null;
@@ -3080,12 +3048,12 @@ async function checkAuthStatus() {
     if (badge) badge.classList.remove("logged-in");
     if (nameLabel) nameLabel.innerText = "Sign In";
     if (avatarIcon) avatarIcon.innerText = "👤";
+    if (sbAvatar) sbAvatar.innerText = "👤";
+    if (sbName) sbName.innerText = "Sign In / Register";
     if (sidebarTitle) sidebarTitle.innerText = "Guest Mode (Sign in to save)";
     const guestBadge = document.getElementById("sentinel-guest-badge");
     if (guestBadge) {
-      guestBadge.style.display = "block";
-      guestBadge.innerHTML = 'GUEST MODE (EPHEMERAL) &bull; ZERO CHATS STORED &bull; AUTONOMOUS LEARNING ACTIVE';
-      guestBadge.style.color = "#ff9100";
+      guestBadge.style.display = "none";
     }
   }
 
@@ -3101,16 +3069,21 @@ async function checkAuthStatus() {
     if (data.logged_in && data.user) {
       currentUser = data.user;
       if (badge) badge.classList.add("logged-in");
+      const displayName = currentUser.display_name || currentUser.username;
       if (currentUser.is_admin) {
         document.body.classList.add("admin-logged-in");
         if (avatarIcon) avatarIcon.innerText = "👑";
-        if (nameLabel) nameLabel.innerText = `${currentUser.display_name || currentUser.username} (Admin)`;
+        if (nameLabel) nameLabel.innerText = `${displayName} (Admin)`;
+        if (sbAvatar) sbAvatar.innerText = "👑";
+        if (sbName) sbName.innerText = `${displayName} (Admin)`;
       } else {
         document.body.classList.remove("admin-logged-in");
         if (avatarIcon) avatarIcon.innerText = "⭐";
-        if (nameLabel) nameLabel.innerText = currentUser.display_name || currentUser.username;
+        if (nameLabel) nameLabel.innerText = displayName;
+        if (sbAvatar) sbAvatar.innerText = "⭐";
+        if (sbName) sbName.innerText = displayName;
       }
-      if (sidebarTitle) sidebarTitle.innerText = `${currentUser.display_name || currentUser.username}'s Saved Chats`;
+      if (sidebarTitle) sidebarTitle.innerText = `${displayName}'s Saved Chats`;
       const guestBadge = document.getElementById("sentinel-guest-badge");
       if (guestBadge) {
         guestBadge.style.display = "none";

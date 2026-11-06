@@ -488,26 +488,61 @@ body.admin-logged-in .admin-only-inline {
 }
 
 /* ==========================================================================
-   AUTHENTIC IRON MAN J.A.R.V.I.S. FULL-PAGE HOLOGRAPHIC AI AGENT
+   AUTHENTIC STARK ARC FULL-PAGE HOLOGRAPHIC AI AGENT
    Pure Immersive Visual Canvas: 100% Animation & Voice; Zero Visual Clutter
    ========================================================================== */
 body.hud-visual-mode,
-body.jarvis-visual-mode,
 body.voice-mode-active,
 body:not(.text-mode-active) {
   background: radial-gradient(circle at center, #020d1e 0%, #010712 55%, #000308 100%) !important;
   overflow: hidden !important;
 }
 
-body.hud-visual-mode #sidebar,
-body.jarvis-visual-mode #sidebar,
-body.voice-mode-active #sidebar,
-body:not(.text-mode-active) #sidebar {
+body.hud-visual-mode #sidebar.collapsed,
+body.voice-mode-active #sidebar.collapsed,
+body:not(.text-mode-active) #sidebar.collapsed {
   display: none !important;
 }
 
+body.hud-visual-mode #sidebar:not(.collapsed),
+body.voice-mode-active #sidebar:not(.collapsed),
+body:not(.text-mode-active) #sidebar:not(.collapsed) {
+  display: flex !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  width: 320px !important;
+  max-width: 86vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  z-index: 100 !important;
+  background: rgba(8, 14, 25, 0.96) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border-right: 1px solid rgba(0, 240, 255, 0.35) !important;
+  box-shadow: 16px 0 48px rgba(0, 0, 0, 0.85), 0 0 24px rgba(0, 240, 255, 0.18) !important;
+  animation: sidebarDrawerSlide 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes sidebarDrawerSlide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+body.hud-visual-mode #sidebar-backdrop,
+body.voice-mode-active #sidebar-backdrop,
+body:not(.text-mode-active) #sidebar-backdrop {
+  z-index: 90 !important;
+}
+
+body.sidebar-open #sidebar-backdrop {
+  display: block !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
 body.hud-visual-mode .top-navbar,
-body.jarvis-visual-mode .top-navbar,
 body.voice-mode-active .top-navbar,
 body:not(.text-mode-active) .top-navbar {
   display: none !important;
@@ -515,13 +550,11 @@ body:not(.text-mode-active) .top-navbar {
 
 body.voice-mode-active #messages-list,
 body.hud-visual-mode #messages-list,
-body.jarvis-visual-mode #messages-list,
 body:not(.text-mode-active) #messages-list {
   display: none !important;
 }
 
 body.hud-visual-mode #input-dock,
-body.jarvis-visual-mode #input-dock,
 body.voice-mode-active #input-dock,
 body:not(.text-mode-active) #input-dock {
   display: none !important;
@@ -529,7 +562,6 @@ body:not(.text-mode-active) #input-dock {
 
 body.voice-mode-active #messages-viewport,
 body.hud-visual-mode #messages-viewport,
-body.jarvis-visual-mode #messages-viewport,
 body:not(.text-mode-active) #messages-viewport {
   position: fixed !important;
   inset: 0 !important;
@@ -547,7 +579,6 @@ body:not(.text-mode-active) #messages-viewport {
 }
 
 body.hud-visual-mode .sentinel-hero-container,
-body.jarvis-visual-mode .sentinel-hero-container,
 body.voice-mode-active .sentinel-hero-container,
 body:not(.text-mode-active) .sentinel-hero-container {
   width: 100vw !important;
@@ -564,7 +595,6 @@ body:not(.text-mode-active) .sentinel-hero-container {
 }
 
 body.hud-visual-mode .sentinel-frame.cyber-hud-frame,
-body.jarvis-visual-mode .sentinel-frame.cyber-hud-frame,
 body.voice-mode-active .sentinel-frame.cyber-hud-frame,
 body:not(.text-mode-active) .sentinel-frame.cyber-hud-frame {
   width: 100% !important;
@@ -579,7 +609,6 @@ body:not(.text-mode-active) .sentinel-frame.cyber-hud-frame {
 
 /* Full-Screen Scaling for Merlin HUD */
 body.hud-visual-mode .circuit-svg-bg,
-body.jarvis-visual-mode .circuit-svg-bg,
 body.voice-mode-active .circuit-svg-bg,
 body:not(.text-mode-active) .circuit-svg-bg {
   width: 100vw !important;
@@ -589,7 +618,6 @@ body:not(.text-mode-active) .circuit-svg-bg {
 }
 
 body.hud-visual-mode .sentinel-eye.cyber-ai-core,
-body.jarvis-visual-mode .sentinel-eye.cyber-ai-core,
 body.voice-mode-active .sentinel-eye.cyber-ai-core,
 body:not(.text-mode-active) .sentinel-eye.cyber-ai-core {
   width: clamp(260px, 36vw, 360px);
@@ -597,7 +625,6 @@ body:not(.text-mode-active) .sentinel-eye.cyber-ai-core {
 }
 
 body.hud-visual-mode .core-center-hub,
-body.jarvis-visual-mode .core-center-hub,
 body.voice-mode-active .core-center-hub,
 body:not(.text-mode-active) .core-center-hub {
   width: clamp(260px, 36vw, 360px) !important;
@@ -737,9 +764,6 @@ body.voice-mode-active .sentinel-voice-caption,
 body.hud-visual-mode .hud-bracket,
 body.hud-visual-mode .sentinel-hud-telemetry,
 body.hud-visual-mode .sentinel-voice-caption,
-body.jarvis-visual-mode .hud-bracket,
-body.jarvis-visual-mode .sentinel-hud-telemetry,
-body.jarvis-visual-mode .sentinel-voice-caption,
 body:not(.text-mode-active) .hud-bracket,
 body:not(.text-mode-active) .sentinel-hud-telemetry,
 body:not(.text-mode-active) #sentinel-guest-badge,
@@ -779,7 +803,7 @@ body.text-mode-active #hud-corner-settings {
   display: none !important;
 }
 
-/* JARVIS HUD Mode Toggle Pill (Floating at Bottom Center) */
+/* HUD Mode Toggle Pill (Floating at Bottom Center) */
 .hud-mode-toggle-pill {
   position: fixed;
   bottom: 26px;
@@ -866,7 +890,7 @@ body.text-mode-active #hud-corner-settings {
 
 /* Holographic On-Demand Visual HUD Panel */
 .hud-on-demand-display,
-.jarvis-hud-display {
+.hud-on-demand-display {
   display: none;
   width: 100%;
   max-width: 860px;
@@ -891,11 +915,11 @@ body.text-mode-active #hud-corner-settings {
 }
 
 .hud-on-demand-display::-webkit-scrollbar,
-.jarvis-hud-display::-webkit-scrollbar {
+.hud-on-demand-display::-webkit-scrollbar {
   width: 6px;
 }
 .hud-on-demand-display::-webkit-scrollbar-thumb,
-.jarvis-hud-display::-webkit-scrollbar-thumb {
+.hud-on-demand-display::-webkit-scrollbar-thumb {
   background: rgba(0, 240, 255, 0.35);
   border-radius: 4px;
 }
@@ -1654,7 +1678,7 @@ code { font-family: inherit; font-size: inherit; }
 
 .dock-icon-btn.merlin-voice-active,
 .dock-icon-btn.voice-active,
-.dock-icon-btn.jarvis-active {
+.dock-icon-btn.merlin-active {
   color: #00e5ff !important;
   background: rgba(0, 229, 255, 0.15) !important;
   box-shadow: 0 0 14px rgba(0, 229, 255, 0.5);
@@ -2278,7 +2302,7 @@ code { font-family: inherit; font-size: inherit; }
     flex-wrap: wrap;
   }
   .hud-on-demand-display,
-  .jarvis-hud-display {
+  .hud-on-demand-display {
     max-height: 48vh;
     padding: 12px 16px;
     margin: 10px 8px 0 8px;
@@ -2544,4 +2568,135 @@ code { font-family: inherit; font-size: inherit; }
   width: 14px;
   height: 14px;
   fill: currentColor;
+}
+
+
+/* ==========================================================================
+   MINIMAL HUD DRAWER TOGGLE & INTEGRATED SIDEBAR USER CARD
+   ========================================================================== */
+.hud-menu-toggle-btn {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: rgba(3, 14, 28, 0.72);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45), 0 0 10px rgba(0, 240, 255, 0.15);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 60;
+  padding: 0;
+}
+
+.hud-menu-toggle-btn:hover {
+  border-color: #00f0ff;
+  background: rgba(0, 240, 255, 0.18);
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.45);
+  transform: scale(1.05);
+}
+
+.hud-menu-toggle-btn:active {
+  transform: scale(0.95);
+}
+
+.hud-toggle-line {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: #00f0ff;
+  border-radius: 2px;
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.7);
+  transition: all 0.25s ease;
+}
+
+body.text-mode-active #hud-menu-toggle {
+  display: none !important;
+}
+
+/* Sidebar Drawer User Profile & Auth Card */
+.sidebar-user-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  margin: 12px 12px 6px 12px;
+  background: rgba(0, 240, 255, 0.06);
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sidebar-user-card:hover {
+  background: rgba(0, 240, 255, 0.12);
+  border-color: rgba(0, 240, 255, 0.45);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.2);
+}
+
+.sidebar-user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-user-card .user-avatar-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.sidebar-user-card .user-name-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  letter-spacing: 0.02em;
+}
+
+.theme-toggle-subtle {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: color 0.2s ease;
+}
+
+.theme-toggle-subtle:hover {
+  color: #00f0ff;
+}
+
+.theme-toggle-subtle svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+/* Zero-Lag Typing Performance: Halt Background SVG Animators and Filters when Modals are Open */
+body.modal-open .arc-aperture-stator,
+body.modal-open .arc-inner-turbine,
+body.modal-open .arc-metric-ticks,
+body.modal-open .arc-singularity-flare,
+body.modal-open .arc-main-energy-ring,
+body.modal-open .circuit-trace,
+body.modal-open .hud-pill-dot {
+  animation-play-state: paused !important;
+}
+
+body.modal-open .stark-arc-reactor-svg {
+  filter: none !important;
 }

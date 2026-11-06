@@ -5,14 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Merlin — Autonomous Neural Intelligence</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='%2300f0ff' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='4' fill='%2300f0ff'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/styles.css?v=6.0.0">
+  <link rel="stylesheet" href="/styles.css?v=6.1.0">
 </head>
 <body class="hud-visual-mode voice-mode-active">
 
   <!-- ========================================================================
        SIDEBAR: CONVERSATION SESSIONS, PA TOOLS, MEMORY & SETTINGS
        ======================================================================== -->
-  <aside id="sidebar">
+  <aside id="sidebar" class="collapsed">
+    <!-- User Profile & Authentication Card (Integrated into Drawer) -->
+    <div class="sidebar-user-card" id="sidebar-user-card" onclick="openAuthModal()" title="Account & Profile">
+      <div class="sidebar-user-info">
+        <span class="user-avatar-icon" id="sidebar-user-avatar">👤</span>
+        <span class="user-name-label" id="sidebar-user-name">Sign In / Register</span>
+      </div>
+      <button class="icon-btn theme-toggle-subtle" onclick="event.stopPropagation(); toggleTheme()" title="Toggle dark/light theme" aria-label="Toggle theme">
+        <svg viewBox="0 0 24 24" id="sidebar-theme-icon"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
+      </button>
+    </div>
+
     <div class="sidebar-header">
       <button class="btn-new-chat" onclick="createNewChat()" aria-label="Create new conversation">
         <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
@@ -74,7 +85,7 @@
        MAIN CANVAS: HEADER, CHAT MESSAGES & FLOATING INPUT DOCK
        ======================================================================== -->
   <main id="main-canvas">
-    <!-- Top Navigation Bar (Visible in Text Mode, Seamlessly Hidden in Pure JARVIS Visual Mode) -->
+    <!-- Top Navigation Bar (Visible in Text Mode, Seamlessly Hidden in Pure Visual Mode) -->
     <header class="top-navbar">
       <div class="navbar-left">
         <button class="icon-btn" onclick="toggleSidebar()" title="Toggle sidebar" aria-label="Toggle navigation sidebar">
@@ -631,7 +642,7 @@
         </div>
 
         <!-- Holographic On-Demand Visual HUD Panel (Appears ONLY when requested or displaying code/data) -->
-        <div id="hud-on-demand-display" class="hud-on-demand-display jarvis-hud-display" style="display:none;"></div>
+        <div id="hud-on-demand-display" class="hud-on-demand-display" style="display:none;"></div>
 
         <!-- Messages Stream List: Positioned directly beneath the Cyber HUD Core -->
         <div class="conversation-container" id="messages-list" style="display:none;"></div>
@@ -675,15 +686,17 @@
       </div>
     </div>
 
-    <!-- Floating JARVIS HUD Mode Toggle Pill -->
+    <!-- Floating HUD Mode Toggle Pill -->
     <button id="hud-mode-pill" class="hud-mode-toggle-pill" onclick="toggleTextChatMode()" aria-label="Toggle text chat mode">
       <span class="hud-pill-dot"></span>
       <span id="hud-mode-pill-label">💬 Text Chat</span>
     </button>
 
-    <!-- Minimal Top-Right HUD Settings Button (Always accessible in visual mode) -->
-    <button id="hud-corner-settings" class="hud-corner-btn" onclick="openModal('settings-modal')" aria-label="Settings" title="Settings">
-      <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+    <!-- Minimal HUD Menu Toggle Button (Top-Left Minimal Hamburger) -->
+    <button id="hud-menu-toggle" class="hud-menu-toggle-btn" onclick="toggleSidebar()" aria-label="Open side menu" title="Menu & Options">
+      <span class="hud-toggle-line line-1"></span>
+      <span class="hud-toggle-line line-2"></span>
+      <span class="hud-toggle-line line-3"></span>
     </button>
   </main>
 
@@ -1301,6 +1314,6 @@
   <!-- ========================================================================
        CLIENT APPLICATION LOGIC
        ======================================================================== -->
-  <script src="/script.js?v=6.0.0"></script>
+  <script src="/script.js?v=6.1.0"></script>
 </body>
 </html>
