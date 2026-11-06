@@ -2584,8 +2584,20 @@ body.typing-active .arc-singularity-flare,
 body.typing-active .arc-main-energy-ring,
 body.typing-active .circuit-trace,
 body.typing-active .data-pulse,
-body.typing-active .hud-pill-dot {
+body.typing-active .hud-pill-dot,
+body.typing-active .sentinel-ring,
+body.typing-active .core-ambient-aura,
+body.typing-active .core-center-hub,
+body.typing-active .sentinel-sweep {
   animation-play-state: paused !important;
+}
+
+.input-pill-box.floating-pill {
+  contain: layout style !important;
+}
+
+#chat-textarea {
+  contain: paint !important;
 }
 
 body.typing-active .stark-arc-reactor-svg {

@@ -88,7 +88,9 @@ func main() {
 	mux.HandleFunc("/api/auth/me", handleAuthMe)
 	mux.HandleFunc("/api/auth/logout", handleLogout)
 
-	// Sessions API
+	// Conversations & Sessions API
+	mux.HandleFunc("/api/conversations", handleSessions)
+	mux.HandleFunc("/api/conversations/", handleSessionItem)
 	mux.HandleFunc("/api/sessions", handleSessions)
 	mux.HandleFunc("/api/sessions/", handleSessionItem)
 
@@ -191,24 +193,31 @@ func handleTelemetry(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleChatStream(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	var prompt, sessionID, model string
+
+	if r.Method == http.MethodGet {
+		prompt = r.URL.Query().Get("prompt")
+		sessionID = r.URL.Query().Get("session_id")
+		model = r.URL.Query().Get("model")
+	} else if r.Method == http.MethodPost {
+		var req ChatStreamRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			prompt = req.Prompt
+			sessionID = req.SessionID
+			model = req.Model
+		}
+	} else {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	var req ChatStreamRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	if req.Prompt == "" {
+	if prompt == "" {
 		http.Error(w, "Prompt is required", http.StatusBadRequest)
 		return
 	}
 
-	if req.SessionID == "" {
-		req.SessionID = "default"
+	if sessionID == "" {
+		sessionID = "default"
 	}
 
 	// Prepare SSE response
@@ -225,12 +234,12 @@ func handleChatStream(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	// Save user message to database
-	_ = SaveMessage(req.SessionID, "user", req.Prompt)
+	_ = SaveMessage(sessionID, "user", prompt)
 
 	// Stream AI response
-	fullResp, err := StreamResponse(r.Context(), req.Prompt, req.SessionID, req.Model, flusher, w)
+	fullResp, err := StreamResponse(r.Context(), prompt, sessionID, model, flusher, w)
 	if err == nil && fullResp != "" {
-		_ = SaveMessage(req.SessionID, "assistant", fullResp)
+		_ = SaveMessage(sessionID, "assistant", fullResp)
 	}
 
 	fmt.Fprintf(w, "data: [DONE]\n\n")
@@ -317,6 +326,9 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if sessions == nil {
+			sessions = []Session{}
+		}
 		json.NewEncoder(w).Encode(sessions)
 	} else if r.Method == http.MethodPost {
 		var req struct {
@@ -324,6 +336,9 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 			Title string `json:"title"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.Title == "" {
+			req.Title = "New Chat"
+		}
 		s, err := CreateSession(req.ID, req.Title, userID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -334,29 +349,72 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleSessionItem(w http.ResponseWriter, r *http.Request) {
-	sessionID := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
+	path := r.URL.Path
+	sessionID := strings.TrimPrefix(path, "/api/conversations/")
+	sessionID = strings.TrimPrefix(sessionID, "/api/sessions/")
+
 	if sessionID == "" {
 		http.Error(w, "Session ID required", http.StatusBadRequest)
 		return
 	}
 
-	// Check for messages subroute: /api/sessions/:id/messages
+	// Subroute: messages
 	if strings.HasSuffix(sessionID, "/messages") {
 		sessionID = strings.TrimSuffix(sessionID, "/messages")
 		w.Header().Set("Content-Type", "application/json")
 		msgs, err := GetSessionMessages(sessionID)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		if err != nil || msgs == nil {
+			msgs = []Message{}
 		}
 		json.NewEncoder(w).Encode(msgs)
 		return
 	}
 
-	if r.Method == http.MethodDelete {
+	// Subroute: delete
+	if strings.HasSuffix(sessionID, "/delete") {
+		sessionID = strings.TrimSuffix(sessionID, "/delete")
 		_ = DeleteSession(sessionID)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"success": true})
+		return
+	}
+
+	// Subroute: clear
+	if strings.HasSuffix(sessionID, "/clear") {
+		sessionID = strings.TrimSuffix(sessionID, "/clear")
+		_, _ = db.Exec("DELETE FROM messages WHERE session_id = ?", sessionID)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"success": true})
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		msgs, _ := GetSessionMessages(sessionID)
+		if msgs == nil {
+			msgs = []Message{}
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"conversation": map[string]any{"id": sessionID, "title": "Conversation"},
+			"messages":     msgs,
+		})
+		return
+	} else if r.Method == http.MethodPost {
+		var req struct {
+			Title string `json:"title"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.Title != "" {
+			_, _ = db.Exec("UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?", req.Title, time.Now(), sessionID)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"success": true})
+		return
+	} else if r.Method == http.MethodDelete {
+		_ = DeleteSession(sessionID)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"success": true})
+		return
 	}
 }
 

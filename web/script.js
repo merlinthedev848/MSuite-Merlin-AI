@@ -168,8 +168,8 @@ function autoResizeTextarea(textarea) {
   if (btn) {
     btn.disabled = !textarea.value.trim() && !attachedFile;
   }
-  // Fast path: avoid reflows on single-line text
-  if (!textarea.value.includes("\n") && textarea.value.length < 60) {
+  // Zero-jank typing fast-path: completely avoid reflows and height mutation for single-line text
+  if (!textarea.value.includes("\n")) {
     if (textarea.style.height !== "32px") {
       textarea.style.height = "32px";
     }
@@ -823,7 +823,12 @@ async function submitMessage(fromVoice = false) {
   if (!promptText && !attachedFile) return;
 
   if (!activeConversationId) {
-    await createNewChat();
+    try {
+      await createNewChat();
+    } catch (e) {
+      console.warn("createNewChat network error fallback:", e);
+      activeConversationId = "conv-" + Date.now();
+    }
   }
 
   const isVoiceMode = isMerlinVoiceActive || fromVoice;
@@ -1189,7 +1194,12 @@ async function analyzeAttachedMultimodal() {
   }
 
   if (!activeConversationId) {
-    await createNewChat();
+    try {
+      await createNewChat();
+    } catch (e) {
+      console.warn("createNewChat network error fallback:", e);
+      activeConversationId = "conv-" + Date.now();
+    }
   }
 
   const fileObj = attachedFile;
