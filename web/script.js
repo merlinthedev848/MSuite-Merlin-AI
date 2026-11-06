@@ -1687,7 +1687,7 @@ function startMerlinListening() {
     }
 
     // 4. Direct Voice Directive: Clear Screen / Dismiss On-Demand Display
-    if (/^(merlin|hey merlin)?[,\s]*(clear screen|clear chat|new chat|dismiss|hide display|close display|clear display|hide window)$/i.test(lower)) {
+    if (/^(merlin|hey merlin|jarvis|hey jarvis)?[,\s]*(clear screen|clear chat|new chat|dismiss|hide display|close display|clear display|hide window)$/i.test(lower)) {
       dismissJarvisHudDisplay();
       createNewChat();
       playMerlinChime("ack");
@@ -1696,19 +1696,12 @@ function startMerlinListening() {
       return;
     }
 
-    // 5. Identity Check: Redirect if called Jarvis
-    if (/^(hey\s+)?jarvis\b/i.test(lower) || /\bjarvis\b/i.test(lower)) {
-      playMerlinChime("ack");
-      speakMerlinText("My name is Merlin, Sir. Jarvis is not here. How may I assist you?");
-      refreshConversationSession();
-      return;
-    }
-
-    // 6. Wake Word Matching for "Merlin"
+    // 5. Wake Word Matching for "Jarvis" or "Merlin"
     const wakePatterns = [
-      /^(hey\s+)?merlin[\s,.:;!?-]*/i,
-      /^(wake\s+up\s+)?merlin[\s,.:;!?-]*/i,
-      /^merlin\b[\s,.:;!?-]*/i
+      /^(hey\s+)?(jarvis|merlin)[\s,.:;!?-]*/i,
+      /^(wake\s+up\s+)?(jarvis|merlin)[\s,.:;!?-]*/i,
+      /^(ok\s+|okay\s+)?(jarvis|merlin)[\s,.:;!?-]*/i,
+      /^(jarvis|merlin)\b[\s,.:;!?-]*/i
     ];
     let matchedWakeWord = false;
     let strippedPrompt = transcript;
@@ -1720,18 +1713,18 @@ function startMerlinListening() {
       }
     }
 
-    if (!matchedWakeWord && /\bmerlin\b/i.test(transcript)) {
+    if (!matchedWakeWord && /\b(jarvis|merlin)\b/i.test(transcript)) {
       matchedWakeWord = true;
-      strippedPrompt = transcript.replace(/\bmerlin\b[,\s.:;!?-]*/gi, "").trim();
+      strippedPrompt = transcript.replace(/\b(jarvis|merlin)\b[,\s.:;!?-]*/gi, "").trim();
     }
 
     // CRUCIAL: In hands-free standby, if NO wake word was uttered AND we are not in active dialogue: ignore ambient room noise!
     if (!matchedWakeWord && !isMerlinConversationActive) {
-      console.debug("Ignored ambient speech without wake word 'Merlin':", transcript);
+      console.debug("Ignored ambient speech without wake word:", transcript);
       return;
     }
 
-    // If user only uttered the wake word ("Merlin" or "Hey Merlin") while in standby
+    // If user only uttered the wake word ("Jarvis", "Hey Jarvis", "Merlin") while in standby
     if (matchedWakeWord && !strippedPrompt) {
       refreshConversationSession();
       playMerlinChime("wake");
@@ -1753,7 +1746,8 @@ function startMerlinListening() {
   recognition.onerror = (e) => {
     isRecognitionRunning = false;
     if (e && e.error === "not-allowed") {
-      console.warn("Microphone permission pending user gesture.");
+      mobileAudioUnlocked = false;
+      console.warn("Microphone permission pending touch gesture.");
       return;
     }
     if (isMerlinVoiceActive && !isMerlinSpeaking) {
@@ -1761,7 +1755,7 @@ function startMerlinListening() {
         if (isMerlinVoiceActive && !isMerlinSpeaking && !isRecognitionRunning) {
           startMerlinListening();
         }
-      }, 700);
+      }, isMobileDevice ? 900 : 600);
     }
   };
 
@@ -1778,7 +1772,7 @@ function startMerlinListening() {
             startMerlinListening();
           }
         }
-      }, 150);
+      }, isMobileDevice ? 300 : 150);
     }
   };
 
@@ -1795,11 +1789,104 @@ function toggleDictation() {
   toggleMerlinVoice();
 }
 
+// Mobile Audio & Microphone Permission Unlocking
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768 && 'ontouchstart' in window);
+let mobileAudioUnlocked = false;
+
+async function unlockMobileAudioAndMic() {
+  if (mobileAudioUnlocked) {
+    if (!isRecognitionRunning && isMerlinVoiceActive && !isMerlinSpeaking) {
+      startMerlinListening();
+    }
+    return;
+  }
+  mobileAudioUnlocked = true;
+
+  // 1. Prime SpeechSynthesis for mobile iOS Safari & Chrome
+  if ('speechSynthesis' in window) {
+    try {
+      const primer = new SpeechSynthesisUtterance("");
+      primer.volume = 0.01;
+      window.speechSynthesis.speak(primer);
+    } catch(e) {}
+  }
+
+  // 2. Prime Web AudioContext for mobile audio chimes
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      if (!merlinAudioCtx) merlinAudioCtx = new AudioCtx();
+      if (merlinAudioCtx.state === "suspended") {
+        await merlinAudioCtx.resume();
+      }
+    }
+  } catch(e) {}
+
+  // 3. Request native mobile microphone permission prompt
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+    } catch(err) {
+      console.warn("Mobile microphone permission:", err);
+    }
+  }
+
+  // 4. Engage voice recognition
+  startMerlinListening();
+}
+
+function handleCoreTap() {
+  unlockMobileAudioAndMic();
+  if (!isRecognitionRunning && isMerlinVoiceActive && !isMerlinSpeaking) {
+    startMerlinListening();
+    setMerlinHudState("listening");
+    playMerlinChime("wake");
+  } else if (isRecognitionRunning) {
+    setMerlinHudState("listening");
+    playMerlinChime("ack");
+  }
+}
+
+// JARVIS HUD vs Text Chat Mode Switching Pill
+let isTextChatMode = false;
+
+function toggleTextChatMode() {
+  isTextChatMode = !isTextChatMode;
+  const pillLabel = document.getElementById("hud-mode-pill-label");
+  const pill = document.getElementById("hud-mode-pill");
+
+  if (isTextChatMode) {
+    document.body.classList.remove("jarvis-visual-mode");
+    document.body.classList.remove("voice-mode-active");
+    document.body.classList.add("text-mode-active");
+    const list = document.getElementById("messages-list");
+    if (list) list.style.display = "flex";
+    if (pillLabel) pillLabel.textContent = "🎙️ JARVIS Voice HUD";
+    if (pill) pill.classList.add("text-mode-on");
+    const ta = document.getElementById("chat-textarea");
+    if (ta) setTimeout(() => ta.focus(), 100);
+  } else {
+    document.body.classList.remove("text-mode-active");
+    document.body.classList.add("jarvis-visual-mode");
+    document.body.classList.add("voice-mode-active");
+    const list = document.getElementById("messages-list");
+    if (list) list.style.display = "none";
+    if (pillLabel) pillLabel.textContent = "💬 Text Chat";
+    if (pill) pill.classList.remove("text-mode-on");
+    dismissJarvisHudDisplay();
+    unlockMobileAudioAndMic();
+  }
+}
+
 // Always listening initialization: start automatically without requiring mic button press
 function initAlwaysListeningMerlin() {
   if (('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window)) {
     isMerlinVoiceActive = true;
-    if (document.body) document.body.classList.add("voice-mode-active");
+    if (document.body) {
+      document.body.classList.add("voice-mode-active");
+      document.body.classList.add("jarvis-visual-mode");
+    }
     const list = document.getElementById("messages-list");
     if (list) list.style.display = "none";
     updateWakePillUI(true);
@@ -1812,6 +1899,11 @@ if (document.readyState === "loading") {
 } else {
   initAlwaysListeningMerlin();
 }
+
+// Mobile and desktop gesture unlockers
+window.addEventListener("touchstart", () => unlockMobileAudioAndMic(), { passive: true, once: true });
+window.addEventListener("click", () => unlockMobileAudioAndMic(), { passive: true, once: true });
+window.addEventListener("keydown", () => unlockMobileAudioAndMic(), { passive: true, once: true });
 
 // User-gesture fallback if browser security blocks microphone until first page interaction
 const ensureListeningOnGesture = () => {
