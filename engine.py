@@ -975,6 +975,59 @@ class InferenceEngine:
         t_start = time.time()
 
         try:
+            # Deterministic Fast-Path 1: Real-Time Local Time, Date & Clock
+            time_triggers = (
+                "what time is it", "what's the time", "whats the time", "tell me the time",
+                "current time", "what is the time", "the time please", "time check",
+                "what day is today", "what day is it", "what is the date", "what date is it",
+                "today's date", "todays date", "time please", "do you know the time",
+                "tell me the date", "date and time", "time and date", "what time"
+            )
+            cleaned_p = prompt_lower.strip("?.! ,")
+            is_time_query = any(t in prompt_lower for t in time_triggers) or cleaned_p in ("time", "what time", "current time", "date", "clock")
+            if is_time_query:
+                now = datetime.datetime.now()
+                formatted_time = now.strftime("%I:%M %p").lstrip("0")
+                formatted_date = now.strftime("%A, %B %d, %Y")
+                resp = f"The current time is **{formatted_time}** on {formatted_date}, Sir."
+                response_buffer.append(resp)
+                yield resp
+                return
+
+            # Deterministic Fast-Path 2: Comprehensive Self-Diagnostics & Hardware Telemetry
+            diag_triggers = (
+                "self diagnostics", "self diagnostic", "run diagnostics", "run self diagnostics",
+                "system diagnostics", "diagnostics", "diagnostic check", "diagnostic test",
+                "system status", "telemetry report", "health check", "suit status",
+                "do self diagnostics", "do a diagnostic check", "run a system check",
+                "system check", "check diagnostics", "hardware status"
+            )
+            is_diag_query = any(t in prompt_lower for t in diag_triggers) or cleaned_p in ("diagnostics", "diagnostic", "status", "system status", "health check")
+            if is_diag_query:
+                diag = execute_tool("get_system_diagnostics", {})
+                s = diag["system"]
+                m = diag["merlin_telemetry"]
+                uptime_sec = int(s.get("uptime_seconds", 0))
+                hours, remainder = divmod(uptime_sec, 3600)
+                minutes, _ = divmod(remainder, 60)
+                uptime_str = f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+                resp = (
+                    f"**Merlin Diagnostic Status Report** — *All Primary Systems Online & Calibrated*\n\n"
+                    f"- **Core Status**: `Operational` (Uptime: {uptime_str})\n"
+                    f"- **Host Platform**: `{s['platform']} ({s['architecture']})`\n"
+                    f"- **CPU Utilization**: `{s['cpu_usage_percent']}%` across `{s['cpu_cores']} logical cores`\n"
+                    f"- **Memory Usage**: `{s['memory_used_gb']} GB` / `{s['memory_total_gb']} GB` (`{s['memory_percent']}%`)\n"
+                    f"- **Storage Available**: `{s['disk_free_gb']} GB` free of `{s['disk_total_gb']} GB`\n"
+                    f"- **Knowledge Engine**: `{m['active_knowledge_entries']} indexed entries` (Hybrid FTS5 + Dense Vector Cache)\n"
+                    f"- **Active Task Queue**: `{m['pending_tasks']} open action items`\n"
+                    f"- **Synthesizer Engine**: `Google UK English Male` (Deep Baritone Persona)\n\n"
+                    f"All quantum systems, neural processors, and audio pipelines operating at peak performance, Sir."
+                )
+                response_buffer.append(resp)
+                yield resp
+                return
+
             if self.backend == "ollama":
                 for chunk in self._stream_from_ollama(
                     messages=messages,

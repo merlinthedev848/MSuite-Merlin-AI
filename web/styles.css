@@ -1349,19 +1349,19 @@ body.text-mode-active #hud-corner-settings {
 
 .input-pill-box.floating-pill {
   border-radius: 9999px !important;
-  background: rgba(3, 14, 26, 0.92) !important;
-  backdrop-filter: blur(24px) !important;
-  -webkit-backdrop-filter: blur(24px) !important;
+  background: #040914 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border: 1px solid rgba(0, 240, 255, 0.42) !important;
   box-shadow:
-    0 16px 45px rgba(0, 0, 0, 0.75),
-    0 0 28px rgba(0, 240, 255, 0.22),
+    0 12px 35px rgba(0, 0, 0, 0.85),
+    0 0 20px rgba(0, 240, 255, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
   padding: 8px 14px 8px 16px !important;
   display: flex !important;
   align-items: center !important;
   gap: 10px !important;
-  transition: all 0.25s ease !important;
+  transition: border-color 0.2s ease !important;
 }
 
 .input-pill-box.floating-pill:focus-within {
@@ -1886,11 +1886,12 @@ code { font-family: inherit; font-size: inherit; }
   display: none;
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.65);
+  background: rgba(3, 7, 15, 0.82);
   z-index: 100;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(4px);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 .modal-box {
   background: var(--bg-surface);
@@ -2707,5 +2708,22 @@ body.modal-open .hud-pill-dot {
 }
 
 body.modal-open .stark-arc-reactor-svg {
+  filter: none !important;
+}
+
+
+/* Zero-Latency Keystroke Input Optimization: Halt Background Render Cycles During Typing */
+body.typing-active .arc-aperture-stator,
+body.typing-active .arc-inner-turbine,
+body.typing-active .arc-metric-ticks,
+body.typing-active .arc-singularity-flare,
+body.typing-active .arc-main-energy-ring,
+body.typing-active .circuit-trace,
+body.typing-active .data-pulse,
+body.typing-active .hud-pill-dot {
+  animation-play-state: paused !important;
+}
+
+body.typing-active .stark-arc-reactor-svg {
   filter: none !important;
 }

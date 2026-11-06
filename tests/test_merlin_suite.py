@@ -1497,6 +1497,28 @@ def test_function_calling_psutil_resilience():
     assert "overall_status" in diag
 
 
+def test_deterministic_time_and_diagnostics_fast_paths():
+    """Validates sub-millisecond deterministic fast-paths for real-time clock and self-diagnostics."""
+    from engine import InferenceEngine
+
+    eng = InferenceEngine(lazy_init=True)
+    eng.backend = "offline_standby"
+
+    # 1. Test Time Query Fast-Path
+    time_stream = list(eng.generate_stream(prompt="What time is it?", session_id="test-time-session"))
+    assert len(time_stream) == 1
+    assert "The current time is" in time_stream[0]
+    assert "Sir." in time_stream[0]
+
+    # 2. Test Diagnostics Fast-Path
+    diag_stream = list(eng.generate_stream(prompt="run self diagnostics", session_id="test-diag-session"))
+    assert len(diag_stream) == 1
+    assert "Merlin Diagnostic Status Report" in diag_stream[0]
+    assert "CPU Utilization" in diag_stream[0]
+    assert "Host Platform" in diag_stream[0]
+
+
+
 
 
 

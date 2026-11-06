@@ -125,15 +125,22 @@ function toggleSidebar() {
   }
 }
 
-// Auto-Expanding Textarea
+// Auto-Expanding Textarea (Reflow-optimized for instantaneous zero-lag keystrokes)
 function autoResizeTextarea(textarea) {
   if (!textarea) return;
-  textarea.style.height = "auto";
-  textarea.style.height = Math.min(textarea.scrollHeight, 180) + "px";
   const btn = document.getElementById("btn-send");
   if (btn) {
     btn.disabled = !textarea.value.trim() && !attachedFile;
   }
+  // Fast path: avoid reflows on single-line text
+  if (!textarea.value.includes("\n") && textarea.value.length < 60) {
+    if (textarea.style.height !== "32px") {
+      textarea.style.height = "32px";
+    }
+    return;
+  }
+  textarea.style.height = "auto";
+  textarea.style.height = Math.min(textarea.scrollHeight, 180) + "px";
 }
 
 function handleKeyDown(e) {
@@ -3400,3 +3407,19 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (argonTimerInterval) clearInterval(argonTimerInterval);
   });
 });
+
+
+// Instant Keystroke Performance: Automatically pause background SVG animators while user is focused on any input
+document.addEventListener("focusin", (e) => {
+  const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : "";
+  if (tag === "input" || tag === "textarea") {
+    document.body.classList.add("typing-active");
+  }
+}, { passive: true });
+
+document.addEventListener("focusout", (e) => {
+  const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : "";
+  if (tag === "input" || tag === "textarea") {
+    document.body.classList.remove("typing-active");
+  }
+}, { passive: true });
