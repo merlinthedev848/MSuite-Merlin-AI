@@ -357,11 +357,11 @@
   <!-- ========================================================================
        MODAL 1: PERSONAL ASSISTANT (TO-DOS & TECHNICAL NOTES)
        ======================================================================== -->
-  <div class="modal-backdrop" id="pa-modal">
+  <div class="modal-backdrop" id="pa-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="title-pa-modal">
     <div class="modal-box modal-box-wide">
       <div class="modal-header">
-        <h2>Personal Assistant — Tasks &amp; Technical Notes</h2>
-        <button class="icon-btn" onclick="closeModal('pa-modal')">✕</button>
+        <h2 id="title-pa-modal">Personal Assistant — Tasks &amp; Technical Notes</h2>
+        <button class="icon-btn" onclick="closeModal('pa-modal')" aria-label="Close dialog">✕</button>
       </div>
 
       <div class="modal-tabs">
@@ -410,11 +410,11 @@
   <!-- ========================================================================
        MODAL 2: MEMORY, LEARNED SKILLS & KNOWLEDGE GAPS
        ======================================================================== -->
-  <div class="modal-backdrop" id="memory-modal">
+  <div class="modal-backdrop" id="memory-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="title-memory-modal">
     <div class="modal-box modal-box-wide">
       <div class="modal-header">
-        <h2>Memory Bank — Learned Skills &amp; Knowledge Gaps</h2>
-        <button class="icon-btn" onclick="closeModal('memory-modal')">✕</button>
+        <h2 id="title-memory-modal">Memory Bank — Learned Skills &amp; Knowledge Gaps</h2>
+        <button class="icon-btn" onclick="closeModal('memory-modal')" aria-label="Close dialog">✕</button>
       </div>
 
       <div class="modal-tabs">
@@ -470,11 +470,11 @@
   <!-- ========================================================================
        MODAL 3: SETTINGS, MODEL SWITCHER, HARDWARE TELEMETRY & AUDIT LOGS
        ======================================================================== -->
-  <div class="modal-backdrop" id="settings-modal">
+  <div class="modal-backdrop" id="settings-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="title-settings-modal">
     <div class="modal-box modal-box-wide">
       <div class="modal-header">
-        <h2>Settings, Models &amp; Hardware Telemetry</h2>
-        <button class="icon-btn" onclick="closeModal('settings-modal')">✕</button>
+        <h2 id="title-settings-modal">Settings, Models &amp; Hardware Telemetry</h2>
+        <button class="icon-btn" onclick="closeModal('settings-modal')" aria-label="Close dialog">✕</button>
       </div>
 
       <div class="form-group">
@@ -559,11 +559,11 @@
   <!-- ========================================================================
        MODAL 4: TEACHER DISTILLATION ENGINE
        ======================================================================== -->
-  <div class="modal-backdrop" id="sync-modal">
+  <div class="modal-backdrop" id="sync-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="title-sync-modal">
     <div class="modal-box">
       <div class="modal-header">
-        <h2>Teacher Distillation Engine</h2>
-        <button class="icon-btn" onclick="closeModal('sync-modal')">✕</button>
+        <h2 id="title-sync-modal">Teacher Distillation Engine</h2>
+        <button class="icon-btn" onclick="closeModal('sync-modal')" aria-label="Close dialog">✕</button>
       </div>
 
       <div class="form-group">
@@ -609,11 +609,11 @@
   <!-- ========================================================================
        MODAL 5: HUGGING FACE DATASET INGESTION
        ======================================================================== -->
-  <div class="modal-backdrop" id="dataset-modal">
+  <div class="modal-backdrop" id="dataset-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="title-dataset-modal">
     <div class="modal-box">
       <div class="modal-header">
-        <h2>🤗 Hugging Face Dataset Ingestion</h2>
-        <button class="icon-btn" onclick="closeModal('dataset-modal')">✕</button>
+        <h2 id="title-dataset-modal">🤗 Hugging Face Dataset Ingestion</h2>
+        <button class="icon-btn" onclick="closeModal('dataset-modal')" aria-label="Close dialog">✕</button>
       </div>
 
       <div class="form-group">
@@ -663,18 +663,18 @@
   <!-- ========================================================================
        MODAL 6: GEMINI 4 ARGON — FRONTIER REASONING COPILOT
        ======================================================================== -->
-  <div class="modal-backdrop" id="argon-modal">
+  <div class="modal-backdrop" id="argon-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="title-argon-modal">
     <div class="modal-box modal-box-wide">
       <div class="modal-header">
         <div style="display:flex;align-items:center;gap:10px;">
           <div class="argon-modal-icon">⚡</div>
           <div>
-            <h2 style="margin:0;font-size:1.15rem;display:flex;align-items:center;gap:8px;">
+            <h2 id="title-argon-modal" style="margin:0;font-size:1.15rem;display:flex;align-items:center;gap:8px;">
               Gemini 4 Argon
             </h2>
           </div>
         </div>
-        <button class="icon-btn" onclick="closeModal('argon-modal')">✕</button>
+        <button class="icon-btn" onclick="closeModal('argon-modal')" aria-label="Close dialog">✕</button>
       </div>
 
       <!-- Argon Configuration Row -->
@@ -798,11 +798,11 @@
   <!-- ========================================================================
        MODAL: CALENDAR & APPOINTMENT AUTOMATION
        ======================================================================== -->
-  <div class="modal-backdrop" id="calendar-modal">
+  <div class="modal-backdrop" id="calendar-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="title-calendar-modal">
     <div class="modal-box" style="max-width:760px;">
       <div class="modal-header">
-        <h2>📅 Calendar &amp; Appointment Scheduling</h2>
-        <button class="icon-btn" onclick="closeModal('calendar-modal')">✕</button>
+        <h2 id="title-calendar-modal">📅 Calendar &amp; Appointment Scheduling</h2>
+        <button class="icon-btn" onclick="closeModal('calendar-modal')" aria-label="Close dialog">✕</button>
       </div>
 
       <!-- Quick Slot Availability Checker -->
@@ -861,11 +861,11 @@
   <!-- ========================================================================
        MODAL: TELEPHONY & VOIP GATEWAY
        ======================================================================== -->
-  <div class="modal-backdrop" id="telephony-modal">
+  <div class="modal-backdrop" id="telephony-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="title-telephony-modal">
     <div class="modal-box" style="max-width:760px;">
       <div class="modal-header">
-        <h2>📞 Telephony &amp; VoIP Audio Gateway</h2>
-        <button class="icon-btn" onclick="closeModal('telephony-modal')">✕</button>
+        <h2 id="title-telephony-modal">📞 Telephony &amp; VoIP Audio Gateway</h2>
+        <button class="icon-btn" onclick="closeModal('telephony-modal')" aria-label="Close dialog">✕</button>
       </div>
 
       <!-- Gateway Status Cards -->
@@ -911,11 +911,11 @@
   <!-- ========================================================================
        MODAL: USER AUTHENTICATION & LOGIN (PER-USER SAVED CHATS)
        ======================================================================== -->
-  <div class="modal-backdrop" id="auth-modal">
+  <div class="modal-backdrop" id="auth-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="auth-modal-title">
     <div class="modal-box" style="max-width:440px;">
       <div class="modal-header">
         <h2 id="auth-modal-title">👤 User Account &amp; Saved Chats</h2>
-        <button class="icon-btn" onclick="closeModal('auth-modal')">✕</button>
+        <button class="icon-btn" onclick="closeModal('auth-modal')" aria-label="Close dialog">✕</button>
       </div>
 
       <!-- Logged In View -->

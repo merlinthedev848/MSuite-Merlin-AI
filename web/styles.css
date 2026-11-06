@@ -9,6 +9,7 @@
   --bg-input: #1e1f20;
   --border-subtle: #333537;
   --border-focus: #a8c7fa;
+  --focus-ring: rgba(168, 199, 250, 0.4);
   --text-main: #e3e3e3;
   --text-muted: #8e918f;
   --text-inverse: #131314;
@@ -19,10 +20,18 @@
   --code-bg: #0e0e10;
   --code-header: #1b1c1e;
   --danger: #f28b82;
+  --danger-color: #f28b82;
   --success: #81c995;
   --warning: #fdd663;
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.35);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Google Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+  --radius-pill: 9999px;
 }
 
 :root[data-theme="light"] {
@@ -33,6 +42,7 @@
   --bg-input: #f0f4f9;
   --border-subtle: #e1e3e1;
   --border-focus: #1a73e8;
+  --focus-ring: rgba(26, 115, 232, 0.35);
   --text-main: #1f1f1f;
   --text-muted: #5e5e5e;
   --text-inverse: #ffffff;
@@ -43,13 +53,71 @@
   --code-bg: #f8f9fa;
   --code-header: #eef0f2;
   --danger: #d93025;
+  --danger-color: #d93025;
   --success: #188038;
   --warning: #f29900;
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Google Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+  --radius-pill: 9999px;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Google Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 99px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* High-Contrast Accessible Keyboard Focus */
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+button:focus-visible,
+.icon-btn:focus-visible,
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.conv-item:focus-visible,
+.modal-tab:focus-visible,
+.dock-icon-btn:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* Reduced Motion for Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 body { background-color: var(--bg-app); color: var(--text-main); height: 100vh; height: 100dvh; display: flex; overflow: hidden; transition: background-color 0.2s ease, color 0.2s ease; }
 
 .sidebar-backdrop {
@@ -442,7 +510,6 @@ body.voice-mode-active .sentinel-hero-container {
 }
 
 /* True Jarvis Minimalist Cyber HUD: Pure focus on animation; hide all telemetry text & strips */
-body.voice-mode-active .hud-telemetry-strip,
 body.voice-mode-active .hud-bracket,
 body.voice-mode-active .sentinel-hud-telemetry,
 body.voice-mode-active .sentinel-voice-caption {
@@ -622,35 +689,6 @@ body.voice-mode-active #input-dock:focus-within {
 .hud-bracket.top-right { top: 6px; right: 16px; border-left: none; border-bottom: none; }
 .hud-bracket.bottom-left { bottom: 6px; left: 16px; border-right: none; border-top: none; }
 .hud-bracket.bottom-right { bottom: 6px; right: 16px; border-left: none; border-top: none; }
-
-/* Tactical HUD Telemetry Header Strip */
-.hud-telemetry-strip {
-  width: 100%;
-  max-width: 900px;
-  margin-bottom: 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.7rem;
-  letter-spacing: 0.12em;
-  color: #00f0ff;
-  opacity: 0.85;
-  text-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
-  pointer-events: none;
-}
-.hud-telemetry-tag {
-  color: #ffffff;
-  font-weight: 700;
-  text-shadow: 0 0 10px #00f0ff;
-}
-.hud-telemetry-mid {
-  color: rgba(0, 240, 255, 0.7);
-}
-.hud-telemetry-right {
-  color: #00ffcc;
-  text-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
-}
 
 /* Radiating Neural PCB Motherboard Circuit Board SVG (Images 1 & 2) */
 .circuit-svg-bg {
@@ -844,17 +882,6 @@ body.voice-mode-active #input-dock:focus-within {
     0 0 22px #00f0ff,
     0 0 38px rgba(0, 240, 255, 0.85);
   line-height: 1;
-}
-
-.core-ai-subtext {
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 0.56rem;
-  letter-spacing: 0.18em;
-  color: #00f0ff;
-  margin-top: 3px;
-  opacity: 0.9;
-  text-shadow: 0 0 6px #00f0ff;
-  text-transform: uppercase;
 }
 
 /* Telemetry HUD Labels */
@@ -1541,20 +1568,47 @@ code { font-family: inherit; font-size: inherit; }
   background: var(--accent-primary);
   color: var(--text-inverse);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 9px 18px;
   font-weight: 600;
   font-size: 0.88rem;
   cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  filter: brightness(1.05);
+}
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 .btn-secondary {
   background: var(--bg-surface-hover);
   color: var(--text-main);
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 9px 16px;
   font-size: 0.88rem;
   cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--border-subtle);
+}
+.btn-secondary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .stat-grid {
@@ -1907,6 +1961,41 @@ code { font-family: inherit; font-size: inherit; }
   }
 }
 
+@media (max-width: 480px) {
+  .modal-box {
+    padding: 16px 14px;
+    border-radius: 14px;
+    max-width: 96vw;
+    max-height: 90vh;
+  }
+  .modal-header h2 {
+    font-size: 1rem;
+  }
+  .top-navbar {
+    padding: 0 10px;
+    height: 52px;
+  }
+  .navbar-left {
+    gap: 6px;
+  }
+  .brand-name {
+    font-size: 1.05rem;
+  }
+  .navbar-right {
+    gap: 4px;
+  }
+  .user-auth-badge {
+    padding: 3px 8px;
+    font-size: 0.78rem;
+  }
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+  .argon-grid-settings {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ==========================================================================
    GEMINI 4 ARGON COPILOT — FRONTIER STYLES & REASONING TRACE
    ========================================================================== */
@@ -1926,16 +2015,6 @@ code { font-family: inherit; font-size: inherit; }
   display: inline-block;
   filter: drop-shadow(0 0 5px rgba(192, 132, 252, 0.6));
 }
-.argon-badge {
-  background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%) !important;
-  color: #ffffff !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.04em !important;
-  font-size: 0.68rem !important;
-  padding: 2px 7px !important;
-  border-radius: 99px !important;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-}
 .argon-modal-icon {
   width: 38px;
   height: 38px;
@@ -1948,16 +2027,6 @@ code { font-family: inherit; font-size: inherit; }
   color: #fff;
   box-shadow: 0 4px 14px rgba(147, 51, 234, 0.35);
   flex-shrink: 0;
-}
-.argon-intro-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  background: linear-gradient(90deg, rgba(147, 51, 234, 0.1) 0%, rgba(59, 130, 246, 0.06) 100%);
-  border: 1px solid rgba(168, 85, 247, 0.28);
-  border-radius: 10px;
-  padding: 10px 14px;
-  margin-bottom: 12px;
 }
 .argon-grid-settings {
   display: grid;
