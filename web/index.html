@@ -684,7 +684,7 @@
             <option value="high">High</option>
             <option value="low">Low</option>
           </select>
-          <button class="btn-primary" onclick="createTodoItem()" style="flex-shrink:0;">Add Task</button>
+          <button class="btn-primary" onclick="createTodoItem()" class="flex-shrink-0">Add Task</button>
         </div>
         <div class="items-scroll-list" id="todos-list-container">
           <!-- Populated via JS -->
@@ -734,7 +734,7 @@
           <input type="text" class="form-input" id="new-gap-question" placeholder="Question or topic to learn (e.g. Lock-free ring buffer in C11)..." style="margin-bottom:8px;">
           <div class="inline-form-row">
             <input type="text" class="form-input" id="new-gap-context" placeholder="Optional context or error details...">
-            <button class="btn-primary" onclick="createGapItem()" style="flex-shrink:0;">Record a Knowledge Gap</button>
+            <button class="btn-primary" onclick="createGapItem()" class="flex-shrink-0">Record a Knowledge Gap</button>
           </div>
         </div>
         <div class="items-scroll-list" id="gaps-list-container">
@@ -750,7 +750,7 @@
       <div id="memory-tab-skills" style="display:none;">
         <div class="inline-form-row" style="margin-bottom:10px;">
           <input type="text" class="form-input" id="skills-search-input" placeholder="Search indexed skills &amp; code examples..." oninput="searchSkillsDebounced()">
-          <button class="btn-secondary" onclick="toggleAddSkillForm()" style="flex-shrink:0;">+ Add Skill</button>
+          <button class="btn-secondary" onclick="toggleAddSkillForm()" class="flex-shrink-0">+ Add Skill</button>
         </div>
 
         <div id="add-skill-form" style="display:none; background:var(--bg-app); border:1px solid var(--border-subtle); border-radius:10px; padding:12px; margin-bottom:12px;">
@@ -796,7 +796,7 @@
           <select class="form-select" id="local-model-select">
             <option value="">Auto-Select Optimal Local Model (.gguf)</option>
           </select>
-          <button class="btn-secondary" onclick="switchLocalModel()" style="flex-shrink:0;">Activate Model</button>
+          <button class="btn-secondary" onclick="switchLocalModel()" class="flex-shrink-0">Activate Model</button>
         </div>
       </div>
 
@@ -813,7 +813,7 @@
 
       <!-- TTS Voice Personality & System Voice Selector -->
       <div style="padding:12px 14px; margin-bottom:14px; background:var(--bg-app); border:1px solid var(--border-subtle); border-radius:10px;">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+        <div class="section-header-row mb-2">
           <div>
             <div style="font-size:0.86rem; font-weight:600; color:var(--text-main);">Voice Persona &amp; Tone</div>
           </div>
@@ -882,7 +882,7 @@
             <option value="openrouter">OpenRouter (Free Models)</option>
             <option value="openai">OpenAI (GPT-4o)</option>
           </select>
-          <button class="btn-secondary" onclick="fetchTeacherModels()" title="Query live models from provider" style="flex-shrink:0;">↻ Models</button>
+          <button class="btn-secondary" onclick="fetchTeacherModels()" title="Query live models from provider" class="flex-shrink-0">↻ Models</button>
         </div>
         <select class="form-select" id="teacher-model-select" style="margin-top:8px;">
           <option value="gemini-2.0-flash">gemini-2.0-flash (Recommended)</option>
@@ -1091,12 +1091,12 @@
           <div class="inline-form-row">
             <input type="text" class="form-input" id="argon-assimilate-topic" placeholder="Topic title (e.g. Asynchronous Thread Pool Implementation)">
             <input type="text" class="form-input" id="argon-assimilate-tags" value="gemini-4-argon,reasoning,distilled" style="width:190px;flex-shrink:0;">
-            <button class="btn-primary" id="btn-argon-assimilate" onclick="assimilateArgonToMemory()" style="flex-shrink:0;">Assimilate</button>
+            <button class="btn-primary" id="btn-argon-assimilate" onclick="assimilateArgonToMemory()" class="flex-shrink-0">Assimilate</button>
           </div>
         </div>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+      <div class="modal-actions">
         <button class="btn-secondary" onclick="closeModal('argon-modal')">Close</button>
       </div>
     </div>
@@ -1106,7 +1106,7 @@
        MODAL: CALENDAR & APPOINTMENT AUTOMATION
        ======================================================================== -->
   <div class="modal-backdrop" id="calendar-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="title-calendar-modal">
-    <div class="modal-box" style="max-width:760px;">
+    <div class="modal-box modal-box-large">
       <div class="modal-header">
         <h2 id="title-calendar-modal">📅 Calendar &amp; Appointment Scheduling</h2>
         <button class="icon-btn" onclick="closeModal('calendar-modal')" aria-label="Close dialog">✕</button>
@@ -1118,7 +1118,7 @@
         <div class="inline-form-row">
           <input type="datetime-local" class="form-input" id="cal-check-start">
           <input type="datetime-local" class="form-input" id="cal-check-end">
-          <button class="btn-secondary" onclick="checkCalendarSlot()" style="flex-shrink:0;">Check Availability</button>
+          <button class="btn-secondary" onclick="checkCalendarSlot()" class="flex-shrink-0">Check Availability</button>
         </div>
         <div id="cal-avail-result" style="margin-top:8px;font-size:0.82rem;font-weight:600;"></div>
       </div>
@@ -1126,11 +1126,11 @@
       <!-- Quick Manual Booking Form -->
       <div class="hardware-card" style="margin-bottom:16px;">
         <div style="font-weight:600;font-size:0.88rem;margin-bottom:8px;">➕ Book New Appointment</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div class="grid-2col mb-2">
           <input type="text" class="form-input" id="cal-book-title" placeholder="Meeting / Appointment Title">
           <input type="text" class="form-input" id="cal-book-name" placeholder="Attendee Name">
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div class="grid-2col mb-2">
           <div>
             <label style="font-size:0.75rem;color:var(--text-muted);">Start Time</label>
             <input type="datetime-local" class="form-input" id="cal-book-start">
@@ -1140,7 +1140,7 @@
             <input type="datetime-local" class="form-input" id="cal-book-end">
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div class="grid-2col mb-2">
           <input type="tel" class="form-input" id="cal-book-phone" placeholder="Phone Number (optional)">
           <input type="email" class="form-input" id="cal-book-email" placeholder="Email (optional)">
         </div>
@@ -1150,7 +1150,7 @@
 
       <!-- Scheduled Appointments Table -->
       <div class="hardware-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div class="section-header-row">
           <div style="font-weight:600;font-size:0.88rem;">Scheduled Appointments</div>
           <button class="btn-secondary" onclick="loadCalendarEvents()" style="padding:3px 8px;font-size:0.75rem;">↻ Refresh</button>
         </div>
@@ -1159,7 +1159,7 @@
         </div>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+      <div class="modal-actions">
         <button class="btn-secondary" onclick="closeModal('calendar-modal')">Close</button>
       </div>
     </div>
@@ -1169,7 +1169,7 @@
        MODAL: TELEPHONY & VOIP GATEWAY
        ======================================================================== -->
   <div class="modal-backdrop" id="telephony-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="title-telephony-modal">
-    <div class="modal-box" style="max-width:760px;">
+    <div class="modal-box modal-box-large">
       <div class="modal-header">
         <h2 id="title-telephony-modal">📞 Telephony &amp; VoIP Audio Gateway</h2>
         <button class="icon-btn" onclick="closeModal('telephony-modal')" aria-label="Close dialog">✕</button>
@@ -1193,14 +1193,14 @@
         <div class="inline-form-row" style="margin-bottom:8px;">
           <input type="text" class="form-input" id="telephony-caller-id" placeholder="Caller ID (e.g. +1-555-0199)" style="width:200px;flex-shrink:0;">
           <input type="text" class="form-input" id="telephony-sim-query" placeholder="Caller says: 'I'd like to book an appointment tomorrow at 2pm...'">
-          <button class="btn-primary" onclick="simulateTelephonyCall()" style="flex-shrink:0;">Simulate Call</button>
+          <button class="btn-primary" onclick="simulateTelephonyCall()" class="flex-shrink-0">Simulate Call</button>
         </div>
         <div id="telephony-sim-response" style="margin-top:8px;font-size:0.84rem;background:var(--bg-canvas);border:1px solid var(--border-color);border-radius:6px;padding:10px;display:none;"></div>
       </div>
 
       <!-- Active Calls Monitor -->
       <div class="hardware-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div class="section-header-row">
           <div style="font-weight:600;font-size:0.88rem;">Live VoIP Sessions &amp; Channels</div>
           <button class="btn-secondary" onclick="loadTelephonyStatus()" style="padding:3px 8px;font-size:0.75rem;">↻ Status</button>
         </div>
@@ -1209,7 +1209,7 @@
         </div>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+      <div class="modal-actions">
         <button class="btn-secondary" onclick="closeModal('telephony-modal')">Close</button>
       </div>
     </div>
@@ -1219,7 +1219,7 @@
        MODAL: USER AUTHENTICATION & LOGIN (PER-USER SAVED CHATS)
        ======================================================================== -->
   <div class="modal-backdrop" id="auth-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="auth-modal-title">
-    <div class="modal-box" style="max-width:440px;">
+    <div class="modal-box modal-box-narrow">
       <div class="modal-header">
         <h2 id="auth-modal-title">👤 User Account &amp; Saved Chats</h2>
         <button class="icon-btn" onclick="closeModal('auth-modal')" aria-label="Close dialog">✕</button>

@@ -1,3 +1,39 @@
+// ==========================================================================
+// CLIENT RESILIENCE, GLOBAL ERROR BOUNDARY & NETWORK TIMEOUT HANDLER
+// ==========================================================================
+window.addEventListener("error", (event) => {
+  console.error("[Merlin UI Client Exception]", event.error || event.message);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  if (event.reason && (event.reason.name === "AbortError" || (typeof event.reason.message === "string" && event.reason.message.includes("aborted")))) {
+    return;
+  }
+  console.warn("[Merlin UI Unhandled Rejection]", event.reason);
+});
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 25000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const userSignal = options.signal;
+  if (userSignal) {
+    if (userSignal.aborted) {
+      clearTimeout(timer);
+      controller.abort();
+    } else {
+      userSignal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        controller.abort();
+      }, { once: true });
+    }
+  }
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /* ==========================================================================
    MERLIN AI — UI CLIENT ENGINE & STREAMING LOGIC
    ========================================================================== */
@@ -167,6 +203,7 @@ function openModal(id) {
   if (m) {
     document.body.classList.add("modal-open");
     m.style.display = "flex";
+    m.classList.add("modal-active");
     m.setAttribute("aria-hidden", "false");
     const firstFocusable = m.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
     if (firstFocusable) {
@@ -209,11 +246,15 @@ function openModal(id) {
 }
 
 function closeModal(id) {
-  document.body.classList.remove("modal-open");
   const m = document.getElementById(id);
   if (m) {
     m.style.display = "none";
+    m.classList.remove("modal-active");
     m.setAttribute("aria-hidden", "true");
+  }
+  const activeBackdrops = document.querySelectorAll('.modal-backdrop[aria-hidden="false"]');
+  if (activeBackdrops.length === 0) {
+    document.body.classList.remove("modal-open");
   }
   if (lastFocusedElement && typeof lastFocusedElement.focus === "function") {
     try { lastFocusedElement.focus(); } catch(e) {}
@@ -1932,11 +1973,7 @@ function initAlwaysListeningMerlin() {
   }
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initAlwaysListeningMerlin);
-} else {
-  initAlwaysListeningMerlin();
-}
+// initAlwaysListeningMerlin is registered inside main application bootstrap pipeline
 
 // Mobile and desktop gesture unlockers (primed once, zero overhead afterwards)
 window.addEventListener("touchstart", () => unlockMobileAudioAndMic(), { passive: true, once: true });
@@ -3310,6 +3347,7 @@ async function claimActiveChat() {
 // ==========================================================================
 window.addEventListener("DOMContentLoaded", async () => {
   initTheme();
+  initAlwaysListeningMerlin();
   await checkAuthStatus();
   loadConversations();
   loadTodos();
