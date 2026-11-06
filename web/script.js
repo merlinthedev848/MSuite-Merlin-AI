@@ -9,6 +9,10 @@ let activeWebSocket = null;
 let attachedFile = null;
 let recognition = null;
 let isDictating = false;
+let isMerlinVoiceActive = true;
+let isJarvisVoiceActive = true;
+let isRecognitionRunning = false;
+let isMerlinConversationActive = false;
 let syncPollTimer = null;
 let datasetPollTimer = null;
 let skillsSearchTimer = null;
@@ -223,6 +227,10 @@ function renderMarkdown(rawText) {
   if (!rawText) return "";
   // Normalize Windows CRLF and CR line endings
   let txt = String(rawText).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // Ensure glued code fences (e.g. "code:```python") are cleanly split onto newlines
+  txt = txt.replace(/([^\n])(`{3,})/g, "$1\n$2");
+  txt = txt.replace(/(`{3,}[^\n`]*)\n?([^\n`]*?)(`{3,})([^\n])/g, "$1\n$2$3\n$4");
 
   // Escape HTML entities to prevent XSS
   txt = txt
@@ -1157,11 +1165,7 @@ async function analyzeAttachedMultimodal() {
 // MERLIN AUDIO CHIME & ULTRA-SMOOTH SPOKEN VOICE ENGINE
 // Autonomous Conversational Communicator & Engineering Workhorse
 // ==========================================================================
-let isMerlinVoiceActive = true;
-let isJarvisVoiceActive = true; // Backward-compatibility alias
-let isMerlinConversationActive = false; // Active continuous dialogue state
 let conversationActiveTimer = null;
-let isRecognitionRunning = false;
 let merlinAudioCtx = null;
 let isMerlinSpeaking = false;
 let lastSpokenText = "";
