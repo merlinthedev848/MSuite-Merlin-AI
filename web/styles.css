@@ -492,33 +492,39 @@ body.admin-logged-in .admin-only-inline {
    Pure Immersive Visual Canvas: 100% Animation & Voice; Zero Visual Clutter
    ========================================================================== */
 body.jarvis-visual-mode,
-body.voice-mode-active {
+body.voice-mode-active,
+body:not(.text-mode-active) {
   background: radial-gradient(circle at center, #020d1e 0%, #010712 55%, #000308 100%) !important;
   overflow: hidden !important;
 }
 
 body.jarvis-visual-mode #sidebar,
-body.voice-mode-active #sidebar {
+body.voice-mode-active #sidebar,
+body:not(.text-mode-active) #sidebar {
   display: none !important;
 }
 
 body.jarvis-visual-mode .top-navbar,
-body.voice-mode-active .top-navbar {
+body.voice-mode-active .top-navbar,
+body:not(.text-mode-active) .top-navbar {
   display: none !important;
 }
 
 body.voice-mode-active #messages-list,
-body.jarvis-visual-mode #messages-list {
+body.jarvis-visual-mode #messages-list,
+body:not(.text-mode-active) #messages-list {
   display: none !important;
 }
 
 body.jarvis-visual-mode #input-dock,
-body.voice-mode-active #input-dock {
+body.voice-mode-active #input-dock,
+body:not(.text-mode-active) #input-dock {
   display: none !important;
 }
 
 body.voice-mode-active #messages-viewport,
-body.jarvis-visual-mode #messages-viewport {
+body.jarvis-visual-mode #messages-viewport,
+body:not(.text-mode-active) #messages-viewport {
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
@@ -535,7 +541,8 @@ body.jarvis-visual-mode #messages-viewport {
 }
 
 body.jarvis-visual-mode .sentinel-hero-container,
-body.voice-mode-active .sentinel-hero-container {
+body.voice-mode-active .sentinel-hero-container,
+body:not(.text-mode-active) .sentinel-hero-container {
   width: 100vw !important;
   height: 100vh !important;
   height: 100dvh !important;
@@ -550,7 +557,8 @@ body.voice-mode-active .sentinel-hero-container {
 }
 
 body.jarvis-visual-mode .sentinel-frame.cyber-hud-frame,
-body.voice-mode-active .sentinel-frame.cyber-hud-frame {
+body.voice-mode-active .sentinel-frame.cyber-hud-frame,
+body:not(.text-mode-active) .sentinel-frame.cyber-hud-frame {
   width: 100% !important;
   height: 100% !important;
   max-width: 100% !important;
@@ -563,7 +571,8 @@ body.voice-mode-active .sentinel-frame.cyber-hud-frame {
 
 /* Full-Screen Scaling for JARVIS HUD */
 body.jarvis-visual-mode .circuit-svg-bg,
-body.voice-mode-active .circuit-svg-bg {
+body.voice-mode-active .circuit-svg-bg,
+body:not(.text-mode-active) .circuit-svg-bg {
   width: 100vw !important;
   max-width: 1400px !important;
   height: 85vh !important;
@@ -571,15 +580,52 @@ body.voice-mode-active .circuit-svg-bg {
 }
 
 body.jarvis-visual-mode .sentinel-eye.cyber-ai-core,
-body.voice-mode-active .sentinel-eye.cyber-ai-core {
+body.voice-mode-active .sentinel-eye.cyber-ai-core,
+body:not(.text-mode-active) .sentinel-eye.cyber-ai-core {
   width: clamp(260px, 36vw, 360px);
   height: clamp(260px, 36vw, 360px);
 }
 
 body.jarvis-visual-mode .core-center-hub,
-body.voice-mode-active .core-center-hub {
+body.voice-mode-active .core-center-hub,
+body:not(.text-mode-active) .core-center-hub {
   width: clamp(100px, 14vw, 136px);
   height: clamp(100px, 14vw, 136px);
+}
+
+/* Authentic Stark Arc Reactor Core Optics */
+.arc-reactor-core {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.arc-reactor-svg {
+  width: 85%;
+  height: 85%;
+  animation: arcRotate 24s linear infinite;
+  filter: drop-shadow(0 0 14px rgba(0, 240, 255, 0.85));
+}
+
+@keyframes arcRotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.sentinel-eye.sentinel-speaking .arc-reactor-svg {
+  animation: arcRotateSpeaking 3s linear infinite, arcPulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes arcRotateSpeaking {
+  0% { transform: rotate(0deg) scale(1.05); }
+  100% { transform: rotate(360deg) scale(1.05); }
+}
+
+@keyframes arcPulse {
+  0% { filter: drop-shadow(0 0 16px rgba(0, 240, 255, 0.9)); }
+  100% { filter: drop-shadow(0 0 32px rgba(0, 255, 204, 1)); }
 }
 
 /* True Jarvis Minimalist Cyber HUD: Pure focus on animation; hide all telemetry text & strips */
@@ -588,7 +634,13 @@ body.voice-mode-active .sentinel-hud-telemetry,
 body.voice-mode-active .sentinel-voice-caption,
 body.jarvis-visual-mode .hud-bracket,
 body.jarvis-visual-mode .sentinel-hud-telemetry,
-body.jarvis-visual-mode .sentinel-voice-caption {
+body.jarvis-visual-mode .sentinel-voice-caption,
+body:not(.text-mode-active) .hud-bracket,
+body:not(.text-mode-active) .sentinel-hud-telemetry,
+body:not(.text-mode-active) #sentinel-guest-badge,
+body:not(.text-mode-active) #sentinel-status-text,
+body:not(.text-mode-active) #sentinel-sub-text,
+body:not(.text-mode-active) .sentinel-voice-caption {
   display: none !important;
 }
 

@@ -1178,8 +1178,8 @@ function refreshConversationSession(durationMs = 35000) {
   conversationActiveTimer = setTimeout(() => {
     isMerlinConversationActive = false;
     setMerlinHudState("listening");
-    updateWakePillUI(true, "Wake Word: Merlin (Always Listening)");
-    console.debug("Merlin active conversation session timed out; returning to wake-word standby.");
+    updateWakePillUI(true, "J.A.R.V.I.S. Online (Hands-Free)");
+    console.debug("J.A.R.V.I.S. active conversation session timed out; returning to standby.");
   }, durationMs);
 }
 
@@ -1189,8 +1189,8 @@ function endConversationSession(spokenResponse = null) {
     clearTimeout(conversationActiveTimer);
     conversationActiveTimer = null;
   }
-  setMerlinHudState("listening", 'STANDBY &bull; WAKE WORD: "MERLIN"');
-  updateWakePillUI(true, "Wake Word: Merlin (Always Listening)");
+  setMerlinHudState("listening", 'STANDBY &bull; "JARVIS"');
+  updateWakePillUI(true, "J.A.R.V.I.S. Online (Hands-Free)");
   if (spokenResponse) {
     speakMerlinText(spokenResponse);
   } else {
@@ -1378,10 +1378,10 @@ function updateWakePillUI(active, customLabel = "") {
   if (!pill) return;
   if (active) {
     pill.classList.add("active");
-    if (label) label.textContent = customLabel || (isMerlinConversationActive ? "Active Dialogue" : "Wake Word: Merlin");
+    if (label) label.textContent = customLabel || (isMerlinConversationActive ? "Active Dialogue" : "J.A.R.V.I.S. Online");
   } else {
     pill.classList.remove("active");
-    if (label) label.textContent = customLabel || "Wake Word: Paused";
+    if (label) label.textContent = customLabel || "Voice Standby";
   }
 }
 
@@ -3091,9 +3091,7 @@ async function checkAuthStatus() {
       if (sidebarTitle) sidebarTitle.innerText = `${currentUser.display_name || currentUser.username}'s Saved Chats`;
       const guestBadge = document.getElementById("sentinel-guest-badge");
       if (guestBadge) {
-        guestBadge.style.display = "block";
-        guestBadge.innerHTML = `OPERATOR ONLINE: @${currentUser.username} &bull; CONVERSATIONS SAVED TO ACCOUNT`;
-        guestBadge.style.color = "#4ade80";
+        guestBadge.style.display = "none";
       }
     } else {
       localStorage.removeItem("merlin_auth_token");
