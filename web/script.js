@@ -766,18 +766,7 @@ function processIncomingSpeechChunk(tokenChunk, isFinal = false) {
   ttsStreamActive = !isFinal;
   if (tokenChunk) ttsTextBuffer += tokenChunk;
 
-  // Ultra-rapid initial speech trigger: on the very first chunk of a response,
-  // break at comma, colon, semicolon, or dash after 20+ chars so speech starts in < 200ms
-  if (!ttsIsSpeakingChunk && ttsStreamingQueue.length === 0 && ttsTextBuffer.length > 20) {
-    const earlyMatch = ttsTextBuffer.match(/^([\s\S]*?[,;:—\n]+(?:\s+))([\s\S]*)$/);
-    if (earlyMatch) {
-      const earlyClause = earlyMatch[1].trim();
-      ttsTextBuffer = earlyMatch[2];
-      if (earlyClause) queueSentenceForSpeech(earlyClause);
-    }
-  }
-
-  // Real-time sentence chunking: detect punctuation (. ! ?) followed by whitespace or line breaks
+  // Real-time full-sentence chunking: speak only coherent, complete sentences
   while (ttsTextBuffer.length > 0) {
     const match = ttsTextBuffer.match(/^([\s\S]*?[.!?]+(?:\s+|\n+))([\s\S]*)$/);
     if (match) {
@@ -786,20 +775,10 @@ function processIncomingSpeechChunk(tokenChunk, isFinal = false) {
       if (sentence) queueSentenceForSpeech(sentence);
       continue;
     }
-    // Clause break fallback for long streaming segments (>60 chars) without punctuation
-    if (ttsTextBuffer.length > 60) {
-      const clauseMatch = ttsTextBuffer.match(/^([\s\S]*?[,;:\n]+(?:\s+|\n+))([\s\S]*)$/);
-      if (clauseMatch) {
-        const clause = clauseMatch[1].trim();
-        ttsTextBuffer = clauseMatch[2];
-        if (clause) queueSentenceForSpeech(clause);
-        continue;
-      }
-    }
     break;
   }
 
-  // On stream done, flush any remaining text in the buffer immediately
+  // On stream done, speak whatever final sentence or phrase remains in the buffer
   if (isFinal && ttsTextBuffer.trim()) {
     queueSentenceForSpeech(ttsTextBuffer.trim());
     ttsTextBuffer = "";
@@ -1397,56 +1376,43 @@ function updateBestVoice() {
     }
   }
 
-  // Priority 1: Google UK English Male (Exact match or Google UK variant)
-  const googleUKMale = voices.find(v => 
-    v.name.includes("Google UK English Male") ||
-    (v.name.includes("Google") && (v.lang === "en-GB" || v.lang === "en_GB") && /\bmale\b/i.test(v.name))
-  );
-  if (googleUKMale) {
-    bestVoice = googleUKMale;
-    populateVoiceSelect();
-    return;
-  }
-
-  // Common female name/indicator filter
   const femalePattern = /\b(female|zira|susan|hazel|catherine|linda|jenny|aria|samantha|victoria|karen|moira|fiona|tessa|ava|emma|olivia|sophia|chloe|sonia|natasha|ana)\b/i;
+  const englishVoices = voices.filter(v => v.lang.startsWith("en"));
+  const pool = englishVoices.filter(v => !femalePattern.test(v.name));
+  const candidatePool = pool.length > 0 ? pool : englishVoices;
 
-  const englishVoices = voices.filter(v => v.lang.startsWith("en") && !femalePattern.test(v.name));
-
-  // Priority 2: Other High quality British UK male voices (Ryan, George, Arthur, Oliver, Daniel)
-  const gbMale = englishVoices.find(v => 
-    (v.lang === "en-GB" || v.lang === "en_GB") &&
-    (v.name.includes("Ryan") || v.name.includes("George") || v.name.includes("Arthur") || v.name.includes("Oliver") || v.name.includes("Daniel") || /\bmale\b/i.test(v.name))
+  // Priority 1: Natural / Neural high-fidelity voices (Edge, Windows 11, iOS Enhanced, Chrome Online)
+  const neuralVoice = candidatePool.find(v =>
+    (v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Enhanced") || v.name.includes("Online")) &&
+    (v.name.includes("Ryan") || v.name.includes("Guy") || v.name.includes("Oliver") || v.name.includes("Daniel") || v.name.includes("Arthur") || v.name.includes("George") || v.name.includes("Christopher") || v.lang.includes("GB") || v.lang.includes("US"))
   );
-  if (gbMale) { bestVoice = gbMale; populateVoiceSelect(); return; }
-
-  // Priority 3: Any British en-GB male voice
-  const anyGB = englishVoices.find(v => v.lang.startsWith("en-GB") || v.lang.startsWith("en_GB"));
-  if (anyGB) { bestVoice = anyGB; populateVoiceSelect(); return; }
-
-  // Priority 4: Natural / Neural male English voices
-  const neuralMale = englishVoices.find(v => 
-    (v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Online")) &&
-    (/\b(male|guy|christopher|andrew|david|ryan|george|oliver|daniel)\b/i.test(v.name) || !femalePattern.test(v.name))
-  );
-  if (neuralMale) { bestVoice = neuralMale; populateVoiceSelect(); return; }
-
-  // Priority 5: Resonant American baritone male voices (Guy, Christopher, Andrew, David, Mark)
-  const usNarratorMale = englishVoices.find(v => 
-    (v.lang === "en-US" || v.lang === "en_US") &&
-    (v.name.includes("Guy") || v.name.includes("Christopher") || v.name.includes("Andrew") || v.name.includes("David") || v.name.includes("Mark"))
-  );
-  if (usNarratorMale) { bestVoice = usNarratorMale; populateVoiceSelect(); return; }
-
-  // Priority 5: Any non-female English voice
-  if (englishVoices.length > 0) {
-    bestVoice = englishVoices[0];
+  if (neuralVoice) {
+    bestVoice = neuralVoice;
     populateVoiceSelect();
     return;
   }
 
-  // Fallback
-  bestVoice = voices.find(v => v.lang.startsWith("en")) || voices[0];
+  // Priority 2: Distinctive British English voices (Ryan, Oliver, George, Daniel, Arthur)
+  const britishVoice = candidatePool.find(v =>
+    (v.lang === "en-GB" || v.lang === "en_GB") &&
+    (v.name.includes("Ryan") || v.name.includes("George") || v.name.includes("Arthur") || v.name.includes("Oliver") || v.name.includes("Daniel") || v.name.includes("Google UK English Male"))
+  );
+  if (britishVoice) {
+    bestVoice = britishVoice;
+    populateVoiceSelect();
+    return;
+  }
+
+  // Priority 3: Any Natural / Neural / Enhanced voice
+  const anyNatural = candidatePool.find(v => v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Enhanced"));
+  if (anyNatural) {
+    bestVoice = anyNatural;
+    populateVoiceSelect();
+    return;
+  }
+
+  // Priority 4: Clear English voice
+  bestVoice = candidatePool[0] || voices.find(v => v.lang.startsWith("en")) || voices[0];
   populateVoiceSelect();
 }
 

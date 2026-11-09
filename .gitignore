@@ -6,6 +6,8 @@ models/
 # Local Database & runtime state
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 

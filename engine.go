@@ -10,12 +10,26 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
 var (
 	ollamaURL = "http://localhost:11434"
 	startTime = time.Now()
+
+	httpClient = &http.Client{
+		Timeout: 120 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 20,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
+
+	cachedModels   []string
+	cachedModelsAt time.Time
+	modelsMu       sync.RWMutex
 )
 
 func init() {
@@ -54,24 +68,48 @@ type OllamaTagsResponse struct {
 	Models []ModelInfo `json:"models"`
 }
 
-// GetAvailableModels queries local Ollama instance for installed models
+// GetAvailableModels queries local Ollama instance with high-speed memory caching
 func GetAvailableModels() []string {
-	client := http.Client{Timeout: 800 * time.Millisecond}
-	resp, err := client.Get(ollamaURL + "/api/tags")
+	modelsMu.RLock()
+	if time.Since(cachedModelsAt) < 30*time.Second && len(cachedModels) > 0 {
+		defer modelsMu.RUnlock()
+		res := make([]string, len(cachedModels))
+		copy(res, cachedModels)
+		return res
+	}
+	modelsMu.RUnlock()
+
+	modelsMu.Lock()
+	defer modelsMu.Unlock()
+	if time.Since(cachedModelsAt) < 30*time.Second && len(cachedModels) > 0 {
+		res := make([]string, len(cachedModels))
+		copy(res, cachedModels)
+		return res
+	}
+
+	quickClient := http.Client{Timeout: 600 * time.Millisecond}
+	resp, err := quickClient.Get(ollamaURL + "/api/tags")
 	if err != nil {
+		if len(cachedModels) > 0 {
+			res := make([]string, len(cachedModels))
+			copy(res, cachedModels)
+			return res
+		}
 		return []string{}
 	}
 	defer resp.Body.Close()
 
 	var tags OllamaTagsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
-		return []string{}
+		return cachedModels
 	}
 
 	var names []string
 	for _, m := range tags.Models {
 		names = append(names, m.Name)
 	}
+	cachedModels = names
+	cachedModelsAt = time.Now()
 	return names
 }
 
@@ -296,8 +334,7 @@ func StreamResponse(ctx context.Context, prompt, sessionID, activeModel string, 
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		// Ollama is offline fallback
 		offlineMsg := "**Offline Intelligence Standby**\n\n" +
