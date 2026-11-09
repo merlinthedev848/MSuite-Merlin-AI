@@ -300,6 +300,14 @@ function openModal(id) {
     initArgonModal();
   } else if (id === "calendar-modal") {
     loadCalendarEvents();
+
+  // Instantaneous Keystroke & Send-State Resilience
+  const chatTa = document.getElementById("chat-textarea");
+  if (chatTa) {
+    ["input", "change", "paste", "keyup"].forEach(evt => {
+      chatTa.addEventListener(evt, () => autoResizeTextarea(chatTa), { passive: true });
+    });
+  }
   } else if (id === "telephony-modal") {
     loadTelephonyStatus();
   } else if (id === "auth-modal") {
@@ -884,13 +892,9 @@ async function submitMessage(fromVoice = false) {
   const promptText = ta.value.trim();
   if (!promptText && !attachedFile) return;
 
-  if (!activeConversationId) {
-    try {
-      await createNewChat();
-    } catch (e) {
-      console.warn("createNewChat network error fallback:", e);
-      activeConversationId = "conv-" + Date.now();
-    }
+  const isNewChat = !activeConversationId;
+  if (isNewChat) {
+    activeConversationId = "conv-" + Date.now();
   }
 
   const isVoiceMode = isMerlinVoiceActive || fromVoice;
@@ -922,6 +926,15 @@ async function submitMessage(fromVoice = false) {
   dismissOnDemandHudDisplay();
   hideStarterSuggestions();
   playChime("send");
+
+  if (isNewChat) {
+    // Non-blocking fire-and-forget conversation registration in SQLite
+    fetch("/api/conversations", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ id: activeConversationId, title: promptText.slice(0, 32) || "New Chat", mode: "auto" })
+    }).then(() => loadConversations()).catch((e) => console.warn("Session persist sync:", e));
+  }
 
   let assistantBubble;
   if (!isVoiceMode) {
@@ -1258,13 +1271,9 @@ async function analyzeAttachedMultimodal() {
     localStorage.setItem("merlin-gemini-key", apiKey.trim());
   }
 
-  if (!activeConversationId) {
-    try {
-      await createNewChat();
-    } catch (e) {
-      console.warn("createNewChat network error fallback:", e);
-      activeConversationId = "conv-" + Date.now();
-    }
+  const isNewChat = !activeConversationId;
+  if (isNewChat) {
+    activeConversationId = "conv-" + Date.now();
   }
 
   const fileObj = attachedFile;

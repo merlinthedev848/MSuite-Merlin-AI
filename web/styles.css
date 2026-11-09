@@ -1739,7 +1739,7 @@ code { font-family: inherit; font-size: inherit; }
   transition: background 0.15s, color 0.15s;
 }
 .dock-icon-btn:hover { background: var(--bg-surface-hover); color: var(--text-main); }
-.dock-icon-btn svg { width: 19px; height: 19px; fill: currentColor; }
+.dock-icon-btn svg { width: 19px; height: 19px; fill: currentColor; pointer-events: none; }
 
 .dock-icon-btn.merlin-voice-active,
 .dock-icon-btn.voice-active,
@@ -2670,9 +2670,7 @@ body.typing-active .sentinel-sweep {
   contain: layout style !important;
 }
 
-#chat-textarea {
-  contain: paint !important;
-}
+/* #chat-textarea contain unconstrained */
 
 body.typing-active .stark-arc-reactor-svg {
   filter: none !important;

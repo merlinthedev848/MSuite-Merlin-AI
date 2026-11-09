@@ -76,7 +76,7 @@ func GetAvailableModels() []string {
 }
 
 // StreamResponse streams tokens from local Ollama or returns deterministic fast paths immediately
-func StreamResponse(ctx context.Context, prompt, sessionID, activeModel string, flusher http.Flusher, w io.Writer) (string, error) {
+func StreamResponse(ctx context.Context, prompt, sessionID, activeModel string, emitChunk func(delta string)) (string, error) {
 	promptClean := strings.TrimSpace(prompt)
 	promptLower := strings.ToLower(promptClean)
 	cleaned := strings.Trim(promptLower, "?.! ,")
@@ -108,7 +108,9 @@ func StreamResponse(ctx context.Context, prompt, sessionID, activeModel string, 
 		formattedTime := now.Format("3:04 PM")
 		formattedDate := now.Format("Monday, January 2, 2006")
 		resp := fmt.Sprintf("The current time is **%s** on %s, Sir.", formattedTime, formattedDate)
-		sendSSE(w, flusher, resp)
+		if emitChunk != nil {
+			emitChunk(resp)
+		}
 		return resp, nil
 	}
 
@@ -154,18 +156,99 @@ func StreamResponse(ctx context.Context, prompt, sessionID, activeModel string, 
 			dbMetrics["knowledge_entries"],
 			dbMetrics["pending_todos"], dbMetrics["notes"],
 		)
-		sendSSE(w, flusher, resp)
+		if emitChunk != nil {
+			emitChunk(resp)
+		}
 		return resp, nil
 	}
 
 	// =========================================================================
-	// DETERMINISTIC FAST-PATH 3: Conversational Greetings (<0.05ms)
+	// DETERMINISTIC FAST-PATH 3: Active Task & Directive Queue (0.1ms)
 	// =========================================================================
-	greetings := []string{"hello", "hey", "hi", "good morning", "good evening", "who are you"}
+	taskTriggers := []string{
+		"pending tasks", "what tasks", "my tasks", "pending todo", "what todos",
+		"show tasks", "list tasks", "my todos", "todo list", "tasks pending",
+		"do i have pending", "what tasks do i have",
+	}
+	isTaskQuery := false
+	if cleaned == "tasks" || cleaned == "todos" || cleaned == "pending tasks" {
+		isTaskQuery = true
+	} else {
+		for _, t := range taskTriggers {
+			if strings.Contains(promptLower, t) {
+				isTaskQuery = true
+				break
+			}
+		}
+	}
+
+	if isTaskQuery {
+		todos, _ := GetTodos(nil)
+		var pending []Todo
+		for _, t := range todos {
+			if !t.Completed {
+				pending = append(pending, t)
+			}
+		}
+		var resp string
+		if len(pending) == 0 {
+			resp = "You currently have **0 pending tasks** in your directive queue, Sir. All objectives are accomplished."
+		} else {
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("**Active Task Queue** — *%d Pending Directives*\n\n", len(pending)))
+			for i, t := range pending {
+				prio := strings.ToUpper(t.Priority)
+				if prio == "" {
+					prio = "NORMAL"
+				}
+				sb.WriteString(fmt.Sprintf("%d. **[%s]** %s\n", i+1, prio, t.Task))
+			}
+			resp = sb.String()
+		}
+		if emitChunk != nil {
+			emitChunk(resp)
+		}
+		return resp, nil
+	}
+
+	// =========================================================================
+	// DETERMINISTIC FAST-PATH 4: Living Cosmos Cosmic Entity (0.05ms)
+	// =========================================================================
+	cosmosTriggers := []string{
+		"living cosmos", "explain the living cosmos", "what is this cosmos",
+		"explain the universe", "living universe", "ethereal entity", "gas entity",
+		"what are you", "who are you",
+	}
+	isCosmosQuery := false
+	if cleaned == "cosmos" || cleaned == "living cosmos" {
+		isCosmosQuery = true
+	} else {
+		for _, c := range cosmosTriggers {
+			if strings.Contains(promptLower, c) {
+				isCosmosQuery = true
+				break
+			}
+		}
+	}
+
+	if isCosmosQuery {
+		resp := "The living cosmos before you is an undulating astral nebula—a sentient, volumetric nexus of ionized gas and stardust filaments. It breathes in harmony with your directives, channeling quantum states and localized neural inference directly into physical manifestation, Sir."
+		if emitChunk != nil {
+			emitChunk(resp)
+		}
+		return resp, nil
+	}
+
+	// =========================================================================
+	// DETERMINISTIC FAST-PATH 5: Conversational Greetings (<0.05ms)
+	// =========================================================================
+	greetings := []string{"hello", "hey", "hi", "good morning", "good evening"}
 	for _, g := range greetings {
 		if cleaned == g || strings.HasPrefix(cleaned, g+" ") {
 			resp := "Good day, Sir. Merlin neural intelligence online and standing by. How may I assist your directives?"
-			sendSSE(w, flusher, resp)
+			if emitChunk != nil {
+				emitChunk(resp)
+			}
 			return resp, nil
 		}
 	}
@@ -223,7 +306,9 @@ func StreamResponse(ctx context.Context, prompt, sessionID, activeModel string, 
 			"1. Run `ollama serve` in the background.\n" +
 			"2. Run `ollama run qwen2.5-coder:1.5b`.\n\n" +
 			"Merlin automatically connects to Ollama on `localhost:11434` with zero restart required."
-		sendSSE(w, flusher, offlineMsg)
+		if emitChunk != nil {
+			emitChunk(offlineMsg)
+		}
 		return offlineMsg, nil
 	}
 	defer resp.Body.Close()
@@ -241,7 +326,9 @@ func StreamResponse(ctx context.Context, prompt, sessionID, activeModel string, 
 		if err := json.Unmarshal(line, &chunk); err == nil {
 			if chunk.Message.Content != "" {
 				fullResponse.WriteString(chunk.Message.Content)
-				sendSSE(w, flusher, chunk.Message.Content)
+				if emitChunk != nil {
+					emitChunk(chunk.Message.Content)
+				}
 			}
 			if chunk.Done {
 				break

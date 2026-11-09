@@ -17,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/net/websocket"
 )
 
 //go:embed web/index.html web/styles.css web/script.js
@@ -82,6 +84,7 @@ func main() {
 
 	// Chat Stream SSE
 	mux.HandleFunc("/api/chat/stream", handleChatStream)
+	mux.Handle("/ws/chat", websocket.Handler(handleWebSocketChat))
 
 	// Auth API
 	mux.HandleFunc("/api/auth/register", handleRegister)
@@ -267,13 +270,70 @@ func handleChatStream(w http.ResponseWriter, r *http.Request) {
 	_ = SaveMessage(sessionID, "user", prompt)
 
 	// Stream AI response
-	fullResp, err := StreamResponse(r.Context(), prompt, sessionID, model, flusher, w)
+	emitChunk := func(delta string) {
+		sendSSE(w, flusher, delta)
+	}
+	fullResp, err := StreamResponse(r.Context(), prompt, sessionID, model, emitChunk)
 	if err == nil && fullResp != "" {
 		_ = SaveMessage(sessionID, "assistant", fullResp)
 	}
 
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
+}
+
+func handleWebSocketChat(ws *websocket.Conn) {
+	defer ws.Close()
+
+	for {
+		var req struct {
+			Prompt    string `json:"prompt"`
+			SessionID string `json:"session_id"`
+			Mode      string `json:"mode"`
+			Model     string `json:"model"`
+			Token     string `json:"token"`
+			Action    string `json:"action"`
+		}
+
+		err := websocket.JSON.Receive(ws, &req)
+		if err != nil {
+			break
+		}
+
+		if req.Action == "stop" {
+			continue
+		}
+
+		prompt := strings.TrimSpace(req.Prompt)
+		if prompt == "" {
+			continue
+		}
+
+		sessionID := req.SessionID
+		if sessionID == "" {
+			sessionID = fmt.Sprintf("conv-%d", time.Now().UnixNano())
+		}
+
+		_ = SaveMessage(sessionID, "user", prompt)
+
+		emitChunk := func(delta string) {
+			_ = websocket.JSON.Send(ws, map[string]string{
+				"type":       "chunk",
+				"delta":      delta,
+				"session_id": sessionID,
+			})
+		}
+
+		fullResp, _ := StreamResponse(ws.Request().Context(), prompt, sessionID, req.Model, emitChunk)
+		if fullResp != "" {
+			_ = SaveMessage(sessionID, "assistant", fullResp)
+		}
+
+		_ = websocket.JSON.Send(ws, map[string]string{
+			"type":       "done",
+			"session_id": sessionID,
+		})
+	}
 }
 
 func handleRegister(w http.ResponseWriter, r *http.Request) {
