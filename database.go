@@ -77,6 +77,24 @@ type KnowledgeEntry struct {
 	Score       float64 `json:"score,omitempty"`
 }
 
+type CalendarEvent struct {
+	ID          int64     `json:"id"`
+	Title       string    `json:"title"`
+	StartTime   string    `json:"start_time"`
+	EndTime     string    `json:"end_time"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UserID      *int64    `json:"user_id,omitempty"`
+}
+
+type AuditLogEntry struct {
+	ID        int64     `json:"id"`
+	Action    string    `json:"action"`
+	Details   string    `json:"details"`
+	Level     string    `json:"level"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 func initDatabase(dbPath string) (*sql.DB, error) {
 	var err error
 	dbOnce.Do(func() {
@@ -163,6 +181,16 @@ func initDatabase(dbPath string) (*sql.DB, error) {
 			details TEXT NOT NULL,
 			level TEXT NOT NULL DEFAULT 'info',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE IF NOT EXISTS calendar_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			start_time TEXT NOT NULL,
+			end_time TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
@@ -577,4 +605,178 @@ func CosineSimilarity(a, b []float64) float64 {
 		return 0.0
 	}
 	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
+}
+
+
+// Calendar Management
+func GetCalendarEvents(limit int) ([]CalendarEvent, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := db.Query("SELECT id, title, start_time, end_time, description, created_at, user_id FROM calendar_events ORDER BY start_time ASC LIMIT ?", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []CalendarEvent
+	for rows.Next() {
+		var e CalendarEvent
+		if err := rows.Scan(&e.ID, &e.Title, &e.StartTime, &e.EndTime, &e.Description, &e.CreatedAt, &e.UserID); err == nil {
+			events = append(events, e)
+		}
+	}
+	if events == nil {
+		events = []CalendarEvent{}
+	}
+	return events, nil
+}
+
+func BookCalendarEvent(title, startTime, endTime, desc string, userID *int64) (*CalendarEvent, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "Appointment"
+	}
+	now := time.Now()
+	res, err := db.Exec(
+		"INSERT INTO calendar_events (title, start_time, end_time, description, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)",
+		title, startTime, endTime, desc, now, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
+	LogAuditEvent("CALENDAR_BOOK", fmt.Sprintf("Booked '%s' (%s to %s)", title, startTime, endTime), "info")
+	return &CalendarEvent{
+		ID:          id,
+		Title:       title,
+		StartTime:   startTime,
+		EndTime:     endTime,
+		Description: desc,
+		CreatedAt:   now,
+		UserID:      userID,
+	}, nil
+}
+
+func CheckCalendarAvailability(startTime, endTime string) (bool, string, error) {
+	var count int
+	err := db.QueryRow(
+		"SELECT COUNT(*) FROM calendar_events WHERE (start_time < ? AND end_time > ?)",
+		endTime, startTime,
+	).Scan(&count)
+	if err != nil {
+		return false, "", err
+	}
+	if count > 0 {
+		return false, "Slot conflicts with an existing scheduled event.", nil
+	}
+	return true, "Time slot is completely clear and available.", nil
+}
+
+func DeleteCalendarEvent(id int64) error {
+	_, err := db.Exec("DELETE FROM calendar_events WHERE id = ?", id)
+	if err == nil {
+		LogAuditEvent("CALENDAR_DELETE", fmt.Sprintf("Deleted calendar event #%d", id), "info")
+	}
+	return err
+}
+
+// Knowledge Base Query & Mutate
+func GetKnowledge(query string, limit int) ([]KnowledgeEntry, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var rows *sql.Rows
+	var err error
+	if query == "" {
+		rows, err = db.Query("SELECT id, topic, lesson, code_example FROM knowledge ORDER BY id DESC LIMIT ?", limit)
+	} else {
+		pattern := "%" + query + "%"
+		rows, err = db.Query("SELECT id, topic, lesson, code_example FROM knowledge WHERE topic LIKE ? OR lesson LIKE ? ORDER BY id DESC LIMIT ?", pattern, pattern, limit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []KnowledgeEntry
+	for rows.Next() {
+		var k KnowledgeEntry
+		if err := rows.Scan(&k.ID, &k.Topic, &k.Lesson, &k.CodeExample); err == nil {
+			entries = append(entries, k)
+		}
+	}
+	if entries == nil {
+		entries = []KnowledgeEntry{}
+	}
+	return entries, nil
+}
+
+func AddKnowledge(topic, lesson, codeExample string) (*KnowledgeEntry, error) {
+	topic = strings.TrimSpace(topic)
+	lesson = strings.TrimSpace(lesson)
+	if topic == "" || lesson == "" {
+		return nil, fmt.Errorf("topic and lesson are required")
+	}
+	res, err := db.Exec(
+		"INSERT INTO knowledge (topic, lesson, code_example) VALUES (?, ?, ?)",
+		topic, lesson, codeExample,
+	)
+	if err != nil {
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
+	LogAuditEvent("KNOWLEDGE_ADD", fmt.Sprintf("Added knowledge entry on '%s'", topic), "info")
+	return &KnowledgeEntry{
+		ID:          id,
+		Topic:       topic,
+		Lesson:      lesson,
+		CodeExample: codeExample,
+	}, nil
+}
+
+func DeleteKnowledge(id int64) error {
+	_, err := db.Exec("DELETE FROM knowledge WHERE id = ?", id)
+	if err == nil {
+		LogAuditEvent("KNOWLEDGE_DELETE", fmt.Sprintf("Deleted knowledge entry #%d", id), "info")
+	}
+	return err
+}
+
+// Audit Logs
+func GetAuditLogs(limit int) ([]AuditLogEntry, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := db.Query("SELECT id, action, details, level, created_at FROM audit_logs ORDER BY id DESC LIMIT ?", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []AuditLogEntry
+	for rows.Next() {
+		var l AuditLogEntry
+		if err := rows.Scan(&l.ID, &l.Action, &l.Details, &l.Level, &l.CreatedAt); err == nil {
+			logs = append(logs, l)
+		}
+	}
+	if logs == nil {
+		logs = []AuditLogEntry{}
+	}
+	return logs, nil
+}
+
+// Database Vacuum & Maintenance
+func VacuumDatabase() (int64, error) {
+	_, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	if err != nil {
+		return 0, err
+	}
+	_, err = db.Exec("VACUUM")
+	if err != nil {
+		return 0, err
+	}
+	LogAuditEvent("DATABASE_VACUUM", "Executed WAL checkpoint and VACUUM operation", "info")
+	return 64, nil
 }

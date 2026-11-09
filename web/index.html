@@ -657,6 +657,13 @@
           <button class="attachment-remove-btn" onclick="clearAttachment()" title="Remove attachment">✕</button>
         </div>
 
+        <div class="starter-suggestions-bar" id="starter-suggestions-bar">
+          <button class="starter-pill" onclick="quickSendDirective('What time is it?')" aria-label="Ask what time it is">⚡ What time is it?</button>
+          <button class="starter-pill" onclick="quickSendDirective('Run self diagnostics')" aria-label="Run self diagnostics">🛡️ Self diagnostics</button>
+          <button class="starter-pill" onclick="quickSendDirective('What tasks do I have pending?')" aria-label="View pending tasks">📋 Pending tasks</button>
+          <button class="starter-pill" onclick="quickSendDirective('Explain the living cosmos')" aria-label="Explain living cosmos">🔮 Living cosmos</button>
+        </div>
+
         <div class="input-pill-box floating-pill">
           <input type="file" id="file-uploader" style="display:none;" onchange="handleFileUpload(event)">
           <button class="dock-icon-btn pill-btn" onclick="document.getElementById('file-uploader').click()" title="Attach file or code" aria-label="Attach file">

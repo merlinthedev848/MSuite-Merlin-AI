@@ -2765,3 +2765,41 @@ button:active:not(:disabled),
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
+
+/* Starter Quick-Directive Suggestion Bar */
+.starter-suggestions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  pointer-events: auto;
+  animation: fadeIn 0.3s ease;
+}
+
+.starter-pill {
+  background: rgba(4, 9, 20, 0.88);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  color: #e2e8f0;
+  border-radius: 9999px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}
+
+.starter-pill:hover {
+  background: rgba(0, 240, 255, 0.15);
+  border-color: #00f0ff;
+  color: #00f0ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 240, 255, 0.25);
+}
+
+.starter-pill:active {
+  transform: scale(0.96);
+}
