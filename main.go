@@ -78,64 +78,7 @@ func main() {
 		fileServer.ServeHTTP(w, r)
 	})
 
-	// API Health & Telemetry
-	mux.HandleFunc("/api/health", handleHealth)
-	mux.HandleFunc("/api/telemetry", handleTelemetry)
-
-	// Chat Stream SSE
-	mux.HandleFunc("/api/chat/stream", handleChatStream)
-	mux.Handle("/ws/chat", websocket.Handler(handleWebSocketChat))
-
-	// Auth API
-	mux.HandleFunc("/api/auth/register", handleRegister)
-	mux.HandleFunc("/api/auth/login", handleLogin)
-	mux.HandleFunc("/api/auth/me", handleAuthMe)
-	mux.HandleFunc("/api/auth/logout", handleLogout)
-
-	// Conversations & Sessions API
-	mux.HandleFunc("/api/conversations", handleSessions)
-	mux.HandleFunc("/api/conversations/", handleSessionItem)
-	mux.HandleFunc("/api/sessions", handleSessions)
-	mux.HandleFunc("/api/sessions/", handleSessionItem)
-
-	// Personal Assistant: Todos & Notes
-	mux.HandleFunc("/api/todos", handleTodos)
-	mux.HandleFunc("/api/todos/", handleTodoItem)
-	mux.HandleFunc("/api/notes", handleNotes)
-	mux.HandleFunc("/api/notes/", handleNoteItem)
-	mux.HandleFunc("/api/gaps", handleGaps)
-
-	// Models API
-	mux.HandleFunc("/api/models", handleModels)
-
-	// System Telemetry & Status
-	mux.HandleFunc("/api/system", handleSystemStatus)
-	mux.HandleFunc("/api/status", handleSystemStatus)
-
-	// Knowledge Base
-	mux.HandleFunc("/api/knowledge", handleKnowledge)
-	mux.HandleFunc("/api/knowledge/", handleKnowledge)
-
-	// Calendar Engine
-	mux.HandleFunc("/api/calendar/", handleCalendar)
-
-	// Telephony VoIP Engine
-	mux.HandleFunc("/api/telephony/", handleTelephony)
-
-	// Audit & Maintenance
-	mux.HandleFunc("/api/audit", handleAudit)
-	mux.HandleFunc("/api/maintenance/vacuum", handleVacuum)
-
-	// Datasets & Sync
-	mux.HandleFunc("/api/dataset/", handleDataset)
-	mux.HandleFunc("/api/sync", handleSync)
-
-	// Teacher Argon / Copilot Engine
-	mux.HandleFunc("/api/teacher/", handleTeacher)
-
-	// File Uploads & Multimodal Analysis
-	mux.HandleFunc("/api/upload", handleUpload)
-	mux.HandleFunc("/api/analyze/multimodal", handleAnalyzeMultimodal)
+	registerRoutes(mux)
 
 	handler := corsAndGzipMiddleware(mux)
 
@@ -202,6 +145,94 @@ func corsAndGzipMiddleware(next http.Handler) http.Handler {
 }
 
 // Route Handlers
+func registerRoutes(mux *http.ServeMux) {
+	// API Health & Telemetry
+	mux.HandleFunc("/api/health", handleHealth)
+	mux.HandleFunc("/api/telemetry", handleTelemetry)
+
+	// Chat Stream SSE & WebSocket & Stop
+	mux.HandleFunc("/api/chat/stream", handleChatStream)
+	mux.HandleFunc("/api/chat/stop", handleChatStop)
+	mux.Handle("/ws/chat", websocket.Handler(handleWebSocketChat))
+
+	// Auth API
+	mux.HandleFunc("/api/auth/register", handleRegister)
+	mux.HandleFunc("/api/auth/login", handleLogin)
+	mux.HandleFunc("/api/auth/me", handleAuthMe)
+	mux.HandleFunc("/api/auth/logout", handleLogout)
+	mux.HandleFunc("/api/auth/claim_session", handleClaimSession)
+
+	// Conversations & Sessions API
+	mux.HandleFunc("/api/conversations", handleSessions)
+	mux.HandleFunc("/api/conversations/", handleSessionItem)
+	mux.HandleFunc("/api/sessions", handleSessions)
+	mux.HandleFunc("/api/sessions/", handleSessionItem)
+
+	// Personal Assistant: Todos & Notes
+	mux.HandleFunc("/api/todos", handleTodos)
+	mux.HandleFunc("/api/todos/", handleTodoItem)
+	mux.HandleFunc("/api/notes", handleNotes)
+	mux.HandleFunc("/api/notes/", handleNoteItem)
+	mux.HandleFunc("/api/gaps", handleGaps)
+	mux.HandleFunc("/api/gaps/", handleGaps)
+
+	// Models API
+	mux.HandleFunc("/api/models", handleModels)
+	mux.HandleFunc("/api/models/", handleModels)
+
+	// System Telemetry & Status
+	mux.HandleFunc("/api/system", handleSystemStatus)
+	mux.HandleFunc("/api/status", handleSystemStatus)
+
+	// Knowledge Base
+	mux.HandleFunc("/api/knowledge", handleKnowledge)
+	mux.HandleFunc("/api/knowledge/", handleKnowledge)
+
+	// Calendar Engine
+	mux.HandleFunc("/api/calendar/", handleCalendar)
+
+	// Telephony VoIP Engine
+	mux.HandleFunc("/api/telephony/", handleTelephony)
+
+	// Audit & Maintenance
+	mux.HandleFunc("/api/audit", handleAudit)
+	mux.HandleFunc("/api/maintenance/vacuum", handleVacuum)
+
+	// Datasets & Sync
+	mux.HandleFunc("/api/dataset/", handleDataset)
+	mux.HandleFunc("/api/sync", handleSync)
+
+	// Teacher Argon / Copilot Engine
+	mux.HandleFunc("/api/teacher/", handleTeacher)
+
+	// File Uploads & Multimodal Analysis
+	mux.HandleFunc("/api/upload", handleUpload)
+	mux.HandleFunc("/api/analyze/multimodal", handleAnalyzeMultimodal)
+}
+
+func handleChatStop(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"status": "stopped"})
+}
+
+func handleClaimSession(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	token := extractBearerToken(r)
+	user, err := GetUserByToken(token)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var req struct {
+		SessionID string `json:"session_id"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req.SessionID != "" {
+		_ = ClaimSession(req.SessionID, user.ID)
+	}
+	json.NewEncoder(w).Encode(map[string]any{"success": true, "session_id": req.SessionID})
+}
+
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	models := GetAvailableModels()
@@ -610,6 +641,15 @@ func handleNoteItem(w http.ResponseWriter, r *http.Request) {
 
 func handleGaps(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	if strings.HasSuffix(r.URL.Path, "/delete") && r.Method == http.MethodPost {
+		var req struct {
+			ID int64 `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		_ = DeleteKnowledgeGap(req.ID)
+		json.NewEncoder(w).Encode(map[string]any{"success": true})
+		return
+	}
 	if r.Method == http.MethodGet {
 		gaps, err := GetKnowledgeGaps(true)
 		if err != nil {
@@ -619,19 +659,42 @@ func handleGaps(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(gaps)
 	} else if r.Method == http.MethodPost {
 		var req struct {
-			Query   string `json:"query"`
-			Context string `json:"context"`
+			Query    string `json:"query"`
+			Question string `json:"question"`
+			Context  string `json:"context"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
-		_ = AddKnowledgeGap(req.Query, req.Context)
+		q := req.Query
+		if q == "" {
+			q = req.Question
+		}
+		_ = AddKnowledgeGap(q, req.Context)
 		json.NewEncoder(w).Encode(map[string]any{"success": true})
 	}
 }
 
+var activeModelName = "qwen2.5-coder:1.5b"
+
 func handleModels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	if strings.HasSuffix(r.URL.Path, "/active") {
+		if r.Method == http.MethodPost {
+			var req struct {
+				Model string `json:"model"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			if req.Model != "" {
+				activeModelName = req.Model
+			}
+			json.NewEncoder(w).Encode(map[string]any{"status": "ok", "active_model": activeModelName})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"active_model": activeModelName})
+		return
+	}
 	json.NewEncoder(w).Encode(map[string]any{
 		"models": GetAvailableModels(),
+		"active_model": activeModelName,
 	})
 }
 

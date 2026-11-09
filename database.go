@@ -62,11 +62,13 @@ type Note struct {
 }
 
 type KnowledgeGap struct {
-	ID        int64     `json:"id"`
-	Query     string    `json:"query"`
-	Context   string    `json:"context"`
-	Resolved  bool      `json:"resolved"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        int64  `json:"id"`
+	Question  string `json:"question"`
+	Query     string `json:"query"` // Alias for JSON compatibility
+	Context   string `json:"context"`
+	Status    string `json:"status"`
+	Resolved  bool   `json:"resolved"`
+	CreatedAt string `json:"created_at"`
 }
 
 type KnowledgeEntry struct {
@@ -410,13 +412,7 @@ func DeleteSession(sessionID string) error {
 
 // Personal Assistant: Todos & Notes
 func GetTodos(userID *int64) ([]Todo, error) {
-	var rows *sql.Rows
-	var err error
-	if userID != nil {
-		rows, err = db.Query("SELECT id, task, completed, priority, created_at FROM todos WHERE user_id = ? ORDER BY id DESC", *userID)
-	} else {
-		rows, err = db.Query("SELECT id, task, completed, priority, created_at FROM todos WHERE user_id IS NULL ORDER BY id DESC")
-	}
+	rows, err := db.Query("SELECT id, task, completed, priority, created_at FROM todos ORDER BY id DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +436,7 @@ func AddTodo(task, priority string, userID *int64) (*Todo, error) {
 	if priority == "" {
 		priority = "normal"
 	}
-	res, err := db.Exec("INSERT INTO todos (task, priority, user_id) VALUES (?, ?, ?)", task, priority, userID)
+	res, err := db.Exec("INSERT INTO todos (task, priority) VALUES (?, ?)", task, priority)
 	if err != nil {
 		return nil, err
 	}
@@ -465,16 +461,10 @@ func DeleteTodo(id int64) error {
 }
 
 func GetNotes(userID *int64, search string) ([]Note, error) {
-	query := "SELECT id, title, content, tags, created_at FROM notes WHERE "
+	query := "SELECT id, title, content, tags, updated_at FROM notes "
 	var args []any
-	if userID != nil {
-		query += "user_id = ? "
-		args = append(args, *userID)
-	} else {
-		query += "user_id IS NULL "
-	}
 	if search != "" {
-		query += "AND (title LIKE ? OR content LIKE ? OR tags LIKE ?) "
+		query += "WHERE (title LIKE ? OR content LIKE ? OR tags LIKE ?) "
 		pattern := "%" + search + "%"
 		args = append(args, pattern, pattern, pattern)
 	}
@@ -489,8 +479,8 @@ func GetNotes(userID *int64, search string) ([]Note, error) {
 	var notes []Note
 	for rows.Next() {
 		var n Note
-		var createdStr string
-		if err := rows.Scan(&n.ID, &n.Title, &n.Content, &n.Tags, &createdStr); err != nil {
+		var updatedStr string
+		if err := rows.Scan(&n.ID, &n.Title, &n.Content, &n.Tags, &updatedStr); err != nil {
 			continue
 		}
 		notes = append(notes, n)
@@ -514,9 +504,9 @@ func DeleteNote(id int64) error {
 
 // Knowledge Gaps
 func GetKnowledgeGaps(unresolvedOnly bool) ([]KnowledgeGap, error) {
-	q := "SELECT id, query, context, resolved, created_at FROM gaps "
+	q := "SELECT id, question, context, status, created_at FROM gaps "
 	if unresolvedOnly {
-		q += "WHERE resolved = 0 "
+		q += "WHERE status != 'resolved' "
 	}
 	q += "ORDER BY id DESC"
 
@@ -529,21 +519,33 @@ func GetKnowledgeGaps(unresolvedOnly bool) ([]KnowledgeGap, error) {
 	var gaps []KnowledgeGap
 	for rows.Next() {
 		var g KnowledgeGap
-		var resInt int
 		var createdStr string
-		if err := rows.Scan(&g.ID, &g.Query, &g.Context, &resInt, &createdStr); err != nil {
+		if err := rows.Scan(&g.ID, &g.Question, &g.Context, &g.Status, &createdStr); err != nil {
 			continue
 		}
-		g.Resolved = (resInt == 1)
+		g.Query = g.Question
+		g.Resolved = (g.Status == "resolved")
+		g.CreatedAt = createdStr
 		gaps = append(gaps, g)
 	}
 	return gaps, nil
 }
 
 func AddKnowledgeGap(query, context string) error {
-	_, err := db.Exec("INSERT INTO gaps (query, context) VALUES (?, ?)", query, context)
+	_, err := db.Exec("INSERT INTO gaps (question, context, status) VALUES (?, ?, 'pending')", query, context)
 	return err
 }
+
+func DeleteKnowledgeGap(id int64) error {
+	_, err := db.Exec("DELETE FROM gaps WHERE id = ?", id)
+	return err
+}
+
+func ClaimSession(sessionID string, userID int64) error {
+	_, err := db.Exec("UPDATE sessions SET user_id = ? WHERE id = ?", userID, sessionID)
+	return err
+}
+
 
 // Live Hardware Telemetry
 func GetSystemTelemetry() map[string]any {
@@ -613,7 +615,7 @@ func GetCalendarEvents(limit int) ([]CalendarEvent, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := db.Query("SELECT id, title, start_time, end_time, description, created_at, user_id FROM calendar_events ORDER BY start_time ASC LIMIT ?", limit)
+	rows, err := db.Query("SELECT id, title, start_time, end_time, description, created_at FROM calendar_events ORDER BY start_time ASC LIMIT ?", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -622,7 +624,7 @@ func GetCalendarEvents(limit int) ([]CalendarEvent, error) {
 	var events []CalendarEvent
 	for rows.Next() {
 		var e CalendarEvent
-		if err := rows.Scan(&e.ID, &e.Title, &e.StartTime, &e.EndTime, &e.Description, &e.CreatedAt, &e.UserID); err == nil {
+		if err := rows.Scan(&e.ID, &e.Title, &e.StartTime, &e.EndTime, &e.Description, &e.CreatedAt); err == nil {
 			events = append(events, e)
 		}
 	}
@@ -639,8 +641,8 @@ func BookCalendarEvent(title, startTime, endTime, desc string, userID *int64) (*
 	}
 	now := time.Now()
 	res, err := db.Exec(
-		"INSERT INTO calendar_events (title, start_time, end_time, description, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)",
-		title, startTime, endTime, desc, now, userID,
+		"INSERT INTO calendar_events (title, start_time, end_time, description, created_at) VALUES (?, ?, ?, ?, ?)",
+		title, startTime, endTime, desc, now,
 	)
 	if err != nil {
 		return nil, err
