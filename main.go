@@ -56,24 +56,31 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Static Web Assets (Embedded in binary)
-	webFS, err := fs.Sub(embeddedWeb, "web")
-	if err != nil {
-		log.Fatalf("[Merlin Go] Failed to mount embedded web directory: %v", err)
+	// Static Web Assets: Serve live from ./web on disk if present, fallback to embedded
+	var fileServer http.Handler
+	if stat, err := os.Stat("web"); err == nil && stat.IsDir() {
+		log.Printf("[Merlin Go] Serving live web assets directly from filesystem: ./web")
+		fileServer = http.FileServer(http.Dir("web"))
+	} else {
+		log.Printf("[Merlin Go] Serving embedded web assets from binary")
+		webFS, err := fs.Sub(embeddedWeb, "web")
+		if err != nil {
+			log.Fatalf("[Merlin Go] Failed to mount embedded web directory: %v", err)
+		}
+		fileServer = http.FileServer(http.FS(webFS))
 	}
-	fileServer := http.FileServer(http.FS(webFS))
 
-	// Static routes
+	// Static routes: enforce no-cache so browsers always revalidate newest JS and CSS
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		} else if strings.HasSuffix(r.URL.Path, ".css") {
 			w.Header().Set("Content-Type", "text/css; charset=utf-8")
-			w.Header().Set("Cache-Control", "public, max-age=3600")
+			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 		} else if strings.HasSuffix(r.URL.Path, ".js") {
 			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-			w.Header().Set("Cache-Control", "public, max-age=3600")
+			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 		}
 		fileServer.ServeHTTP(w, r)
 	})

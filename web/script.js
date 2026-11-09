@@ -1,4 +1,4 @@
-
+﻿
 // Native Web Audio Ethereal Synthesizer Feedback Chimes
 function playChime(type = "send") {
   if (localStorage.getItem("merlin_sound_chimes") !== "true") return;
@@ -767,9 +767,10 @@ function processIncomingSpeechChunk(tokenChunk, isFinal = false) {
   ttsStreamActive = !isFinal;
   if (tokenChunk) ttsTextBuffer += tokenChunk;
 
-  // Real-time full-sentence chunking: speak only coherent, complete sentences
+  // Real-time full-sentence chunking: speak coherent sentences promptly
   while (ttsTextBuffer.length > 0) {
-    const match = ttsTextBuffer.match(/^([\s\S]*?[.!?]+(?:\s+|\n+))([\s\S]*)$/);
+    const match = ttsTextBuffer.match(/^([\s\S]*?[.!?]+(?:\s+|\n+))([\s\S]*)$/) ||
+                  (ttsTextBuffer.length > 50 ? ttsTextBuffer.match(/^([\s\S]*?[:;\n]+(?:\s+))([\s\S]*)$/) : null);
     if (match) {
       const sentence = match[1].trim();
       ttsTextBuffer = match[2];
@@ -825,10 +826,14 @@ function playNextSpeechChunk() {
   if (!bestVoice) updateBestVoice();
 
   const utterance = new SpeechSynthesisUtterance(nextSentence);
-  if (bestVoice) utterance.voice = bestVoice;
-  const voiceCfg = getVoiceStyleConfig();
-  utterance.rate = voiceCfg.rate;
-  utterance.pitch = voiceCfg.pitch;
+  if (bestVoice) {
+    utterance.voice = bestVoice;
+    utterance.lang = bestVoice.lang || "en-GB";
+  } else {
+    utterance.lang = "en-GB";
+  }
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
 
   utterance.onend = () => {
     ttsIsSpeakingChunk = false;
@@ -1301,24 +1306,7 @@ function endConversationSession(spokenResponse = null) {
 }
 
 function getVoiceStyleConfig() {
-  let style = "natural";
-  try {
-    if (typeof localStorage !== "undefined" && localStorage.getItem) {
-      style = localStorage.getItem("merlin_voice_style") || "natural";
-    }
-  } catch(e) {}
-
-  if (style === "baritone") {
-    return { pitch: 0.95, rate: 1.02 };
-  } else if (style === "deep_bass") {
-    return { pitch: 0.90, rate: 1.0 };
-  } else if (style === "freeman") {
-    return { pitch: 0.96, rate: 1.04 };
-  } else if (style === "transatlantic") {
-    return { pitch: 1.0, rate: 1.05 };
-  }
-  // Default: Pure natural canonical voice (Google UK English Male) - zero distortion, clear British tone
-  return { pitch: 1.0, rate: 1.02 };
+  return { pitch: 1.0, rate: 1.0 };
 }
 
 function updateBestVoice() {
@@ -1326,13 +1314,25 @@ function updateBestVoice() {
   const voices = window.speechSynthesis.getVoices();
   if (!voices || !voices.length) return;
 
+  const femalePattern = /\b(female|zira|susan|hazel|catherine|linda|jenny|aria|samantha|victoria|karen|moira|fiona|tessa|ava|emma|olivia|sophia|chloe|sonia|natasha|ana)\b/i;
+
+  // PRIORITY 1: Default Canonical AI Voice - Google UK English Male ALWAYS takes precedence
+  const googleUKMale = voices.find(v => 
+    v.name.includes("Google UK English Male") ||
+    (v.name.includes("Google") && (v.lang === "en-GB" || v.lang === "en_GB") && /\bmale\b/i.test(v.name)) ||
+    (v.name.includes("Google") && (v.lang === "en-GB" || v.lang === "en_GB") && !femalePattern.test(v.name)) ||
+    (v.name.toLowerCase().includes("google") && v.name.toLowerCase().includes("uk") && !femalePattern.test(v.name))
+  );
+
   let savedVoiceURI = null;
   try {
     if (typeof localStorage !== "undefined" && localStorage.getItem) {
       savedVoiceURI = localStorage.getItem("merlin_selected_voice_uri");
+      if (savedVoiceURI === "default" || savedVoiceURI === "") savedVoiceURI = null;
     }
   } catch(e) {}
 
+  // If user explicitly chose a custom voice from the dropdown, honor it
   if (savedVoiceURI) {
     const saved = voices.find(v => v.voiceURI === savedVoiceURI || v.name === savedVoiceURI);
     if (saved) {
@@ -1342,15 +1342,7 @@ function updateBestVoice() {
     }
   }
 
-  const femalePattern = /\b(female|zira|susan|hazel|catherine|linda|jenny|aria|samantha|victoria|karen|moira|fiona|tessa|ava|emma|olivia|sophia|chloe|sonia|natasha|ana)\b/i;
-
-  // Priority 1: Default Canonical AI Voice - Google UK English Male
-  const googleUKMale = voices.find(v => 
-    v.name.includes("Google UK English Male") ||
-    (v.name.includes("Google") && (v.lang === "en-GB" || v.lang === "en_GB") && /\bmale\b/i.test(v.name)) ||
-    (v.name.includes("Google") && (v.lang === "en-GB" || v.lang === "en_GB") && !femalePattern.test(v.name)) ||
-    (v.name.toLowerCase().includes("google") && v.name.toLowerCase().includes("uk") && !femalePattern.test(v.name))
-  );
+  // Canonical Default AI Voice: Google UK English Male
   if (googleUKMale) {
     bestVoice = googleUKMale;
     populateVoiceSelect();
@@ -1457,7 +1449,12 @@ function testMerlinVoice() {
 }
 
 if ('speechSynthesis' in window) {
-  window.speechSynthesis.onvoiceschanged = updateBestVoice;
+  window.speechSynthesis.onvoiceschanged = () => {
+    updateBestVoice();
+  };
+  setTimeout(updateBestVoice, 100);
+  setTimeout(updateBestVoice, 400);
+  setTimeout(updateBestVoice, 1200);
   updateBestVoice();
 }
 
@@ -1645,10 +1642,14 @@ function speakMerlinText(text, onComplete) {
     }
 
     const utterance = new SpeechSynthesisUtterance(currentSentence);
-    if (bestVoice) utterance.voice = bestVoice;
-    const voiceCfg = getVoiceStyleConfig();
-    utterance.rate = voiceCfg.rate;
-    utterance.pitch = voiceCfg.pitch;
+    if (bestVoice) {
+      utterance.voice = bestVoice;
+      utterance.lang = bestVoice.lang || "en-GB";
+    } else {
+      utterance.lang = "en-GB";
+    }
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
 
     utterance.onend = () => {
       setTimeout(speakNext, 40);
