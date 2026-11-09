@@ -555,27 +555,19 @@ body.sidebar-open .sidebar-backdrop {
   pointer-events: auto !important;
 }
 
-body.hud-visual-mode .top-navbar,
-body.voice-mode-active .top-navbar,
-body:not(.text-mode-active) .top-navbar {
+body.hud-visual-mode:not(.text-mode-active) .top-navbar {
   display: none !important;
 }
 
-body.voice-mode-active #messages-list,
-body.hud-visual-mode #messages-list,
-body:not(.text-mode-active) #messages-list {
+body.hud-visual-mode:not(.text-mode-active) #messages-list {
   display: none !important;
 }
 
-body.hud-visual-mode #input-dock,
-body.voice-mode-active #input-dock,
-body:not(.text-mode-active) #input-dock {
+body.hud-visual-mode:not(.text-mode-active) #input-dock {
   display: none !important;
 }
 
-body.voice-mode-active #messages-viewport,
-body.hud-visual-mode #messages-viewport,
-body:not(.text-mode-active) #messages-viewport {
+body.hud-visual-mode:not(.text-mode-active) #messages-viewport {
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
@@ -876,10 +868,10 @@ body.text-mode-active #messages-list {
   display: flex !important;
 }
 body.text-mode-active #input-dock {
-  display: block !important;
+  display: flex !important;
   opacity: 1 !important;
   pointer-events: auto !important;
-  transform: translateX(-50%) translateY(0) !important;
+  transform: none !important;
 }
 body.text-mode-active #messages-viewport {
   position: relative !important;
@@ -895,16 +887,15 @@ body.text-mode-active #hud-corner-settings {
   display: none !important;
 }
 
-/* HUD Mode Toggle Pill (Floating at Bottom Center) */
+/* HUD Mode Toggle Pill (Positioned cleanly at Top Right, never blocking input dock) */
 .hud-mode-toggle-pill {
   position: fixed;
-  bottom: 26px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 16px;
+  right: 70px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 22px;
+  padding: 8px 16px;
   background: rgba(3, 14, 28, 0.78);
   border: 1px solid rgba(0, 240, 255, 0.45);
   border-radius: 9999px;
@@ -915,7 +906,7 @@ body.text-mode-active #hud-corner-settings {
   cursor: pointer;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55), 0 0 16px rgba(0, 240, 255, 0.22);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 60;
   user-select: none;
@@ -923,11 +914,11 @@ body.text-mode-active #hud-corner-settings {
 .hud-mode-toggle-pill:hover {
   background: rgba(0, 240, 255, 0.16);
   border-color: #00f0ff;
-  box-shadow: 0 8px 30px rgba(0, 240, 255, 0.4);
-  transform: translateX(-50%) translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 240, 255, 0.4);
+  transform: translateY(-1px);
 }
 .hud-mode-toggle-pill:active {
-  transform: translateX(-50%) scale(0.96);
+  transform: scale(0.96);
 }
 .hud-mode-toggle-pill.text-mode-on {
   border-color: rgba(0, 255, 204, 0.55);

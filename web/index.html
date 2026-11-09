@@ -7,7 +7,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='%2300f0ff' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='4' fill='%2300f0ff'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/styles.css?v=7.3.0">
 </head>
-<body class="hud-visual-mode voice-mode-active">
+<body class="text-mode-active">
 
   <!-- ========================================================================
        SIDEBAR: CONVERSATION SESSIONS, PA TOOLS, MEMORY & SETTINGS
@@ -640,7 +640,7 @@
         <div id="hud-on-demand-display" class="hud-on-demand-display" style="display:none;"></div>
 
         <!-- Messages Stream List: Positioned directly beneath the Cyber HUD Core -->
-        <div class="conversation-container" id="messages-list" style="display:none;"></div>
+        <div class="conversation-container" id="messages-list"></div>
       </div>
     </div>
 
@@ -680,7 +680,7 @@
             <button class="dock-icon-btn btn-stop pill-btn" id="btn-stop" onclick="stopGeneration()" title="Stop response generation" aria-label="Stop response generation">
               <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
             </button>
-            <button class="dock-icon-btn btn-send pill-btn" id="btn-send" onclick="submitMessage()" title="Send directive" aria-label="Send directive" disabled>
+            <button class="dock-icon-btn btn-send pill-btn" id="btn-send" onclick="submitMessage()" title="Send directive" aria-label="Send directive">
               <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </div>
@@ -860,7 +860,8 @@
             <div style="font-size:0.86rem; font-weight:600; color:var(--text-main);">Voice Persona &amp; Tone</div>
           </div>
           <select class="form-select" id="setting-voice-style" onchange="changeVoiceStyle(this.value)" style="width:240px; font-size:0.82rem; padding:6px 10px;">
-            <option value="baritone" selected>Deep Baritone (Resonant &amp; Authoritative)</option>
+            <option value="natural" selected>Natural Canonical (Google UK English Male)</option>
+            <option value="baritone">Deep Baritone (Resonant &amp; Authoritative)</option>
             <option value="freeman">Warm Baritone Narrator</option>
             <option value="deep_bass">Deep Bass (0.74 Pitch)</option>
             <option value="transatlantic">British Transatlantic AI</option>

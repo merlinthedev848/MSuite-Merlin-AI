@@ -228,7 +228,8 @@ function autoResizeTextarea(textarea) {
   if (!textarea) return;
   const btn = document.getElementById("btn-send");
   if (btn) {
-    btn.disabled = !textarea.value.trim() && !attachedFile;
+    btn.style.opacity = (!textarea.value.trim() && !attachedFile) ? "0.45" : "1";
+    btn.disabled = false;
   }
   // Zero-jank typing fast-path: completely avoid reflows and height mutation for single-line text
   if (!textarea.value.includes("\n")) {
@@ -638,7 +639,7 @@ function showConversationMessages(convId, messages) {
     return;
   }
 
-  if (document.body && document.body.classList.contains("voice-mode-active")) {
+  if (document.body && document.body.classList.contains("hud-visual-mode") && !document.body.classList.contains("text-mode-active")) {
     list.style.display = "none";
   } else {
     list.style.display = "flex";
@@ -655,7 +656,7 @@ function appendMessageElement(role, content) {
   const list = document.getElementById("messages-list");
   const hero = document.getElementById("hero-view");
   if (hero) hero.style.display = "flex"; // Cyber AI HUD remains permanently centered!
-  if (list && (!document.body || !document.body.classList.contains("voice-mode-active"))) {
+  if (list) {
     list.style.display = "flex";
   }
 
@@ -868,6 +869,7 @@ function playNextSpeechChunk() {
 // ==========================================================================
 async function submitMessage(fromVoice = false) {
   const ta = document.getElementById("chat-textarea");
+  if (!ta) return;
   const promptText = ta.value.trim();
   if (!promptText && !attachedFile) return;
 
@@ -876,7 +878,17 @@ async function submitMessage(fromVoice = false) {
     activeConversationId = "conv-" + Date.now();
   }
 
-  const isVoiceMode = isMerlinVoiceActive || fromVoice;
+  // Ensure interactive chat view is active whenever user sends a message
+  if (!fromVoice) {
+    isTextChatMode = true;
+    document.body.classList.remove("hud-visual-mode");
+    document.body.classList.add("text-mode-active");
+  }
+  const messagesList = document.getElementById("messages-list");
+  if (messagesList && isTextChatMode) {
+    messagesList.style.display = "flex";
+  }
+
   resetSpeechStream();
 
   const currentAttachment = attachedFile;
@@ -915,26 +927,14 @@ async function submitMessage(fromVoice = false) {
     }).then(() => loadConversations()).catch((e) => console.warn("Session persist sync:", e));
   }
 
-  let assistantBubble;
-  if (!isVoiceMode) {
-    // Normal Text Mode: Render message bubbles in scrolling conversation list
-    appendMessageElement("user", displayUserText);
-    assistantBubble = appendMessageElement("assistant", "");
-    assistantBubble.innerHTML = '<span class="status-thinking" style="color:var(--text-muted);font-size:0.88rem;display:inline-flex;align-items:center;gap:6px;">⚡ Generating response...</span>';
-    assistantBubble.classList.add("streaming-cursor");
-  } else {
-    // Full Voice Mode: Pure Cyber HUD! Hide scrolling message list & all text subtitles for true immersive Stark Arc feel
-    const statusEl = document.getElementById("sentinel-status-text");
-    const subEl = document.getElementById("sentinel-sub-text");
-    const cap = document.getElementById("sentinel-voice-caption");
-    if (statusEl) statusEl.style.display = "none";
-    if (subEl) subEl.style.display = "none";
-    if (cap) cap.style.display = "none";
-    // Detached dummy element so markdown rendering / backend DB logging function seamlessly
-    assistantBubble = document.createElement("div");
-  }
+  // Always append user message and streaming assistant bubble to conversation list
+  appendMessageElement("user", displayUserText);
+  const assistantBubble = appendMessageElement("assistant", "");
+  assistantBubble.innerHTML = '<span class="status-thinking" style="color:var(--text-muted);font-size:0.88rem;display:inline-flex;align-items:center;gap:6px;">⚡ Generating response...</span>';
+  assistantBubble.classList.add("streaming-cursor");
 
   toggleStreamingUI(true);
+  setMerlinHudState("processing");
 
   let fullResponse = "";
   let renderScheduled = false;
@@ -943,15 +943,14 @@ async function submitMessage(fromVoice = false) {
     if (!renderScheduled) {
       renderScheduled = true;
       requestAnimationFrame(() => {
-        if (!isVoiceMode) {
-          assistantBubble.innerHTML = renderMarkdown(fullResponse);
-          scrollViewportToBottom();
-        }
+        assistantBubble.innerHTML = renderMarkdown(fullResponse);
+        scrollViewportToBottom();
         renderScheduled = false;
       });
     }
   }
 
+  const shouldSpeak = isMerlinVoiceActive || isHudVoiceActive;
   let streamMode = "ws";
   let wsStarted = false;
   let sseStarted = false;
@@ -975,8 +974,8 @@ async function submitMessage(fromVoice = false) {
 
     activeEventSource.onmessage = function(event) {
       if (event.data === "[DONE]") {
-        processIncomingSpeechChunk("", true);
-        finishStreaming(assistantBubble, fullResponse, isVoiceMode);
+        if (shouldSpeak) processIncomingSpeechChunk("", true);
+        finishStreaming(assistantBubble, fullResponse);
         return;
       }
       try {
@@ -984,7 +983,7 @@ async function submitMessage(fromVoice = false) {
         if (data.chunk) {
           fullResponse += data.chunk;
           scheduleRender();
-          if (isVoiceMode) {
+          if (shouldSpeak) {
             processIncomingSpeechChunk(data.chunk, false);
           }
         }
@@ -996,8 +995,8 @@ async function submitMessage(fromVoice = false) {
         activeEventSource.close();
         activeEventSource = null;
       }
-      processIncomingSpeechChunk("", true);
-      finishStreaming(assistantBubble, fullResponse, isVoiceMode);
+      if (shouldSpeak) processIncomingSpeechChunk("", true);
+      finishStreaming(assistantBubble, fullResponse);
     };
   }
 
@@ -1044,12 +1043,12 @@ async function submitMessage(fromVoice = false) {
         if (data.type === "chunk" && data.delta) {
           fullResponse += data.delta;
           scheduleRender();
-          if (isVoiceMode) {
+          if (shouldSpeak) {
             processIncomingSpeechChunk(data.delta, false);
           }
         } else if (data.type === "done") {
-          processIncomingSpeechChunk("", true);
-          finishStreaming(assistantBubble, fullResponse, isVoiceMode);
+          if (shouldSpeak) processIncomingSpeechChunk("", true);
+          finishStreaming(assistantBubble, fullResponse);
         } else if (data.type === "error") {
           fullResponse += `\n[${data.message}]`;
           scheduleRender();
@@ -1062,8 +1061,8 @@ async function submitMessage(fromVoice = false) {
         activeWebSocket = null;
         startSSEStream();
       } else if (!sseStarted) {
-        processIncomingSpeechChunk("", true);
-        finishStreaming(assistantBubble, fullResponse, isVoiceMode);
+        if (shouldSpeak) processIncomingSpeechChunk("", true);
+        finishStreaming(assistantBubble, fullResponse);
       }
     };
 
@@ -1078,8 +1077,8 @@ async function submitMessage(fromVoice = false) {
       }
       if (activeWebSocket === ws) {
         activeWebSocket = null;
-        processIncomingSpeechChunk("", true);
-        finishStreaming(assistantBubble, fullResponse, isVoiceMode);
+        if (shouldSpeak) processIncomingSpeechChunk("", true);
+        finishStreaming(assistantBubble, fullResponse);
       }
     };
   } catch (err) {
@@ -1124,7 +1123,7 @@ function stopGeneration() {
   toggleStreamingUI(false);
 }
 
-function finishStreaming(bubbleEl, fullResponse, isVoiceMode = false) {
+function finishStreaming(bubbleEl, fullResponse) {
   if (activeWebSocket) {
     try { activeWebSocket.close(); } catch(e) {}
     activeWebSocket = null;
@@ -1133,48 +1132,18 @@ function finishStreaming(bubbleEl, fullResponse, isVoiceMode = false) {
     activeEventSource.close();
     activeEventSource = null;
   }
-  bubbleEl.classList.remove("streaming-cursor");
-  playChime("receive");
-  if (!isVoiceMode) {
+  if (bubbleEl) {
+    bubbleEl.classList.remove("streaming-cursor");
     if (!fullResponse || !fullResponse.trim()) {
       bubbleEl.innerHTML = '<span style="color:var(--text-muted);font-style:italic;">⚠️ No response generated by local inference engine. Ensure Ollama or local LLM server is running.</span>';
     } else {
       bubbleEl.innerHTML = renderMarkdown(fullResponse);
       appendMessageActions(bubbleEl, fullResponse);
     }
-  } else {
-    // On-demand HUD display: ONLY project on screen when user asks to see code/data/lists/tables
-    const displayPanel = document.getElementById("hud-on-demand-display");
-    const ta = document.getElementById("chat-textarea");
-    const lastPrompt = (ta && ta.getAttribute("data-last-prompt") ? ta.getAttribute("data-last-prompt") : "").toLowerCase();
-    const hasCodeOrTable = fullResponse.includes("```") || fullResponse.includes("<table") || fullResponse.includes("|---");
-    const userAskedToDisplay = /\b(show|display|render|write|draw|print|list|table|code|script|schema|json|html|css|sql|python|c\+\+|rust|javascript)\b/i.test(lastPrompt);
-
-    if (!fullResponse || !fullResponse.trim()) {
-      speakMerlinText("I was unable to retrieve a response from the inference engine, Sir. Please ensure the local model server is running.");
-      if (displayPanel) displayPanel.style.display = "none";
-    } else if ((hasCodeOrTable || userAskedToDisplay) && fullResponse && fullResponse.trim()) {
-      if (displayPanel) {
-        displayPanel.innerHTML = `
-          <div class="hud-display-header">
-            <div class="hud-display-title">
-              <span class="hud-display-indicator"></span>
-              <span>HUD VISUAL PROJECTION</span>
-            </div>
-            <button class="hud-display-close" onclick="dismissOnDemandHudDisplay()" title="Close visual display (or say 'dismiss')">✕ Close</button>
-          </div>
-          <div class="hud-display-content">${renderMarkdown(fullResponse)}</div>
-        `;
-        displayPanel.style.display = "block";
-        appendMessageActions(displayPanel.querySelector(".hud-display-content"), fullResponse);
-      }
-    } else if (displayPanel) {
-      displayPanel.style.display = "none";
-    }
   }
+  playChime("receive");
   toggleStreamingUI(false);
-  // Note: engine.generate_stream() already saves both the user prompt and the assistant response
-  // in SQLite on the backend. Refreshing the conversation list updates the auto-derived title.
+  setMerlinHudState("idle");
   loadConversations();
 }
 
@@ -1332,27 +1301,24 @@ function endConversationSession(spokenResponse = null) {
 }
 
 function getVoiceStyleConfig() {
-  let style = "baritone";
+  let style = "natural";
   try {
     if (typeof localStorage !== "undefined" && localStorage.getItem) {
-      style = localStorage.getItem("merlin_voice_style") || "baritone";
+      style = localStorage.getItem("merlin_voice_style") || "natural";
     }
   } catch(e) {}
 
   if (style === "baritone") {
-    // Deep Baritone: Resonant, commanding, authoritative and warm
-    return { pitch: 0.82, rate: 1.02 };
+    return { pitch: 0.95, rate: 1.02 };
   } else if (style === "deep_bass") {
-    // Deep Bass resonance
-    return { pitch: 0.74, rate: 0.98 };
+    return { pitch: 0.90, rate: 1.0 };
   } else if (style === "freeman") {
-    // Warm baritone narrator
-    return { pitch: 0.88, rate: 1.05 };
+    return { pitch: 0.96, rate: 1.04 };
   } else if (style === "transatlantic") {
-    // British Transatlantic AI
-    return { pitch: 0.96, rate: 1.06 };
+    return { pitch: 1.0, rate: 1.05 };
   }
-  return { pitch: 0.82, rate: 1.02 };
+  // Default: Pure natural canonical voice (Google UK English Male) - zero distortion, clear British tone
+  return { pitch: 1.0, rate: 1.02 };
 }
 
 function updateBestVoice() {
@@ -1742,9 +1708,6 @@ function toggleMerlinVoice(forceState) {
   isMerlinVoiceActive = true;
   isMerlinSpeaking = false;
   dismissOnDemandHudDisplay();
-  if (document.body) document.body.classList.add("voice-mode-active");
-  const list = document.getElementById("messages-list");
-  if (list) list.style.display = "none";
   localStorage.setItem("merlin_handsfree_wake", "true");
   if (micBtn) {
     micBtn.classList.add("merlin-voice-active");
@@ -1984,7 +1947,7 @@ function handleCoreTap() {
 }
 
 // Merlin HUD vs Text Chat Mode Switching Pill
-let isTextChatMode = false;
+let isTextChatMode = true;
 
 function toggleTextChatMode() {
   isTextChatMode = !isTextChatMode;
@@ -1993,21 +1956,19 @@ function toggleTextChatMode() {
 
   if (isTextChatMode) {
     document.body.classList.remove("hud-visual-mode");
-    document.body.classList.remove("voice-mode-active");
     document.body.classList.add("text-mode-active");
     const list = document.getElementById("messages-list");
     if (list) list.style.display = "flex";
-    if (pillLabel) pillLabel.textContent = "🎙️ Merlin Voice HUD";
+    if (pillLabel) pillLabel.textContent = "🌌 Ambient HUD";
     if (pill) pill.classList.add("text-mode-on");
     const ta = document.getElementById("chat-textarea");
     if (ta) setTimeout(() => ta.focus(), 100);
   } else {
     document.body.classList.remove("text-mode-active");
     document.body.classList.add("hud-visual-mode");
-    document.body.classList.add("voice-mode-active");
     const list = document.getElementById("messages-list");
     if (list) list.style.display = "none";
-    if (pillLabel) pillLabel.textContent = "💬 Text Chat";
+    if (pillLabel) pillLabel.textContent = "💬 Interactive Chat";
     if (pill) pill.classList.remove("text-mode-on");
     dismissOnDemandHudDisplay();
     unlockMobileAudioAndMic();
@@ -2018,12 +1979,6 @@ function toggleTextChatMode() {
 function initAlwaysListeningMerlin() {
   if (('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window)) {
     isMerlinVoiceActive = true;
-    if (document.body) {
-      document.body.classList.add("voice-mode-active");
-      document.body.classList.add("hud-visual-mode");
-    }
-    const list = document.getElementById("messages-list");
-    if (list) list.style.display = "none";
     updateWakePillUI(true);
     startMerlinListening();
   }
