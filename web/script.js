@@ -1377,25 +1377,28 @@ function updateBestVoice() {
   }
 
   const femalePattern = /\b(female|zira|susan|hazel|catherine|linda|jenny|aria|samantha|victoria|karen|moira|fiona|tessa|ava|emma|olivia|sophia|chloe|sonia|natasha|ana)\b/i;
-  const englishVoices = voices.filter(v => v.lang.startsWith("en"));
-  const pool = englishVoices.filter(v => !femalePattern.test(v.name));
-  const candidatePool = pool.length > 0 ? pool : englishVoices;
 
-  // Priority 1: Natural / Neural high-fidelity voices (Edge, Windows 11, iOS Enhanced, Chrome Online)
-  const neuralVoice = candidatePool.find(v =>
-    (v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Enhanced") || v.name.includes("Online")) &&
-    (v.name.includes("Ryan") || v.name.includes("Guy") || v.name.includes("Oliver") || v.name.includes("Daniel") || v.name.includes("Arthur") || v.name.includes("George") || v.name.includes("Christopher") || v.lang.includes("GB") || v.lang.includes("US"))
+  // Priority 1: Default Canonical AI Voice - Google UK English Male
+  const googleUKMale = voices.find(v => 
+    v.name.includes("Google UK English Male") ||
+    (v.name.includes("Google") && (v.lang === "en-GB" || v.lang === "en_GB") && /\bmale\b/i.test(v.name)) ||
+    (v.name.includes("Google") && (v.lang === "en-GB" || v.lang === "en_GB") && !femalePattern.test(v.name)) ||
+    (v.name.toLowerCase().includes("google") && v.name.toLowerCase().includes("uk") && !femalePattern.test(v.name))
   );
-  if (neuralVoice) {
-    bestVoice = neuralVoice;
+  if (googleUKMale) {
+    bestVoice = googleUKMale;
     populateVoiceSelect();
     return;
   }
 
-  // Priority 2: Distinctive British English voices (Ryan, Oliver, George, Daniel, Arthur)
+  const englishVoices = voices.filter(v => v.lang.startsWith("en"));
+  const pool = englishVoices.filter(v => !femalePattern.test(v.name));
+  const candidatePool = pool.length > 0 ? pool : englishVoices;
+
+  // Priority 2: British English male voices (Ryan, George, Arthur, Oliver, Daniel)
   const britishVoice = candidatePool.find(v =>
     (v.lang === "en-GB" || v.lang === "en_GB") &&
-    (v.name.includes("Ryan") || v.name.includes("George") || v.name.includes("Arthur") || v.name.includes("Oliver") || v.name.includes("Daniel") || v.name.includes("Google UK English Male"))
+    (v.name.includes("Ryan") || v.name.includes("George") || v.name.includes("Arthur") || v.name.includes("Oliver") || v.name.includes("Daniel") || /\bmale\b/i.test(v.name))
   );
   if (britishVoice) {
     bestVoice = britishVoice;
@@ -1403,15 +1406,18 @@ function updateBestVoice() {
     return;
   }
 
-  // Priority 3: Any Natural / Neural / Enhanced voice
-  const anyNatural = candidatePool.find(v => v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Enhanced"));
-  if (anyNatural) {
-    bestVoice = anyNatural;
+  // Priority 3: Natural / Neural high-fidelity voices (Edge, Windows 11, iOS Enhanced)
+  const neuralVoice = candidatePool.find(v =>
+    (v.name.includes("Natural") || v.name.includes("Neural") || v.name.includes("Enhanced") || v.name.includes("Online")) &&
+    (/\b(male|guy|ryan|oliver|daniel|george|christopher)\b/i.test(v.name) || !femalePattern.test(v.name))
+  );
+  if (neuralVoice) {
+    bestVoice = neuralVoice;
     populateVoiceSelect();
     return;
   }
 
-  // Priority 4: Clear English voice
+  // Priority 4: Clear English voice from the pool
   bestVoice = candidatePool[0] || voices.find(v => v.lang.startsWith("en")) || voices[0];
   populateVoiceSelect();
 }
