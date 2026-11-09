@@ -569,8 +569,50 @@ func handleTodos(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func parseIntID(raw any) int64 {
+	switch v := raw.(type) {
+	case float64:
+		return int64(v)
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	case string:
+		id, _ := strconv.ParseInt(v, 10, 64)
+		return id
+	default:
+		return 0
+	}
+}
+
 func handleTodoItem(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/todos/")
+	w.Header().Set("Content-Type", "application/json")
+	path := r.URL.Path
+
+	// Action paths: /api/todos/toggle and /api/todos/delete
+	if strings.HasSuffix(path, "/toggle") && r.Method == http.MethodPost {
+		var req struct {
+			ID any `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		id := parseIntID(req.ID)
+		newStatus, _ := ToggleTodo(id)
+		json.NewEncoder(w).Encode(map[string]any{"success": true, "id": id, "completed": newStatus})
+		return
+	}
+	if strings.HasSuffix(path, "/delete") && r.Method == http.MethodPost {
+		var req struct {
+			ID any `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		id := parseIntID(req.ID)
+		_ = DeleteTodo(id)
+		json.NewEncoder(w).Encode(map[string]any{"success": true})
+		return
+	}
+
+	// RESTful path: /api/todos/{id}
+	idStr := strings.TrimPrefix(path, "/api/todos/")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
@@ -583,11 +625,9 @@ func handleTodoItem(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"id": id, "completed": newStatus})
 	} else if r.Method == http.MethodDelete {
 		_ = DeleteTodo(id)
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"success": true})
 	}
 }
@@ -625,7 +665,36 @@ func handleNotes(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleNoteItem(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/notes/")
+	w.Header().Set("Content-Type", "application/json")
+	path := r.URL.Path
+
+	// Action paths: /api/notes/update and /api/notes/delete
+	if strings.HasSuffix(path, "/update") && r.Method == http.MethodPost {
+		var req struct {
+			ID      any    `json:"id"`
+			Title   string `json:"title"`
+			Content string `json:"content"`
+			Tags    string `json:"tags"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		id := parseIntID(req.ID)
+		_ = UpdateNote(id, req.Title, req.Content, req.Tags)
+		json.NewEncoder(w).Encode(map[string]any{"success": true})
+		return
+	}
+	if strings.HasSuffix(path, "/delete") && r.Method == http.MethodPost {
+		var req struct {
+			ID any `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		id := parseIntID(req.ID)
+		_ = DeleteNote(id)
+		json.NewEncoder(w).Encode(map[string]any{"success": true})
+		return
+	}
+
+	// RESTful path: /api/notes/{id}
+	idStr := strings.TrimPrefix(path, "/api/notes/")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
@@ -634,7 +703,6 @@ func handleNoteItem(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodDelete {
 		_ = DeleteNote(id)
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"success": true})
 	}
 }

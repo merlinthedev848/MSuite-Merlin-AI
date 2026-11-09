@@ -489,12 +489,20 @@ func GetNotes(userID *int64, search string) ([]Note, error) {
 }
 
 func AddNote(title, content, tags string, userID *int64) (*Note, error) {
-	res, err := db.Exec("INSERT INTO notes (title, content, tags, user_id) VALUES (?, ?, ?, ?)", title, content, tags, userID)
+	res, err := db.Exec("INSERT INTO notes (title, content, tags) VALUES (?, ?, ?)", title, content, tags)
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
 	return &Note{ID: id, Title: title, Content: content, Tags: tags, CreatedAt: time.Now()}, nil
+}
+
+func UpdateNote(id int64, title, content, tags string) error {
+	_, err := db.Exec(
+		"UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		title, content, tags, id,
+	)
+	return err
 }
 
 func DeleteNote(id int64) error {
